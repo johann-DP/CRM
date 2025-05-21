@@ -489,13 +489,48 @@ def run_famd(
     logger.info("FAMD entraîné avec succès")
 
     # 5) Extraction des résultats
+    if hasattr(famd, "explained_inertia_"):
+        ei_values = famd.explained_inertia_
+        logger.info("Inertie expliquée lue depuis 'explained_inertia_'")
+    else:
+        eig = getattr(famd, "eigenvalues_", None)
+        if eig is not None:
+            total = sum(eig)
+            ei_values = [v / total for v in eig]
+            logger.info("'explained_inertia_' absent – calcul à partir des 'eigenvalues_'")
+        else:
+            ei_values = []
+            logger.warning("Aucune information d'inertie disponible")
     explained_inertia = pd.Series(
-        famd.explained_inertia_,
-        index=[f"F{i + 1}" for i in range(len(famd.explained_inertia_))]
+        ei_values,
+        index=[f"F{i + 1}" for i in range(len(ei_values))]
     )
+
     row_coords = famd.row_coordinates(df_for_famd)
-    col_coords = famd.column_coordinates(df_for_famd)
-    col_contrib = famd.column_contributions(df_for_famd)
+
+    if hasattr(famd, "column_coordinates"):
+        col_coords = famd.column_coordinates(df_for_famd)
+        logger.info("Coordonnées colonnes via 'column_coordinates'")
+    elif hasattr(famd, "column_principal_coordinates"):
+        col_coords = famd.column_principal_coordinates(df_for_famd)
+        logger.info("'column_coordinates' absent – utilisation de 'column_principal_coordinates'")
+    elif hasattr(famd, "column_coordinates_"):
+        col_coords = famd.column_coordinates_
+        logger.info("Coordonnées colonnes lues depuis l'attribut 'column_coordinates_'")
+    else:
+        logger.warning("Aucune méthode de coordonnées colonnes disponible")
+        col_coords = pd.DataFrame()
+
+    if hasattr(famd, "column_contributions"):
+        col_contrib = famd.column_contributions(df_for_famd)
+        logger.info("Contributions via 'column_contributions'")
+    elif hasattr(famd, "column_contributions_"):
+        col_contrib = famd.column_contributions_
+        logger.info("'column_contributions' absent – utilisation de l'attribut 'column_contributions_'")
+    else:
+        contrib = (col_coords ** 2)
+        col_contrib = contrib.div(contrib.sum(axis=0), axis=1) * 100
+        logger.info("'column_contributions' absent – calcul à partir des coordonnées")
 
     logger.info(
         "Résultats FAMD extraits : "

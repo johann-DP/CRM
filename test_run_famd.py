@@ -1,0 +1,48 @@
+import ast
+import pandas as pd
+import prince
+from sklearn.preprocessing import StandardScaler
+import logging
+import numpy as np
+from typing import List, Optional, Tuple
+
+
+def load_run_famd(path='phase4v2.py'):
+    """Load only the run_famd function from the given file without executing the rest."""
+    source = open(path, 'r', encoding='utf-8').read()
+    module = ast.parse(source, filename=path)
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and node.name == 'run_famd':
+            func_code = ast.get_source_segment(source, node)
+            namespace = {
+                'pd': pd,
+                'prince': prince,
+                'StandardScaler': StandardScaler,
+                'logging': logging,
+                'np': np,
+                'List': List,
+                'Optional': Optional,
+                'Tuple': Tuple,
+            }
+            exec(compile(func_code, path, 'exec'), namespace)
+            return namespace['run_famd']
+    raise RuntimeError('run_famd not found')
+
+
+def main():
+    print('Testing run_famd with prince version', getattr(prince, '__version__', 'unknown'))
+    run_famd = load_run_famd()
+    df = pd.DataFrame({
+        'num1': [1, 2, 3, 4, 5],
+        'num2': [5, 4, 3, 2, 1],
+        'cat1': ['a', 'b', 'a', 'b', 'a']
+    })
+    famd, inertia, rows, cols, contrib = run_famd(df, ['num1', 'num2'], ['cat1'], n_components=2)
+    print('Explained inertia', inertia.tolist())
+    print('Row coords shape', rows.shape)
+    print('Column coords shape', cols.shape)
+    print('Column contrib shape', contrib.shape)
+
+
+if __name__ == '__main__':
+    main()
