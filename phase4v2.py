@@ -479,7 +479,7 @@ def run_famd(
             n_iter = 3,
             copy = True,
             check_input = True,
-            normalize = (weighting == 'balanced'),
+            # normalize = (weighting == 'balanced'),
             engine = 'sklearn'
     )
     logger.info(f"FAMD initialisé (weighting={weighting}) avec {n_comp} composantes")
