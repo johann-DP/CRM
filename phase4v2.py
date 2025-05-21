@@ -509,7 +509,9 @@ def run_famd(
 
 def plot_famd_results(
         famd,
-        df_active,
+        row_coords: pd.DataFrame,
+        col_coords: pd.DataFrame,
+        col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
         output_dir: str
@@ -526,8 +528,12 @@ def plot_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
-    df_active : pd.DataFrame
-        Données actives utilisées pour l'AFDM.
+    row_coords : pd.DataFrame
+        Coordonnées des individus.
+    col_coords : pd.DataFrame
+        Coordonnées des variables / modalités.
+    col_contrib : pd.DataFrame
+        Contributions des variables / modalités aux axes.
     quant_vars : list of str
         Noms des variables quantitatives.
     qual_vars : list of str
@@ -540,9 +546,6 @@ def plot_famd_results(
 
     # Récupération des résultats
     inertia = famd.explained_inertia_  # liste de floats
-    row_coords = famd.row_coordinates(df_active)
-    col_coords = famd.column_coordinates(df_active)
-    col_contrib = famd.column_contributions(df_active)
 
     # 1. Scree plot
     plt.figure()
@@ -630,7 +633,11 @@ def plot_famd_results(
 
 def export_famd_results(
         famd,
-        df_active: pd.DataFrame,
+        row_coords: pd.DataFrame,
+        col_coords: pd.DataFrame,
+        col_contrib: pd.DataFrame,
+        quant_vars,
+        qual_vars,
         output_dir: str
 ):
     """
@@ -645,8 +652,16 @@ def export_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
-    df_active : pd.DataFrame
-        DataFrame utilisé pour l’AFDM (colonnes quantitatives & qualitatives).
+    row_coords : pd.DataFrame
+        Coordonnées des individus.
+    col_coords : pd.DataFrame
+        Coordonnées des variables / modalités.
+    col_contrib : pd.DataFrame
+        Contributions des variables / modalités aux axes.
+    quant_vars : list of str
+        Noms des variables quantitatives.
+    qual_vars : list of str
+        Noms des variables qualitatives.
     output_dir : str
         Répertoire où écrire les fichiers CSV.
     """
@@ -666,19 +681,13 @@ def export_famd_results(
     logger.info(f"Export variance expliquée → {path_var}")
 
     # 2) Coordonnées des individus
-    row_coords = famd.row_coordinates(df_active)
     path_rows = os.path.join(output_dir, "phase4_individus_coordonnees.csv")
     row_coords.to_csv(path_rows, index=True)
     logger.info(f"Export coordonnées individus → {path_rows}")
 
     # 3) Coordonnées des variables/modalités
-    col_coords = famd.column_coordinates(df_active)
-    # Séparer quantitatives vs qualitatives selon dtype
-    quant_cols = df_active.select_dtypes(include=['number']).columns
-    qual_cols = df_active.select_dtypes(include=['category', 'object']).columns
-
-    quant_coords = col_coords.loc[quant_cols]
-    qual_coords = col_coords.loc[qual_cols]
+    quant_coords = col_coords.loc[quant_vars]
+    qual_coords = col_coords.loc[qual_vars]
 
     path_quant = os.path.join(output_dir, "phase4_variables_coordonnees.csv")
     quant_coords.to_csv(path_quant, index=True)
@@ -689,7 +698,6 @@ def export_famd_results(
     logger.info(f"Export coords modalités qualitatives → {path_qual}")
 
     # 4) Contributions aux axes
-    col_contrib = famd.column_contributions(df_active)
     contrib_df = col_contrib * 100
     contrib_df.index.name = 'variable_or_modalite'
     path_contrib = os.path.join(output_dir, "phase4_contributions_variables.csv")
@@ -785,12 +793,24 @@ try:
 
     # 3.5 Visualisation
     plot_famd_results(
-        famd, df_active, quant_vars, qual_vars, str(OUTPUT_DIR)
+        famd,
+        row_coords,
+        col_coords,
+        col_contrib,
+        quant_vars,
+        qual_vars,
+        str(OUTPUT_DIR)
     )
 
     # 3.6 Export des résultats
     export_famd_results(
-        famd, df_active, str(OUTPUT_DIR)
+        famd,
+        row_coords,
+        col_coords,
+        col_contrib,
+        quant_vars,
+        qual_vars,
+        str(OUTPUT_DIR)
     )
 
 except Exception as e:
