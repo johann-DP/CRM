@@ -1272,14 +1272,18 @@ def main() -> None:
 
 
 def generate_report_pdf(output_dir: Path) -> Path:
-    """Assemble un PDF de synthèse à partir des figures principales."""
+    """Assemble un PDF de synthèse à partir des figures générées.
+
+    The PDF will include the following images if present in ``output_dir``:
+    ``phase4_mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
+    ``phase4_umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``methods_heatmap.png``.
+    """
     logger = logging.getLogger(__name__)
     pdf_path = output_dir / "phase4_report.pdf"
     figures = [
-        "phase4_scree_plot.png",
         "phase4_mfa_scree_plot.png",
         "phase4_pcamix_scree_plot.png",
-        "phase4_individus_1_2.png",
         "phase4_umap_scatter.png",
         "phase4_tsne_scatter.png",
         "methods_heatmap.png",
