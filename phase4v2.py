@@ -496,6 +496,65 @@ def run_mfa(
     return mfa
 
 
+def run_pcamix(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    output_dir: Path,
+    n_components: int = 5
+) -> Tuple[prince.PCAmix, List[float], pd.DataFrame, pd.DataFrame]:
+    """
+    Exécute une PCAmix (AFDM) sur le jeu de données mixte.
+
+    Args:
+        df_active: DataFrame contenant uniquement les colonnes actives.
+        quant_vars: Liste des noms de colonnes quantitatives.
+        qual_vars: Liste des noms de colonnes qualitatives.
+        output_dir: Répertoire où sauver les graphiques et CSV.
+        n_components: Nombre de composantes à extraire.
+
+    Returns:
+        - Le modèle `prince.PCAmix` entraîné,
+        - La liste des inerties expliquées par composante,
+        - DataFrame des coordonnées des individus,
+        - DataFrame des coordonnées des variables/modalités.
+    """
+    import prince
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    from typing import Tuple, List
+
+    pcamix = prince.PCAmix(
+        n_components=n_components,
+        copy=True,
+        check_input=True,
+    )
+    mix_df = df_active[quant_vars + qual_vars]
+    pcamix = pcamix.fit(mix_df)
+
+    inertia = pcamix.explained_inertia_
+
+    axes = list(range(1, len(inertia) + 1))
+    plt.figure()
+    plt.bar(axes, [i * 100 for i in inertia], edgecolor="black")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis PCAmix")
+    plt.xticks(axes)
+    plt.tight_layout()
+    (output_dir / "phase4_pcamix_scree_plot.png").parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "phase4_pcamix_scree_plot.png")
+    plt.close()
+
+    row_coords = pcamix.row_coordinates(mix_df)
+    col_coords = pcamix.column_coordinates(mix_df)
+
+    row_coords.to_csv(output_dir / "phase4_pcamix_individus_coord.csv", index=True)
+    col_coords.to_csv(output_dir / "phase4_pcamix_modalites_coord.csv", index=True)
+
+    return pcamix, inertia, row_coords, col_coords
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -912,6 +971,14 @@ def main() -> None:
             qual_vars,
             OUTPUT_DIR,
             n_components=5,
+        )
+
+        pcamix_model, pcamix_inertia, pcamix_rows, pcamix_cols = run_pcamix(
+            df_active,
+            quant_vars,
+            qual_vars,
+            OUTPUT_DIR,
+            n_components=5
         )
 
         if df_active.isna().any().any():
