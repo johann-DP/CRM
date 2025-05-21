@@ -407,6 +407,47 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
     return df
 
 
+def segment_data(
+    df: pd.DataFrame,
+    qual_vars: List[str],
+    output_dir: Path
+) -> None:
+    """Generate simple segmentation reports for qualitative variables.
+
+    For each variable in ``qual_vars`` present in ``df``, a CSV summary and a
+    bar plot are produced under ``output_dir/segments``.
+    """
+    logger = logging.getLogger(__name__)
+    seg_dir = Path(output_dir) / "segments"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+
+    for col in qual_vars:
+        if col not in df.columns:
+            logger.warning(f"Variable qualitative '{col}' absente du DataFrame")
+            continue
+
+        counts = df[col].value_counts(dropna=False)
+        seg_df = counts.reset_index()
+        seg_df.columns = ["modalité", "count"]
+        seg_df["pct"] = (seg_df["count"] / seg_df["count"].sum() * 100).round(1)
+
+        csv_path = seg_dir / f"segment_{col}.csv"
+        seg_df.to_csv(csv_path, index=False)
+
+        plt.figure(figsize=(8, 4), dpi=200)
+        plt.bar(seg_df["modalité"].astype(str), seg_df["count"], edgecolor="black")
+        plt.title(f"Répartition par {col}")
+        plt.xlabel(col)
+        plt.ylabel("count")
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        png_path = seg_dir / f"segment_{col}.png"
+        plt.savefig(png_path, dpi=150)
+        plt.close()
+
+        logger.info(f"Rapport segmentation '{col}' → {csv_path.name}, {png_path.name}")
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -814,6 +855,8 @@ def main() -> None:
 
         # --- Imputation / suppression des valeurs manquantes restantes ---
         df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+
+        segment_data(df_active, qual_vars, OUTPUT_DIR)
 
         if df_active.isna().any().any():
             logger.error("Des NA demeurent dans df_active après traitement")
