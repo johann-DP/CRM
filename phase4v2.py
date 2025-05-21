@@ -10,10 +10,12 @@ import matplotlib.pyplot as plt
 from typing import List, Optional, Tuple, Sequence
 import prince
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.manifold import TSNE
 import logging
 import os
 import numpy as np
 import umap
+import time
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
@@ -634,6 +636,56 @@ def run_umap(
     return reducer, umap_df
 
 
+def run_tsne(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    output_dir: Path,
+    n_components: int = 2,
+    perplexity: float = 30.0,
+    random_state: int = 42,
+    n_iter: int = 1000,
+) -> Tuple[TSNE, pd.DataFrame]:
+    """Exécute t-SNE sur le jeu de données mixte."""
+
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+    X_cat = OneHotEncoder(sparse=False, handle_unknown="ignore").fit_transform(
+        df_active[qual_vars]
+    )
+    X_mix = np.hstack([X_num, X_cat])
+
+    tsne = TSNE(
+        n_components=n_components,
+        perplexity=perplexity,
+        random_state=random_state,
+        n_iter=n_iter,
+    )
+    embedding = tsne.fit_transform(X_mix)
+
+    cols = [f"TSNE{i+1}" for i in range(n_components)]
+    tsne_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
+
+    plt.figure()
+    scatter = plt.scatter(
+        tsne_df["TSNE1"], tsne_df["TSNE2"],
+        c=df_active["Statut commercial"].astype("category").cat.codes,
+        s=10, alpha=0.7,
+    )
+    plt.xlabel("TSNE1")
+    plt.ylabel("TSNE2")
+    plt.title("Projection t-SNE (colorée par Statut commercial)")
+    plt.colorbar(scatter, ticks=range(len(df_active["Statut commercial"].unique())),
+                 label="Statut commercial")
+    plt.tight_layout()
+    (output_dir / "phase4_tsne_scatter.png").parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "phase4_tsne_scatter.png")
+    plt.close()
+
+    tsne_df.to_csv(output_dir / "phase4_tsne_embeddings.csv", index=True)
+
+    return tsne, tsne_df
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -991,6 +1043,92 @@ def export_famd_results(
     logger.info("Export des résultats AFDM terminé.")
 
 
+def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
+    """Calcule l'indice de Dunn pour un partitionnement."""
+    from scipy.spatial.distance import pdist, squareform
+
+    if len(np.unique(labels)) < 2:
+        return float("nan")
+
+    dist = squareform(pdist(X))
+    unique = np.unique(labels)
+
+    intra_diam = []
+    min_inter = np.inf
+
+    for i, ci in enumerate(unique):
+        idx_i = np.where(labels == ci)[0]
+        if len(idx_i) > 1:
+            intra = dist[np.ix_(idx_i, idx_i)].max()
+        else:
+            intra = 0.0
+        intra_diam.append(intra)
+
+        for cj in unique[i + 1 :]:
+            idx_j = np.where(labels == cj)[0]
+            inter = dist[np.ix_(idx_i, idx_j)].min()
+            if inter < min_inter:
+                min_inter = inter
+
+    max_intra = max(intra_diam)
+    if max_intra == 0:
+        return float("nan")
+    return float(min_inter / max_intra)
+
+
+def evaluate_methods(
+    results_dict: Dict[str, Dict[str, Any]],
+    output_dir: Path,
+    n_clusters: int = 3,
+) -> pd.DataFrame:
+    """Compare diverses méthodes de réduction de dimension."""
+
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+    import seaborn as sns
+
+    rows = []
+    for method, info in results_dict.items():
+        inertias = info.get("inertia") or []
+        kaiser = sum(1 for eig in inertias if eig > 1)
+        cum_inertia = sum(inertias) if inertias else None
+
+        X = info["embeddings"].values
+        labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X)
+        sil = silhouette_score(X, labels)
+        dunn = dunn_index(X, labels)
+        runtime = info.get("runtime")
+
+        rows.append(
+            {
+                "method": method,
+                "kaiser": kaiser,
+                "cum_inertia": cum_inertia,
+                "silhouette": sil,
+                "dunn": dunn,
+                "runtime_s": runtime,
+            }
+        )
+
+    df_comp = pd.DataFrame(rows).set_index("method")
+    df_comp.to_csv(output_dir / "methods_comparison.csv")
+
+    df_norm = df_comp.copy()
+    for col in df_norm.columns:
+        cmin, cmax = df_norm[col].min(), df_norm[col].max()
+        if cmax > cmin:
+            df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
+
+    plt.figure(figsize=(8, 4), dpi=200)
+    sns.heatmap(df_norm, annot=True, cmap="viridis")
+    plt.tight_layout()
+    (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "methods_heatmap.png")
+    plt.close()
+
+    return df_comp
+
+
 ### MAIN ###
 
 def main() -> None:
@@ -1044,6 +1182,7 @@ def main() -> None:
 
         segment_data(df_active, qual_vars, OUTPUT_DIR)
 
+        t0 = time.perf_counter()
         mfa_model = run_mfa(
             df_active,
             quant_vars,
@@ -1051,7 +1190,11 @@ def main() -> None:
             OUTPUT_DIR,
             n_components=5,
         )
+        mfa_time = time.perf_counter() - t0
+        mfa_rows = mfa_model.row_coordinates(df_active[quant_vars + qual_vars])
+        mfa_inertia = list(mfa_model.explained_inertia_)
 
+        t0 = time.perf_counter()
         pcamix_model, pcamix_inertia, pcamix_rows, pcamix_cols = run_pcamix(
             df_active,
             quant_vars,
@@ -1059,7 +1202,9 @@ def main() -> None:
             OUTPUT_DIR,
             n_components=5
         )
+        pcamix_time = time.perf_counter() - t0
 
+        t0 = time.perf_counter()
         umap_model, umap_embeddings = run_umap(
             df_active,
             quant_vars,
@@ -1070,6 +1215,19 @@ def main() -> None:
             n_components=2,
             random_state=42
         )
+        umap_time = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        tsne_model, tsne_embeddings = run_tsne(
+            df_active,
+            quant_vars,
+            qual_vars,
+            OUTPUT_DIR,
+            n_components=2,
+            perplexity=30.0,
+            random_state=42,
+        )
+        tsne_time = time.perf_counter() - t0
 
         if df_active.isna().any().any():
             logger.error("Des NA demeurent dans df_active après traitement")
@@ -1104,9 +1262,13 @@ def main() -> None:
             logger.info("Baseline scree-plot généré : baseline_scree.png")
 
         # 3.4 Exécution de l'AFDM
+        t0 = time.perf_counter()
         famd, inertia, row_coords, col_coords, col_contrib = run_famd(
             df_active, quant_vars, qual_vars
         )
+        famd_time = time.perf_counter() - t0
+        famd_rows = row_coords
+        famd_inertia = list(inertia)
 
         # 3.5 Visualisation
         plot_famd_results(
@@ -1131,6 +1293,37 @@ def main() -> None:
             qual_vars,
             str(OUTPUT_DIR)
         )
+
+        results_dict = {
+            "FAMD": {
+                "embeddings": famd_rows,
+                "inertia": famd_inertia,
+                "runtime": famd_time,
+            },
+            "MFA": {
+                "embeddings": mfa_rows,
+                "inertia": mfa_inertia,
+                "runtime": mfa_time,
+            },
+            "PCAmix": {
+                "embeddings": pcamix_rows,
+                "inertia": list(pcamix_inertia),
+                "runtime": pcamix_time,
+            },
+            "UMAP": {
+                "embeddings": umap_embeddings,
+                "inertia": None,
+                "runtime": umap_time,
+            },
+            "TSNE": {
+                "embeddings": tsne_embeddings,
+                "inertia": None,
+                "runtime": tsne_time,
+            },
+        }
+
+        comp_df = evaluate_methods(results_dict, OUTPUT_DIR, n_clusters=3)
+        logger.info("Comparaison des méthodes enregistrée")
 
     except Exception as e:
         logger.error(f"Erreur fatale durant la phase 4 : {e}", exc_info=True)
