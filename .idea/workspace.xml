@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: update requirements.txt">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: fix ValueError: NA détectés dans df_for_famd">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/phase4v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4v2.py" afterDir="false" />
     </list>
@@ -104,7 +104,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747821437812</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="phase4v2.py: fix ValueError: NA détectés dans df_for_famd">
+      <option name="closed" value="true" />
+      <created>1747825469522</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1747825469522</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -126,6 +134,7 @@
     <MESSAGE value="phase4v2.py: fix pd.io.parsers.ParserBase" />
     <MESSAGE value="phase4v2.py: fix ValueError: Input X contains infinity or a value too large for dtype('float64')." />
     <MESSAGE value="phase4v2.py: update requirements.txt" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: update requirements.txt" />
+    <MESSAGE value="phase4v2.py: fix ValueError: NA détectés dans df_for_famd" />
+    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: fix ValueError: NA détectés dans df_for_famd" />
   </component>
 </project>

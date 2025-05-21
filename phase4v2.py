@@ -379,6 +379,34 @@ def select_variables(
     return df_active, quant_vars, qual_vars
 
 
+def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]) -> pd.DataFrame:
+    """Impute and optionally drop NA values for the provided DataFrame."""
+    logger = logging.getLogger(__name__)
+    na_count = int(df.isna().sum().sum())
+    if na_count > 0:
+        logger.info(f"Imputation des {na_count} valeurs manquantes restantes")
+        if quant_vars:
+            df[quant_vars] = df[quant_vars].fillna(df[quant_vars].median())
+        for col in qual_vars:
+            if df[col].dtype.name == "category" and 'Non renseigné' not in df[col].cat.categories:
+                df[col] = df[col].cat.add_categories('Non renseigné')
+            df[col] = df[col].fillna('Non renseigné').astype('category')
+        remaining_na = int(df.isna().sum().sum())
+        if remaining_na > 0:
+            logger.warning(
+                f"{remaining_na} NA subsistent après imputation → suppression des lignes concernées"
+            )
+            df.dropna(inplace=True)
+    else:
+        logger.info("Aucune valeur manquante détectée après sanity_check")
+
+    if df.isna().any().any():
+        logger.error("Des NA demeurent dans df après traitement")
+    else:
+        logger.info("DataFrame sans NA prêt pour FAMD")
+    return df
+
+
 def run_famd(
     df_active: pd.DataFrame,
     quant_vars: List[str],
@@ -405,6 +433,7 @@ def run_famd(
         Liste des noms de colonnes qualitatives (catégorielles).
     n_components : int, optional
         Nombre de composantes factorielles à extraire. Si None, utilise toutes les composantes possibles.
+    famd_cfg:  dict
 
     Returns
     -------
@@ -719,21 +748,7 @@ try:
     logger.info(f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali")
 
     # --- Imputation / suppression des valeurs manquantes restantes ---
-    na_count = int(df_active.isna().sum().sum())
-    if na_count > 0:
-        logger.info(f"Imputation des {na_count} valeurs manquantes restantes")
-        if quant_vars:
-            df_active[quant_vars] = df_active[quant_vars].fillna(df_active[quant_vars].median())
-        for col in qual_vars:
-            if df_active[col].dtype.name == "category" and 'Non renseigné' not in df_active[col].cat.categories:
-                df_active[col] = df_active[col].cat.add_categories('Non renseigné')
-            df_active[col] = df_active[col].fillna('Non renseigné').astype('category')
-        remaining_na = int(df_active.isna().sum().sum())
-        if remaining_na > 0:
-            logger.warning(f"{remaining_na} NA subsistent après imputation → suppression des lignes concernées")
-            df_active.dropna(inplace=True)
-    else:
-        logger.info("Aucune valeur manquante détectée après sanity_check")
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
     if df_active.isna().any().any():
         logger.error("Des NA demeurent dans df_active après traitement")
@@ -745,6 +760,7 @@ try:
         q0 = CONFIG['baseline_vars']['quant']
         c0 = CONFIG['baseline_vars']['qual']
         df0 = df_clean[q0 + c0].copy()
+        df0 = handle_missing_values(df0, q0, c0)
         famd0, inertia0, *_ = run_famd(
             df0, q0, c0, famd_cfg=CONFIG['baseline_cfg']
         )
