@@ -104,7 +104,7 @@ def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
     """
     if na_df.empty:
         return
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(12,6), dpi=200)
     na_df = na_df.sort_values('missing_pct', ascending=False).head(30)
     plt.barh(na_df['variable'], na_df['missing_pct'], color='lightcoral', edgecolor='black')
     plt.xlabel('% Missing')
@@ -555,13 +555,13 @@ def run_famd(
 
 def plot_famd_results(
         famd,
+        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
-        output_dir: str,
-        inertia=None,
+        output_dir: str
 ):
     """
     Génère et enregistre les principaux graphiques de l'AFDM :
@@ -575,9 +575,8 @@ def plot_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
-    inertia : Sequence[float] | pd.Series, optional
-        Pourcentage d'inertie expliqué par axe. Si ``None``, la fonction tente
-        de le récupérer via :func:`get_explained_inertia`.
+    inertia : Sequence[float] | pd.Series
+        Pourcentage d'inertie expliqué par axe.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -595,13 +594,11 @@ def plot_famd_results(
     os.makedirs(output_dir, exist_ok=True)
 
     # Récupération des résultats
-    if inertia is None:
-        inertia = get_explained_inertia(famd)
     if isinstance(inertia, pd.Series):
         inertia = inertia.values
 
     # 1. Scree plot
-    plt.figure()
+    plt.figure(figsize=(12,6), dpi=200)
     axes = [f"F{i + 1}" for i in range(len(inertia))]
     plt.bar(axes, [i * 100 for i in inertia], edgecolor='black')
     plt.plot(axes, [100 * sum(inertia[:i + 1]) for i in range(len(inertia))],
@@ -617,7 +614,7 @@ def plot_famd_results(
     logger.info(f"Scree plot enregistré : {scree_path}")
 
     # 2. Nuage de points des individus F1–F2
-    plt.figure()
+    plt.figure(figsize=(12,6), dpi=200)
     plt.scatter(row_coords.iloc[:, 0], row_coords.iloc[:, 1],
                 s=20, alpha=0.6)
     plt.xlabel("F1")
@@ -631,7 +628,7 @@ def plot_famd_results(
     logger.info(f"Projection individus enregistrée : {ind_path}")
 
     # 3. Projection des modalités qualitatives F1–F2
-    plt.figure()
+    plt.figure(figsize=(12,6), dpi=200)
     subset = col_coords.loc[qual_vars, :]
     plt.scatter(subset.iloc[:, 0], subset.iloc[:, 1],
                 s=50, marker='D')
@@ -649,7 +646,7 @@ def plot_famd_results(
     logger.info(f"Projection modalités enregistrée : {mod_path}")
 
     # 4. Cercle des corrélations (variables quantitatives)
-    plt.figure()
+    plt.figure(figsize=(12,6), dpi=200)
     origin = [0], [0]
     for var in quant_vars:
         x, y = col_coords.loc[var, [0, 1]]
@@ -670,7 +667,7 @@ def plot_famd_results(
 
     # 5. Contributions sur F1 et F2
     for idx in [0, 1]:
-        plt.figure()
+        plt.figure(figsize=(12,6), dpi=200)
         contrib = col_contrib.iloc[:, idx] * 100
         contrib.sort_values(ascending=False).plot.bar(edgecolor='black')
         plt.ylabel("% contribution")
@@ -686,13 +683,13 @@ def plot_famd_results(
 
 def export_famd_results(
         famd,
+        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
-        output_dir: str,
-        inertia=None,
+        output_dir: str
 ):
     """
     Exporte les résultats clés de l’AFDM sous forme de CSV pour réutilisation :
@@ -706,6 +703,8 @@ def export_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
+    inertia : Sequence[float] | pd.Series
+        Pourcentage d'inertie expliqué par axe.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -718,16 +717,11 @@ def export_famd_results(
         Noms des variables qualitatives.
     output_dir : str
         Répertoire où écrire les fichiers CSV.
-    inertia : Sequence[float] | pd.Series, optional
-        Pourcentage d'inertie expliqué par axe. Si ``None``, sera calculé via
-        :func:`get_explained_inertia`.
     """
     logger = logging.getLogger(__name__)
     os.makedirs(output_dir, exist_ok=True)
 
     # 1) Variance expliquée (éigenvalues et % inertie)
-    if inertia is None:
-        inertia = get_explained_inertia(famd)
     if isinstance(inertia, pd.Series):
         inertia = inertia.values
     axes = [f"F{i + 1}" for i in range(len(inertia))]
@@ -837,7 +831,7 @@ def main() -> None:
             )
             # scree baseline
             axes0 = [f"F{i+1}" for i in range(len(inertia0))]
-            plt.figure()
+            plt.figure(figsize=(12,6), dpi=200)
             plt.bar(axes0, [i*100 for i in inertia0], edgecolor='black')
             plt.plot(
                 axes0,
@@ -861,25 +855,25 @@ def main() -> None:
         # 3.5 Visualisation
         plot_famd_results(
             famd,
+            inertia,
             row_coords,
             col_coords,
             col_contrib,
             quant_vars,
             qual_vars,
-            str(OUTPUT_DIR),
-            inertia=inertia,
+            str(OUTPUT_DIR)
         )
 
         # 3.6 Export des résultats
         export_famd_results(
             famd,
+            inertia,
             row_coords,
             col_coords,
             col_contrib,
             quant_vars,
             qual_vars,
-            str(OUTPUT_DIR),
-            inertia=inertia,
+            str(OUTPUT_DIR)
         )
 
     except Exception as e:
