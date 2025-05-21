@@ -504,38 +504,41 @@ def run_pcamix(
     quant_vars: List[str],
     qual_vars: List[str],
     output_dir: Path,
-    n_components: int = 5
-) -> Tuple[prince.PCAmix, List[float], pd.DataFrame, pd.DataFrame]:
-    """
-    Exécute une PCAmix (AFDM) sur le jeu de données mixte.
+    n_components: int = 5,
+) -> Tuple[prince.FAMD, pd.Series, pd.DataFrame, pd.DataFrame]:
+    """Exécute une analyse de type PCAmix via :class:`prince.FAMD`."""
 
-    Args:
-        df_active: DataFrame contenant uniquement les colonnes actives.
-        quant_vars: Liste des noms de colonnes quantitatives.
-        qual_vars: Liste des noms de colonnes qualitatives.
-        output_dir: Répertoire où sauver les graphiques et CSV.
-        n_components: Nombre de composantes à extraire.
+    logger = logging.getLogger(__name__)
 
-    Returns:
-        - Le modèle `prince.PCAmix` entraîné,
-        - La liste des inerties expliquées par composante,
-        - DataFrame des coordonnées des individus,
-        - DataFrame des coordonnées des variables/modalités.
-    """
-    import prince
-    import matplotlib.pyplot as plt
-    from pathlib import Path
-    from typing import Tuple, List
+    # 1) Standardisation des quantitatives
+    scaler = StandardScaler()
+    X_quanti = scaler.fit_transform(df_active[quant_vars])
+    df_quanti_scaled = pd.DataFrame(
+        X_quanti,
+        index=df_active.index,
+        columns=quant_vars,
+    )
 
-    pcamix = prince.PCAmix(
+    # 2) Assemblage du DataFrame mixte
+    df_mix = pd.concat(
+        [df_quanti_scaled, df_active[qual_vars].astype("category")],
+        axis=1,
+    )
+
+    # 3) FAMD (équivalent PCAmix)
+    md_pca = prince.FAMD(
         n_components=n_components,
+        n_iter=3,
         copy=True,
         check_input=True,
+        engine="sklearn",
     )
-    mix_df = df_active[quant_vars + qual_vars]
-    pcamix = pcamix.fit(mix_df)
+    md_pca = md_pca.fit(df_mix)
 
-    inertia = pcamix.explained_inertia_
+    inertia = pd.Series(
+        get_explained_inertia(md_pca),
+        index=[f"F{i + 1}" for i in range(n_components)],
+    )
 
     axes = list(range(1, len(inertia) + 1))
     plt.figure()
@@ -549,13 +552,22 @@ def run_pcamix(
     plt.savefig(output_dir / "phase4_pcamix_scree_plot.png")
     plt.close()
 
-    row_coords = pcamix.row_coordinates(mix_df)
-    col_coords = pcamix.column_coordinates(mix_df)
+    row_coords = md_pca.row_coordinates(df_mix)
+
+    if hasattr(md_pca, "column_coordinates"):
+        col_coords = md_pca.column_coordinates(df_mix)
+    elif hasattr(md_pca, "column_principal_coordinates"):
+        col_coords = md_pca.column_principal_coordinates(df_mix)
+    elif hasattr(md_pca, "column_coordinates_"):
+        col_coords = md_pca.column_coordinates_
+    else:
+        logger.warning("Aucune méthode de coordonnées colonnes disponible")
+        col_coords = pd.DataFrame()
 
     row_coords.to_csv(output_dir / "phase4_pcamix_individus_coord.csv", index=True)
     col_coords.to_csv(output_dir / "phase4_pcamix_modalites_coord.csv", index=True)
 
-    return pcamix, inertia, row_coords, col_coords
+    return md_pca, inertia, row_coords, col_coords
 
 
 def run_tsne(
@@ -1217,19 +1229,19 @@ def main() -> None:
     # 4. PCAmix
     if "pcamix" in config.get("methods", []):
         t0 = time.time()
-        pcamix_model, pcamix_inertia, pcamix_rows, _ = run_pcamix(
+        mdpca_model, mdpca_inertia, mdpca_rows, _ = run_pcamix(
             df_active, quant_vars, qual_vars, output_dir, **config.get("pcamix", {})
         )
         rt = time.time() - t0
         results["PCAmix"] = {
-            "embeddings": pcamix_rows,
-            "inertia": pcamix_inertia,
+            "embeddings": mdpca_rows,
+            "inertia": mdpca_inertia,
             "runtime": rt,
         }
         logger.info(
             "PCAmix : %d composantes, %.1f%% variance cumulée, %.1fs",
-            pcamix_model.n_components,
-            sum(pcamix_inertia) * 100,
+            mdpca_model.n_components,
+            sum(mdpca_inertia) * 100,
             rt,
         )
 
