@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
-from typing import List, Optional, Tuple, Sequence
+from typing import List, Optional, Tuple, Sequence, Dict, Any
 import prince
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.manifold import TSNE
@@ -901,132 +901,58 @@ def run_famd(
     return famd, explained_inertia, row_coords, col_coords, col_contrib
 
 
-def plot_famd_results(
-        famd,
-        inertia,
-        row_coords: pd.DataFrame,
-        col_coords: pd.DataFrame,
-        col_contrib: pd.DataFrame,
-        quant_vars,
-        qual_vars,
-        output_dir: str
-):
-    """
-    Génère et enregistre les principaux graphiques de l'AFDM :
-    1. Scree plot des pourcentages d'inertie.
-    2. Nuage de points des individus sur F1–F2.
-    3. Projection des modalités qualitatives sur F1–F2.
-    4. Flèches des variables quantitatives (cercle de corrélation) sur F1–F2.
-    5. Histogrammes des contributions variables sur F1 et F2.
+def plot_multimethod_results(
+    results_dict: Dict[str, Dict[str, Any]],
+    df_active: pd.DataFrame,
+    comp_df: pd.DataFrame,
+    output_dir: Path,
+) -> None:
+    """Visualisations comparatives pour plusieurs méthodes factorielles."""
 
-    Parameters
-    ----------
-    famd : prince.FAMD
-        Modèle FAMD entraîné.
-    inertia : Sequence[float] | pd.Series
-        Pourcentage d'inertie expliqué par axe.
-    row_coords : pd.DataFrame
-        Coordonnées des individus.
-    col_coords : pd.DataFrame
-        Coordonnées des variables / modalités.
-    col_contrib : pd.DataFrame
-        Contributions des variables / modalités aux axes.
-    quant_vars : list of str
-        Noms des variables quantitatives.
-    qual_vars : list of str
-        Noms des variables qualitatives.
-    output_dir : str
-        Dossier où enregistrer les PNG.
-    """
-    logger = logging.getLogger(__name__)
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Récupération des résultats
-    if isinstance(inertia, pd.Series):
-        inertia = inertia.values
-
-    # 1. Scree plot
-    plt.figure(figsize=(12,6), dpi=200)
-    axes = [f"F{i + 1}" for i in range(len(inertia))]
-    plt.bar(axes, [i * 100 for i in inertia], edgecolor='black')
-    plt.plot(axes, [100 * sum(inertia[:i + 1]) for i in range(len(inertia))],
-             marker='o', linestyle='--')
-    plt.ylabel("% inertie")
-    plt.title(
-        "Éboulis des valeurs propres – AFDM")  # :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-    plt.xticks(rotation=45)
+    # ─── Scree-plots ─────────────────────────────────────────────
+    methods_inertia = {
+        m: info["inertia"] for m, info in results_dict.items() if info["inertia"]
+    }
+    n = len(methods_inertia)
+    fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
+    for ax, (m, inertia) in zip(np.atleast_1d(axes), methods_inertia.items()):
+        axes_idx = list(range(1, len(inertia) + 1))
+        ax.bar(axes_idx, [i * 100 for i in inertia], edgecolor="black")
+        ax.set_title(f"Éboulis {m}")
+        ax.set_xlabel("Composante")
+        ax.set_ylabel("% inertie")
+        ax.set_xticks(axes_idx)
     plt.tight_layout()
-    scree_path = os.path.join(output_dir, "phase4_scree_plot.png")
-    plt.savefig(scree_path, dpi=300)
+    plt.savefig(output_dir / "multi_scree.png")
     plt.close()
-    logger.info(f"Scree plot enregistré : {scree_path}")
 
-    # 2. Nuage de points des individus F1–F2
-    plt.figure(figsize=(12,6), dpi=200)
-    plt.scatter(row_coords.iloc[:, 0], row_coords.iloc[:, 1],
-                s=20, alpha=0.6)
-    plt.xlabel("F1")
-    plt.ylabel("F2")
-    plt.title(
-        "Projection des individus (F1 vs F2)")  # :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+    # ─── Scatter F1–F2 comparés ───────────────────────────────────
+    methods_emb = results_dict.keys()
+    fig, axes = plt.subplots(1, len(methods_emb), figsize=(4 * len(methods_emb), 4))
+    for ax, m in zip(np.atleast_1d(axes), methods_emb):
+        emb = results_dict[m]["embeddings"]
+        x, y = emb.iloc[:, 0], emb.iloc[:, 1]
+        codes = df_active["Statut commercial"].astype("category").cat.codes
+        ax.scatter(x, y, c=codes, s=15, alpha=0.6)
+        ax.set_title(f"{m} (1-2)")
+        ax.set_xlabel(emb.columns[0])
+        ax.set_ylabel(emb.columns[1])
     plt.tight_layout()
-    ind_path = os.path.join(output_dir, "phase4_individus_F1_F2.png")
-    plt.savefig(ind_path, dpi=300)
+    plt.savefig(output_dir / "multi_scatter.png")
     plt.close()
-    logger.info(f"Projection individus enregistrée : {ind_path}")
 
-    # 3. Projection des modalités qualitatives F1–F2
-    plt.figure(figsize=(12,6), dpi=200)
-    subset = col_coords.loc[qual_vars, :]
-    plt.scatter(subset.iloc[:, 0], subset.iloc[:, 1],
-                s=50, marker='D')
-    for var in qual_vars:
-        x, y = col_coords.loc[var, [0, 1]]
-        plt.text(x * 1.05, y * 1.05, var, fontsize=8)
-    plt.xlabel("F1")
-    plt.ylabel("F2")
-    plt.title(
-        "Modalités qualitatives (F1 vs F2)")  # :contentReference[oaicite:4]{index=4}:contentReference[oaicite:5]{index=5}
+    # ─── Heatmap d'évaluation ────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(6, 4))
+    im = ax.imshow(comp_df.values, aspect="auto", cmap="viridis")
+    ax.set_xticks(np.arange(comp_df.shape[1]))
+    ax.set_yticks(np.arange(comp_df.shape[0]))
+    ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
+    ax.set_yticklabels(comp_df.index)
+    ax.set_title("Comparaison méthodes")
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     plt.tight_layout()
-    mod_path = os.path.join(output_dir, "phase4_modalites_F1_F2.png")
-    plt.savefig(mod_path, dpi=300)
+    plt.savefig(output_dir / "multi_heatmap.png")
     plt.close()
-    logger.info(f"Projection modalités enregistrée : {mod_path}")
-
-    # 4. Cercle des corrélations (variables quantitatives)
-    plt.figure(figsize=(12,6), dpi=200)
-    origin = [0], [0]
-    for var in quant_vars:
-        x, y = col_coords.loc[var, [0, 1]]
-        plt.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-        plt.text(x * 1.1, y * 1.1, var, fontsize=8)
-    circle = plt.Circle((0, 0), 1, facecolor='none', edgecolor='grey', linestyle='--')
-    plt.gca().add_patch(circle)
-    plt.xlabel("F1")
-    plt.ylabel("F2")
-    plt.title(
-        "Cercle des corrélations – Variables quanti")  # :contentReference[oaicite:6]{index=6}:contentReference[oaicite:7]{index=7}
-    plt.axis('equal')
-    plt.tight_layout()
-    corr_path = os.path.join(output_dir, "phase4_correlations_F1_F2.png")
-    plt.savefig(corr_path, dpi=300)
-    plt.close()
-    logger.info(f"Cercle des corrélations enregistré : {corr_path}")
-
-    # 5. Contributions sur F1 et F2
-    for idx in [0, 1]:
-        plt.figure(figsize=(12,6), dpi=200)
-        contrib = col_contrib.iloc[:, idx] * 100
-        contrib.sort_values(ascending=False).plot.bar(edgecolor='black')
-        plt.ylabel("% contribution")
-        plt.title(
-            f"Contributions des variables – F{idx + 1}")  # :contentReference[oaicite:8]{index=8}:contentReference[oaicite:9]{index=9}
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        contrib_path = os.path.join(output_dir, f"phase4_contributions_F{idx + 1}.png")
-        plt.savefig(contrib_path, dpi=300)
-        plt.close()
-        logger.info(f"Contributions F{idx + 1} enregistrées : {contrib_path}")
 
 
 def export_famd_results(
@@ -1349,19 +1275,7 @@ def main() -> None:
             random_state=42
         )
 
-        # 3.5 Visualisation
-        plot_famd_results(
-            famd,
-            inertia,
-            row_coords,
-            col_coords,
-            col_contrib,
-            quant_vars,
-            qual_vars,
-            str(OUTPUT_DIR)
-        )
-
-        # 3.6 Export des résultats
+        # 3.5 Export des résultats
         export_famd_results(
             famd,
             inertia,
@@ -1403,6 +1317,7 @@ def main() -> None:
 
         comp_df = evaluate_methods(results_dict, OUTPUT_DIR, n_clusters=3)
         logger.info("Comparaison des méthodes enregistrée")
+        plot_multimethod_results(results_dict, df_active, comp_df, OUTPUT_DIR)
 
     except Exception as e:
         logger.error(f"Erreur fatale durant la phase 4 : {e}", exc_info=True)
