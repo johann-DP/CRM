@@ -555,13 +555,13 @@ def run_famd(
 
 def plot_famd_results(
         famd,
-        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
-        output_dir: str
+        output_dir: str,
+        inertia=None,
 ):
     """
     Génère et enregistre les principaux graphiques de l'AFDM :
@@ -575,8 +575,9 @@ def plot_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
-    inertia : Sequence[float] | pd.Series
-        Pourcentage d'inertie expliqué par axe.
+    inertia : Sequence[float] | pd.Series, optional
+        Pourcentage d'inertie expliqué par axe. Si ``None``, la fonction tente
+        de le récupérer via :func:`get_explained_inertia`.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -594,6 +595,8 @@ def plot_famd_results(
     os.makedirs(output_dir, exist_ok=True)
 
     # Récupération des résultats
+    if inertia is None:
+        inertia = get_explained_inertia(famd)
     if isinstance(inertia, pd.Series):
         inertia = inertia.values
 
@@ -683,13 +686,13 @@ def plot_famd_results(
 
 def export_famd_results(
         famd,
-        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
-        output_dir: str
+        output_dir: str,
+        inertia=None,
 ):
     """
     Exporte les résultats clés de l’AFDM sous forme de CSV pour réutilisation :
@@ -703,8 +706,6 @@ def export_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
-    inertia : Sequence[float] | pd.Series
-        Pourcentage d'inertie expliqué par axe.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -717,11 +718,16 @@ def export_famd_results(
         Noms des variables qualitatives.
     output_dir : str
         Répertoire où écrire les fichiers CSV.
+    inertia : Sequence[float] | pd.Series, optional
+        Pourcentage d'inertie expliqué par axe. Si ``None``, sera calculé via
+        :func:`get_explained_inertia`.
     """
     logger = logging.getLogger(__name__)
     os.makedirs(output_dir, exist_ok=True)
 
     # 1) Variance expliquée (éigenvalues et % inertie)
+    if inertia is None:
+        inertia = get_explained_inertia(famd)
     if isinstance(inertia, pd.Series):
         inertia = inertia.values
     axes = [f"F{i + 1}" for i in range(len(inertia))]
@@ -855,25 +861,25 @@ def main() -> None:
         # 3.5 Visualisation
         plot_famd_results(
             famd,
-            inertia,
             row_coords,
             col_coords,
             col_contrib,
             quant_vars,
             qual_vars,
-            str(OUTPUT_DIR)
+            str(OUTPUT_DIR),
+            inertia=inertia,
         )
 
         # 3.6 Export des résultats
         export_famd_results(
             famd,
-            inertia,
             row_coords,
             col_coords,
             col_contrib,
             quant_vars,
             qual_vars,
-            str(OUTPUT_DIR)
+            str(OUTPUT_DIR),
+            inertia=inertia,
         )
 
     except Exception as e:
