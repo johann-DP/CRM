@@ -705,54 +705,6 @@ def run_umap(
     return reducer, umap_df
 
 
-def run_tsne(
-    df_active: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    output_dir: Path,
-    n_components: int = 2,
-    perplexity: float = 30.0,
-    random_state: int = 42,
-    n_iter: int = 1000,
-) -> Tuple[TSNE, pd.DataFrame]:
-    """Exécute t-SNE sur le jeu de données mixte."""
-
-    X_num = StandardScaler().fit_transform(df_active[quant_vars])
-    X_cat = OneHotEncoder(sparse=False, handle_unknown="ignore").fit_transform(
-        df_active[qual_vars]
-    )
-    X_mix = np.hstack([X_num, X_cat])
-
-    tsne = TSNE(
-        n_components=n_components,
-        perplexity=perplexity,
-        random_state=random_state,
-        n_iter=n_iter,
-    )
-    embedding = tsne.fit_transform(X_mix)
-
-    cols = [f"TSNE{i+1}" for i in range(n_components)]
-    tsne_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
-
-    plt.figure()
-    scatter = plt.scatter(
-        tsne_df["TSNE1"], tsne_df["TSNE2"],
-        c=df_active["Statut commercial"].astype("category").cat.codes,
-        s=10, alpha=0.7,
-    )
-    plt.xlabel("TSNE1")
-    plt.ylabel("TSNE2")
-    plt.title("Projection t-SNE (colorée par Statut commercial)")
-    plt.colorbar(scatter, ticks=range(len(df_active["Statut commercial"].unique())),
-                 label="Statut commercial")
-    plt.tight_layout()
-    (output_dir / "phase4_tsne_scatter.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "phase4_tsne_scatter.png")
-    plt.close()
-
-    tsne_df.to_csv(output_dir / "phase4_tsne_embeddings.csv", index=True)
-
-    return tsne, tsne_df
 
 
 def get_explained_inertia(famd) -> List[float]:
