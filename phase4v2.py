@@ -407,6 +407,24 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
     return df
 
 
+def get_explained_inertia(famd) -> List[float]:
+    """Return the percentage of explained inertia for each FAMD component."""
+    try:
+        inertia = getattr(famd, "explained_inertia_", None)
+        if inertia is not None:
+            return list(inertia)
+    except Exception:
+        inertia = None
+    try:
+        eigenvalues = famd.eigenvalues_
+    except Exception:
+        eigenvalues = getattr(famd, "eigenvalues_", None)
+    if eigenvalues is None:
+        return []
+    total = sum(eigenvalues)
+    return [v / total for v in eigenvalues]
+
+
 def run_famd(
     df_active: pd.DataFrame,
     quant_vars: List[str],
@@ -489,18 +507,11 @@ def run_famd(
     logger.info("FAMD entraîné avec succès")
 
     # 5) Extraction des résultats
-    if hasattr(famd, "explained_inertia_"):
-        ei_values = famd.explained_inertia_
-        logger.info("Inertie expliquée lue depuis 'explained_inertia_'")
+    ei_values = get_explained_inertia(famd)
+    if ei_values:
+        logger.info("Inertie expliquée récupérée")
     else:
-        eig = getattr(famd, "eigenvalues_", None)
-        if eig is not None:
-            total = sum(eig)
-            ei_values = [v / total for v in eig]
-            logger.info("'explained_inertia_' absent – calcul à partir des 'eigenvalues_'")
-        else:
-            ei_values = []
-            logger.warning("Aucune information d'inertie disponible")
+        logger.warning("Aucune information d'inertie disponible")
     explained_inertia = pd.Series(
         ei_values,
         index=[f"F{i + 1}" for i in range(len(ei_values))]

@@ -11,21 +11,22 @@ def load_run_famd(path='phase4v2.py'):
     """Load only the run_famd function from the given file without executing the rest."""
     source = open(path, 'r', encoding='utf-8').read()
     module = ast.parse(source, filename=path)
+    namespace = {
+        'pd': pd,
+        'prince': prince,
+        'StandardScaler': StandardScaler,
+        'logging': logging,
+        'np': np,
+        'List': List,
+        'Optional': Optional,
+        'Tuple': Tuple,
+    }
     for node in module.body:
-        if isinstance(node, ast.FunctionDef) and node.name == 'run_famd':
+        if isinstance(node, ast.FunctionDef) and node.name in {'get_explained_inertia', 'run_famd'}:
             func_code = ast.get_source_segment(source, node)
-            namespace = {
-                'pd': pd,
-                'prince': prince,
-                'StandardScaler': StandardScaler,
-                'logging': logging,
-                'np': np,
-                'List': List,
-                'Optional': Optional,
-                'Tuple': Tuple,
-            }
             exec(compile(func_code, path, 'exec'), namespace)
-            return namespace['run_famd']
+    if 'run_famd' in namespace:
+        return namespace['run_famd']
     raise RuntimeError('run_famd not found')
 
 
