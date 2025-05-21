@@ -1,0 +1,10 @@
+pandas
+numpy
+matplotlib
+seaborn
+Pillow
+scikit-learn
+scipy
+diptest
+matplotlib-venn
+prince==0.16
