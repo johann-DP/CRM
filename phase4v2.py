@@ -9,11 +9,12 @@ import io
 import matplotlib.pyplot as plt
 from typing import List, Optional, Tuple, Sequence
 import prince
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.manifold import TSNE
 import logging
 import os
 import numpy as np
+import umap
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
@@ -625,6 +626,83 @@ def run_tsne(
 
     return tsne, tsne_df
 
+def run_umap(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    output_dir: Path,
+    n_neighbors: int = 15,
+    min_dist: float = 0.1,
+    n_components: int = 2,
+    random_state: int = 42
+) -> Tuple[umap.UMAP, pd.DataFrame]:
+    """
+    Exécute UMAP sur un jeu mixte de variables quantitatives et qualitatives.
+
+    Args:
+        df_active: DataFrame contenant uniquement les colonnes actives.
+        quant_vars: Liste de noms de colonnes quantitatives.
+        qual_vars: Liste de noms de colonnes qualitatives.
+        output_dir: Répertoire où sauver les graphiques et CSV.
+        n_neighbors: Paramètre UMAP « voisinage ».
+        min_dist: Distance minimale UMAP.
+        n_components: Dimension de sortie (2 ou 3).
+        random_state: Graine pour reproductibilité.
+
+    Returns:
+        - L’objet UMAP entraîné,
+        - DataFrame des embeddings, colonnes ['UMAP1', 'UMAP2' (, 'UMAP3')].
+    """
+
+    # 2.1 Prétraitement des quantitatives
+    X_num = df_active[quant_vars].copy()
+    X_num = StandardScaler().fit_transform(X_num)
+
+    # 2.2 Encodage one‐hot des qualitatives
+    X_cat = OneHotEncoder(sparse=False, handle_unknown='ignore') \
+        .fit_transform(df_active[qual_vars])
+
+    # 2.3 Fusion des données
+    X_mix = pd.DataFrame(
+        data=np.hstack([X_num, X_cat]),
+        index=df_active.index
+    )
+
+    # 2.4 Exécution de UMAP
+    reducer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        n_components=n_components,
+        random_state=random_state
+    )
+    embedding = reducer.fit_transform(X_mix)
+
+    # 2.5 Mise en DataFrame
+    cols = [f"UMAP{i+1}" for i in range(n_components)]
+    umap_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
+
+    # 2.6 Scatterplot coloré par statut commercial
+    plt.figure()
+    scatter = plt.scatter(
+        umap_df["UMAP1"], umap_df["UMAP2"],
+        c=df_active["Statut commercial"].astype('category').cat.codes,
+        s=10, alpha=0.7
+    )
+    plt.xlabel("UMAP1")
+    plt.ylabel("UMAP2")
+    plt.title("Projection UMAP (colorée par Statut commercial)")
+    plt.colorbar(scatter, ticks=range(len(df_active["Statut commercial"].unique())),
+                 label="Statut commercial")
+    plt.tight_layout()
+    (output_dir / "phase4_umap_scatter.png").parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "phase4_umap_scatter.png")
+    plt.close()
+
+    # 2.7 Export CSV
+    umap_df.to_csv(output_dir / "phase4_umap_embeddings.csv", index=True)
+
+    return reducer, umap_df
+
 
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
@@ -1050,6 +1128,17 @@ def main() -> None:
             qual_vars,
             OUTPUT_DIR,
             n_components=5
+        )
+
+        umap_model, umap_embeddings = run_umap(
+            df_active,
+            quant_vars,
+            qual_vars,
+            OUTPUT_DIR,
+            n_neighbors=15,
+            min_dist=0.1,
+            n_components=2,
+            random_state=42
         )
 
         if df_active.isna().any().any():
