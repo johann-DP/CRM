@@ -448,6 +448,54 @@ def segment_data(
         logger.info(f"Rapport segmentation '{col}' → {csv_path.name}, {png_path.name}")
 
 
+def run_mfa(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    output_dir: Path,
+    n_components: int = 5
+) -> prince.MFA:
+    """Exécute une MFA sur le jeu de données mixte.
+
+    Args:
+        df_active: DataFrame contenant uniquement les colonnes des variables actives.
+        quant_vars: Liste des noms de colonnes quantitatives.
+        qual_vars: Liste des noms de colonnes qualitatives.
+        output_dir: Répertoire où sauver les graphiques.
+        n_components: Nombre de composantes factorielles à extraire.
+
+    Returns:
+        L’objet prince.MFA entraîné.
+    """
+    import prince
+    import matplotlib.pyplot as plt
+
+    groups = [len(quant_vars), len(qual_vars)]
+    group_names = ["Quantitatives", "Qualitatives"]
+
+    mfa = prince.MFA(
+        groups=groups,
+        group_names=group_names,
+        n_components=n_components,
+        normalize=True,
+    )
+
+    mfa = mfa.fit(df_active[quant_vars + qual_vars])
+
+    axes = list(range(1, len(mfa.explained_inertia_) + 1))
+    plt.figure()
+    plt.bar(axes, [v * 100 for v in mfa.explained_inertia_], edgecolor="black")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis MFA")
+    plt.xticks(axes)
+    plt.tight_layout()
+    plt.savefig(output_dir / "phase4_mfa_scree_plot.png")
+    plt.close()
+
+    return mfa
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -857,6 +905,14 @@ def main() -> None:
         df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
         segment_data(df_active, qual_vars, OUTPUT_DIR)
+
+        mfa_model = run_mfa(
+            df_active,
+            quant_vars,
+            qual_vars,
+            OUTPUT_DIR,
+            n_components=5,
+        )
 
         if df_active.isna().any().any():
             logger.error("Des NA demeurent dans df_active après traitement")
