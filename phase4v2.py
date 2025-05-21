@@ -15,6 +15,13 @@ import logging
 import os
 import numpy as np
 import umap
+import argparse
+import json
+import time
+try:
+    import yaml
+except Exception:
+    yaml = None
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
@@ -25,6 +32,16 @@ CONFIG = {
     },
     'baseline_cfg': {'weighting':'balanced'}
 }
+
+
+def load_config_file(path: str) -> dict:
+    """Load a YAML or JSON configuration file."""
+    with open(path, "r", encoding="utf-8") as f:
+        if path.lower().endswith((".yml", ".yaml")):
+            if yaml is None:
+                raise RuntimeError("PyYAML n'est pas installé")
+            return yaml.safe_load(f)
+        return json.load(f)
 
 
 def sanity_check(
@@ -1061,170 +1078,201 @@ def export_famd_results(
     logger.info("Export des résultats AFDM terminé.")
 
 
+def evaluate_methods(results: dict, output_dir: Path, n_clusters: int = 3) -> pd.DataFrame:
+    """Evaluate embeddings using clustering and create a heatmap."""
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score, adjusted_rand_score
+    import seaborn as sns
+
+    output_dir = Path(output_dir)
+    labels = {}
+    sil_scores = {}
+    methods = list(results.keys())
+    for name in methods:
+        emb = results[name]["embeddings"]
+        km = KMeans(n_clusters=n_clusters, random_state=42)
+        lab = km.fit_predict(emb.values)
+        labels[name] = lab
+        sil_scores[name] = silhouette_score(emb.values, lab)
+
+    comp_df = pd.DataFrame({
+        "method": methods,
+        "silhouette": [sil_scores[m] for m in methods],
+        "runtime": [results[m]["runtime"] for m in methods],
+        "variance_cum": [
+            sum(results[m]["inertia"]) if results[m]["inertia"] is not None else None
+            for m in methods
+        ],
+    })
+    comp_df.to_csv(output_dir / "methods_comparison.csv", index=False)
+
+    ari = pd.DataFrame(index=methods, columns=methods, dtype=float)
+    for m1 in methods:
+        for m2 in methods:
+            if m1 == m2:
+                ari.loc[m1, m2] = 1.0
+            else:
+                ari.loc[m1, m2] = adjusted_rand_score(labels[m1], labels[m2])
+
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="viridis")
+    plt.title("ARI between methods")
+    plt.tight_layout()
+    heatmap_path = output_dir / "methods_heatmap.png"
+    plt.savefig(heatmap_path)
+    plt.close()
+
+    return comp_df
+
+
+def generate_phase4_report(output_dir: Path) -> Path:
+    """Generate a PDF report with key figures."""
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    figs = [
+        "phase4_scree_plot.png",
+        "phase4_mfa_scree_plot.png",
+        "phase4_pcamix_scree_plot.png",
+        "phase4_individus_F1_F2.png",
+        "phase4_umap_scatter.png",
+        "phase4_tsne_scatter.png",
+        "methods_heatmap.png",
+    ]
+    pdf_path = Path(output_dir) / "phase4_report.pdf"
+    with PdfPages(pdf_path) as pdf:
+        for name in figs:
+            img_path = Path(output_dir) / name
+            if not img_path.exists():
+                continue
+            img = plt.imread(img_path)
+            plt.figure(figsize=(8, 6))
+            plt.imshow(img)
+            plt.axis("off")
+            pdf.savefig()
+            plt.close()
+    return pdf_path
+
+
 ### MAIN ###
 
 def main() -> None:
-    """Pipeline principal de la phase 4."""
-    # ─── 1) Définition des chemins ────────────────────────────
-    RAW_PATH = r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx"
-    OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_PATH = OUTPUT_DIR / "phase4.log"
+    """Run the full Phase 4 pipeline from a configuration file."""
+    parser = argparse.ArgumentParser(description="Phase4")
+    parser.add_argument("--config", required=True, help="Path to config YAML/JSON")
+    args = parser.parse_args()
 
-    # ─── 2) Configuration du logger ────────────────────────────
+    cfg = load_config_file(args.config)
+    output_dir = Path(cfg["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / "phase4.log"
+
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-
-    # Console handler
+    logger.handlers.clear()
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(ch)
-
-    # File handler
-    fh = logging.FileHandler(LOG_PATH, mode='w', encoding='utf-8')
-    fh.setLevel(logging.INFO)
+    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
     fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(fh)
+    logger.info("Configuration chargée depuis %s", args.config)
 
-    logger.info(f"Dossier d'export Phase 4 prêt : {OUTPUT_DIR}")
+    df_raw = load_data(cfg["input_file"])
+    df_clean = prepare_data(df_raw, cfg.get("metrics_dir"))
+    df_active, quant_vars, qual_vars = select_variables(df_clean)
+    segment_data(df_active, qual_vars, output_dir)
 
-    # ─── 2b) Répertoire des metrics Phases 1/2/3 ───────────────
-    METRICS_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output")
-    logger.info(f"Répertoire metrics configuré : {METRICS_DIR}")
+    results = {}
 
-    # ─── 3) Pipeline d'exécution ───────────────────────────────
-    try:
-        # 3.1 Chargement des données
-        df_raw = load_data(RAW_PATH)
-
-        # 3.2 Préparation et nettoyage (avec dashboard NA optionnel)
-        df_clean = prepare_data(df_raw, metrics_dir=str(METRICS_DIR))
-
-        # 3.3 Sélection des variables actives
-        df_active, quant_vars, qual_vars = select_variables(df_clean)
-
-        # Sanity-check : retire variables non conformes
-        quant_vars, qual_vars = sanity_check(df_active, quant_vars, qual_vars)
-        df_active = df_active[quant_vars + qual_vars]
-        logger.info(f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali")
-
-        # --- Imputation / suppression des valeurs manquantes restantes ---
-        df_active = handle_missing_values(df_active, quant_vars, qual_vars)
-
-        segment_data(df_active, qual_vars, OUTPUT_DIR)
-
-        mfa_model = run_mfa(
-            df_active,
-            quant_vars,
-            qual_vars,
-            OUTPUT_DIR,
-            n_components=5,
+    if "famd" in cfg.get("methods", []):
+        t0 = time.time()
+        famd, famd_inertia, famd_rows, famd_cols, famd_contrib = run_famd(
+            df_active, quant_vars, qual_vars, **cfg.get("famd", {})
         )
-
-        pcamix_model, pcamix_inertia, pcamix_rows, pcamix_cols = run_pcamix(
-            df_active,
-            quant_vars,
-            qual_vars,
-            OUTPUT_DIR,
-            n_components=5
-        )
-
-        umap_model, umap_embeddings = run_umap(
-            df_active,
-            quant_vars,
-            qual_vars,
-            OUTPUT_DIR,
-            n_neighbors=15,
-            min_dist=0.1,
-            n_components=2,
-            random_state=42
-        )
-
-        if df_active.isna().any().any():
-            logger.error("Des NA demeurent dans df_active après traitement")
-        else:
-            logger.info("DataFrame actif sans NA prêt pour FAMD")
-
-        # --- comparaison baseline vs plan ---
-        if CONFIG.get('compare_baseline'):
-            q0 = CONFIG['baseline_vars']['quant']
-            c0 = CONFIG['baseline_vars']['qual']
-            df0 = df_clean[q0 + c0].copy()
-            df0 = handle_missing_values(df0, q0, c0)
-            famd0, inertia0, *_ = run_famd(
-                df0, q0, c0, famd_cfg=CONFIG['baseline_cfg']
-            )
-            # scree baseline
-            axes0 = [f"F{i+1}" for i in range(len(inertia0))]
-            plt.figure(figsize=(12,6), dpi=200)
-            plt.bar(axes0, [i*100 for i in inertia0], edgecolor='black')
-            plt.plot(
-                axes0,
-                [100*inertia0[:i+1].sum() for i in range(len(inertia0))],
-                marker='o',
-                linestyle='--'
-            )
-            plt.title("Baseline Scree Plot (6+5 vars)")
-            plt.ylabel("% inertie")
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            plt.savefig(OUTPUT_DIR / "baseline_scree.png", dpi=300)
-            plt.close()
-            logger.info("Baseline scree-plot généré : baseline_scree.png")
-
-        # 3.4 Exécution de l'AFDM
-        famd, inertia, row_coords, col_coords, col_contrib = run_famd(
-            df_active, quant_vars, qual_vars
-        )
-
-        tsne_model, tsne_embeddings = run_tsne(
-            row_coords,
-            df_active,
-            OUTPUT_DIR,
-            perplexity=30,
-            learning_rate=200.0,
-            n_iter=1000,
-            random_state=42
-        )
-
-        # 3.5 Visualisation
+        runtime = time.time() - t0
         plot_famd_results(
-            famd,
-            inertia,
-            row_coords,
-            col_coords,
-            col_contrib,
-            quant_vars,
-            qual_vars,
-            str(OUTPUT_DIR)
+            famd, famd_inertia, famd_rows, famd_cols, famd_contrib,
+            quant_vars, qual_vars, str(output_dir)
         )
-
-        # 3.6 Export des résultats
         export_famd_results(
-            famd,
-            inertia,
-            row_coords,
-            col_coords,
-            col_contrib,
-            quant_vars,
-            qual_vars,
-            str(OUTPUT_DIR)
+            famd, famd_inertia, famd_rows, famd_cols, famd_contrib,
+            quant_vars, qual_vars, str(output_dir)
+        )
+        results["FAMD"] = {
+            "embeddings": famd_rows,
+            "inertia": famd_inertia,
+            "runtime": runtime,
+        }
+        logger.info(
+            "FAMD: %d composantes, %.1f%% variance, %.1fs",
+            len(famd_inertia), 100 * sum(famd_inertia), runtime,
         )
 
-    except Exception as e:
-        logger.error(f"Erreur fatale durant la phase 4 : {e}", exc_info=True)
-        sys.exit(1)
+    if "mfa" in cfg.get("methods", []):
+        t0 = time.time()
+        mfa_model = run_mfa(
+            df_active, quant_vars, qual_vars, output_dir, **cfg.get("mfa", {})
+        )
+        runtime = time.time() - t0
+        results["MFA"] = {
+            "embeddings": mfa_model.row_coordinates(df_active),
+            "inertia": mfa_model.explained_inertia_,
+            "runtime": runtime,
+        }
+        logger.info(
+            "MFA: %d composantes, %.1f%% variance, %.1fs",
+            len(mfa_model.explained_inertia_),
+            100 * sum(mfa_model.explained_inertia_),
+            runtime,
+        )
 
-    # ─── 4) Génération d’un PDF synthèse des figures ───────────
-    generate_pdf(OUTPUT_DIR)
+    if "pcamix" in cfg.get("methods", []):
+        t0 = time.time()
+        pcamix_model, pcamix_inertia, pcamix_rows, _ = run_pcamix(
+            df_active, quant_vars, qual_vars, output_dir, **cfg.get("pcamix", {})
+        )
+        runtime = time.time() - t0
+        results["PCAmix"] = {
+            "embeddings": pcamix_rows,
+            "inertia": pcamix_inertia,
+            "runtime": runtime,
+        }
+        logger.info(
+            "PCAmix: %d composantes, %.1f%% variance, %.1fs",
+            len(pcamix_inertia), 100 * sum(pcamix_inertia), runtime,
+        )
 
-    # ─── 5) Listing des fichiers produits ───────────────────────
-    listing_path = OUTPUT_DIR / "phase4_output_files.txt"
-    with open(listing_path, "w", encoding="utf-8") as f:
-        for p in sorted(OUTPUT_DIR.iterdir()):
-            f.write(p.name + "\n")
-    logger.info(f"Listing des fichiers produit : {listing_path.name}")
+    if "umap" in cfg.get("methods", []):
+        t0 = time.time()
+        umap_model, umap_df = run_umap(
+            df_active, quant_vars, qual_vars, output_dir, **cfg.get("umap", {})
+        )
+        runtime = time.time() - t0
+        results["UMAP"] = {
+            "embeddings": umap_df,
+            "inertia": None,
+            "runtime": runtime,
+        }
+        logger.info("UMAP exécuté en %.1fs", runtime)
+
+    if "tsne" in cfg.get("methods", []):
+        t0 = time.time()
+        tsne_model, tsne_df = run_tsne(
+            famd_rows, df_active, output_dir, **cfg.get("tsne", {})
+        )
+        runtime = time.time() - t0
+        results["TSNE"] = {
+            "embeddings": tsne_df,
+            "inertia": None,
+            "runtime": runtime,
+        }
+        logger.info("t-SNE exécuté en %.1fs", runtime)
+
+    comp_df = evaluate_methods(results, output_dir, n_clusters=3)
+    logger.info("Évaluation croisée terminée")
+
+    pdf_path = generate_phase4_report(output_dir)
+    logger.info("PDF généré : %s", pdf_path)
 
 
 def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf"):
