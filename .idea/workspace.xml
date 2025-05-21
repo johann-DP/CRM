@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: update for metrics_dir" />
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: fix pd.io.parsers.ParserBase">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -77,7 +79,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747818960449</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="phase4v2.py: fix pd.io.parsers.ParserBase">
+      <option name="closed" value="true" />
+      <created>1747819311422</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1747819311422</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -96,6 +106,7 @@
     <MESSAGE value="update phase4v2.py" />
     <MESSAGE value="create requirements.txt &amp; install packages" />
     <MESSAGE value="phase4v2.py: update for metrics_dir" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: update for metrics_dir" />
+    <MESSAGE value="phase4v2.py: fix pd.io.parsers.ParserBase" />
+    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: fix pd.io.parsers.ParserBase" />
   </component>
 </project>

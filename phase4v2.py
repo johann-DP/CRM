@@ -12,6 +12,7 @@ import prince
 from sklearn.preprocessing import StandardScaler
 import logging
 import os
+import numpy as np
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
@@ -227,17 +228,7 @@ def prepare_data(df: pd.DataFrame, metrics_dir: Optional[str] = None) -> pd.Data
         df_clean = df_clean.drop_duplicates(subset=['Code'])
         logger.info(f"Duplication supprimée : {before - len(df_clean)} lignes retirées")
 
-    # 4) Valeurs manquantes
-    # Numériques : imputation médiane
-    for col in montants:
-        if col in df_clean.columns:
-            median = df_clean[col].median()
-            df_clean[col] = df_clean[col].fillna(median)
-    # Catégorielles : remplir par "Non renseigné"
-    for col in df_clean.select_dtypes(include=['object']):
-        df_clean[col] = df_clean[col].fillna('Non renseigné').astype('category')
-
-    # 5) Variables dérivées (si non présentes)
+    # 4) Variables dérivées (si non présentes)
     # Durée du projet (jours)
     if all(x in df_clean.columns for x in ['Date de début actualisée', 'Date de fin réelle']):
         df_clean['duree_projet_jours'] = (
@@ -247,14 +238,27 @@ def prepare_data(df: pd.DataFrame, metrics_dir: Optional[str] = None) -> pd.Data
     # Taux de réalisation (CA réalisé / Budget estimé)
     if all(x in df_clean.columns for x in ['Total recette réalisé', 'Budget client estimé']):
         df_clean['taux_realisation'] = (
-                df_clean['Total recette réalisé'] / df_clean['Budget client estimé']
+                df_clean['Total recette réalisé'] /
+                df_clean['Budget client estimé'].replace(0, np.nan)
         )
+        df_clean['taux_realisation'].replace([np.inf, -np.inf], np.nan, inplace=True)
 
     # Marge estimée (CA réalisé - Charge prévisionnelle projet)
     if 'Charge prévisionnelle projet' in df_clean.columns and 'Total recette réalisé' in df_clean.columns:
         df_clean['marge_estimee'] = (
                 df_clean['Total recette réalisé'] - df_clean['Charge prévisionnelle projet']
         )
+
+    # 5) Valeurs manquantes
+    impute_cols = montants.copy()
+    if 'taux_realisation' in df_clean.columns:
+        impute_cols.append('taux_realisation')
+    for col in impute_cols:
+        if col in df_clean.columns:
+            median = df_clean[col].median()
+            df_clean[col] = df_clean[col].fillna(median)
+    for col in df_clean.select_dtypes(include=['object']):
+        df_clean[col] = df_clean[col].fillna('Non renseigné').astype('category')
 
     # 6) Filtrage des outliers (flag multivarié Phase 3)
     if 'flag_multivariate' in df_clean.columns:
