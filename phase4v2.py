@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Sequence
 import prince
 from sklearn.preprocessing import StandardScaler
 import logging
@@ -555,6 +555,7 @@ def run_famd(
 
 def plot_famd_results(
         famd,
+        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
@@ -574,6 +575,8 @@ def plot_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
+    inertia : Sequence[float] | pd.Series
+        Pourcentage d'inertie expliqué par axe.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -591,7 +594,8 @@ def plot_famd_results(
     os.makedirs(output_dir, exist_ok=True)
 
     # Récupération des résultats
-    inertia = famd.explained_inertia_  # liste de floats
+    if isinstance(inertia, pd.Series):
+        inertia = inertia.values
 
     # 1. Scree plot
     plt.figure()
@@ -679,6 +683,7 @@ def plot_famd_results(
 
 def export_famd_results(
         famd,
+        inertia,
         row_coords: pd.DataFrame,
         col_coords: pd.DataFrame,
         col_contrib: pd.DataFrame,
@@ -698,6 +703,8 @@ def export_famd_results(
     ----------
     famd : prince.FAMD
         Modèle FAMD entraîné.
+    inertia : Sequence[float] | pd.Series
+        Pourcentage d'inertie expliqué par axe.
     row_coords : pd.DataFrame
         Coordonnées des individus.
     col_coords : pd.DataFrame
@@ -715,7 +722,8 @@ def export_famd_results(
     os.makedirs(output_dir, exist_ok=True)
 
     # 1) Variance expliquée (éigenvalues et % inertie)
-    inertia = famd.explained_inertia_
+    if isinstance(inertia, pd.Series):
+        inertia = inertia.values
     axes = [f"F{i + 1}" for i in range(len(inertia))]
     var_df = pd.DataFrame({
         'axe': axes,
@@ -847,6 +855,7 @@ def main() -> None:
         # 3.5 Visualisation
         plot_famd_results(
             famd,
+            inertia,
             row_coords,
             col_coords,
             col_contrib,
@@ -858,6 +867,7 @@ def main() -> None:
         # 3.6 Export des résultats
         export_famd_results(
             famd,
+            inertia,
             row_coords,
             col_coords,
             col_contrib,
