@@ -35,7 +35,9 @@ def sanity_check(
 ) -> Tuple[List[str], List[str]]:
     """
     Vérifie variance, NA, corrélations, cardinalité.
-    Retire et logue en WARNING les variables non-conformes.
+    Retire et logue en WARNING les variables non-conformes. Si deux
+    quantitatives dépassent le seuil de corrélation, seule la seconde
+    variable du couple est éliminée.
     """
     logger = logging.getLogger(__name__)
     # 1) Quantitatives
@@ -48,13 +50,18 @@ def sanity_check(
             drop_q.add(v); logger.warning(f"Drop {v} – NA {na_pc[v]:.0%} > {na_threshold:.0%}")
         elif sub[v].var() == 0:
             drop_q.add(v); logger.warning(f"Drop {v} – variance nulle")
-    # Corrélations trop élevées
+    # Corrélations trop élevées : parcours du triangle supérieur uniquement
+    # et suppression de la seconde variable de chaque paire corrélée
     corr = sub.corr().abs()
-    for i in quant_vars:
-        for j in quant_vars:
-            if i!=j and corr.loc[i,j] > corr_threshold:
+    for idx_i in range(len(quant_vars)):
+        for idx_j in range(idx_i + 1, len(quant_vars)):
+            i = quant_vars[idx_i]
+            j = quant_vars[idx_j]
+            if corr.loc[i, j] > corr_threshold and j not in drop_q:
                 drop_q.add(j)
-                logger.warning(f"Drop {j} – corr({i},{j})={corr.loc[i,j]:.2f} > {corr_threshold}")
+                logger.warning(
+                    f"Drop {j} – corr({i},{j})={corr.loc[i, j]:.2f} > {corr_threshold}"
+                )
     # 2) Qualitatives
     drop_c = set()
     for v in qual_vars:
@@ -241,7 +248,7 @@ def prepare_data(df: pd.DataFrame, metrics_dir: Optional[str] = None) -> pd.Data
                 df_clean['Total recette réalisé'] /
                 df_clean['Budget client estimé'].replace(0, np.nan)
         )
-        df_clean['taux_realisation'].replace([np.inf, -np.inf], np.nan, inplace=True)
+        df_clean['taux_realisation'] = df_clean['taux_realisation'].replace([np.inf, -np.inf], np.nan)
 
     # Marge estimée (CA réalisé - Charge prévisionnelle projet)
     if 'Charge prévisionnelle projet' in df_clean.columns and 'Total recette réalisé' in df_clean.columns:
@@ -710,6 +717,28 @@ try:
     quant_vars, qual_vars = sanity_check(df_active, quant_vars, qual_vars)
     df_active = df_active[quant_vars + qual_vars]
     logger.info(f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali")
+
+    # --- Imputation / suppression des valeurs manquantes restantes ---
+    na_count = int(df_active.isna().sum().sum())
+    if na_count > 0:
+        logger.info(f"Imputation des {na_count} valeurs manquantes restantes")
+        if quant_vars:
+            df_active[quant_vars] = df_active[quant_vars].fillna(df_active[quant_vars].median())
+        for col in qual_vars:
+            if df_active[col].dtype.name == "category" and 'Non renseigné' not in df_active[col].cat.categories:
+                df_active[col] = df_active[col].cat.add_categories('Non renseigné')
+            df_active[col] = df_active[col].fillna('Non renseigné').astype('category')
+        remaining_na = int(df_active.isna().sum().sum())
+        if remaining_na > 0:
+            logger.warning(f"{remaining_na} NA subsistent après imputation → suppression des lignes concernées")
+            df_active.dropna(inplace=True)
+    else:
+        logger.info("Aucune valeur manquante détectée après sanity_check")
+
+    if df_active.isna().any().any():
+        logger.error("Des NA demeurent dans df_active après traitement")
+    else:
+        logger.info("DataFrame actif sans NA prêt pour FAMD")
 
     # --- comparaison baseline vs plan ---
     if CONFIG.get('compare_baseline'):
