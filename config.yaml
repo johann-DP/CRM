@@ -1,0 +1,12 @@
+# Example configuration for phase4v2.py
+input_file: donnees_crm.xlsx    # path to source Excel file
+output_dir: phase4_output       # directory where results will be stored
+metrics_dir: metrics            # optional directory for phases 1‑3 outputs
+methods: [famd, mfa, pcamix, umap, tsne]
+
+# Method specific options (can be left empty)
+famd: {}
+mfa: {}
+pcamix: {}
+umap: {}
+tsne: {}
