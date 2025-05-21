@@ -491,6 +491,8 @@ def run_famd(
     # 5) Extraction des résultats
     if hasattr(famd, "explained_inertia_"):
         ei_values = famd.explained_inertia_
+        # ensure we consistently handle these values as a list
+        ei_values = list(ei_values)
         logger.info("Inertie expliquée lue depuis 'explained_inertia_'")
     else:
         eig = getattr(famd, "eigenvalues_", None)
