@@ -156,7 +156,7 @@ def load_data(file_path: str) -> pd.DataFrame:
     return df
 
 
-def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_data(df: pd.DataFrame, metrics_dir: Optional[str] = None) -> pd.DataFrame:
     """
     Prépare et nettoie le DataFrame CRM pour la Phase 4.
 
@@ -171,7 +171,11 @@ def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame brut issu de load_data().
+        DataFrame brut issu de ``load_data()``.
+        metrics_dir : Optional[str], optional
+        Répertoire contenant les métriques des phases précédentes. Si fourni,
+        un tableau récapitulatif des taux de valeurs manquantes est généré et
+        sauvegardé dans ce dossier.
 
     Returns
     -------
