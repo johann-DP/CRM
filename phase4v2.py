@@ -746,115 +746,132 @@ def export_famd_results(
 
 
 ### MAIN ###
-# ─── 1) Définition des chemins ────────────────────────────
-RAW_PATH = r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx"
-OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-LOG_PATH = OUTPUT_DIR / "phase4.log"
 
-# ─── 2) Configuration du logger ────────────────────────────
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+def main() -> None:
+    """Pipeline principal de la phase 4."""
+    # ─── 1) Définition des chemins ────────────────────────────
+    RAW_PATH = r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx"
+    OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_PATH = OUTPUT_DIR / "phase4.log"
 
-# Console handler
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.INFO)
-ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(ch)
+    # ─── 2) Configuration du logger ────────────────────────────
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
-# File handler
-fh = logging.FileHandler(LOG_PATH, mode='w', encoding='utf-8')
-fh.setLevel(logging.INFO)
-fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(fh)
+    # Console handler
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(ch)
 
-logger.info(f"Dossier d'export Phase 4 prêt : {OUTPUT_DIR}")
+    # File handler
+    fh = logging.FileHandler(LOG_PATH, mode='w', encoding='utf-8')
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(fh)
 
-# ─── 2b) Répertoire des metrics Phases 1/2/3 ───────────────
-METRICS_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output")
-logger.info(f"Répertoire metrics configuré : {METRICS_DIR}")
+    logger.info(f"Dossier d'export Phase 4 prêt : {OUTPUT_DIR}")
 
-# ─── 3) Pipeline d'exécution ───────────────────────────────
-try:
-    # 3.1 Chargement des données
-    df_raw = load_data(RAW_PATH)
+    # ─── 2b) Répertoire des metrics Phases 1/2/3 ───────────────
+    METRICS_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output")
+    logger.info(f"Répertoire metrics configuré : {METRICS_DIR}")
 
-    # 3.2 Préparation et nettoyage (avec dashboard NA optionnel)
-    df_clean = prepare_data(df_raw, metrics_dir=str(METRICS_DIR))
+    # ─── 3) Pipeline d'exécution ───────────────────────────────
+    try:
+        # 3.1 Chargement des données
+        df_raw = load_data(RAW_PATH)
 
-    # 3.3 Sélection des variables actives
-    df_active, quant_vars, qual_vars = select_variables(df_clean)
+        # 3.2 Préparation et nettoyage (avec dashboard NA optionnel)
+        df_clean = prepare_data(df_raw, metrics_dir=str(METRICS_DIR))
 
-    # Sanity-check : retire variables non conformes
-    quant_vars, qual_vars = sanity_check(df_active, quant_vars, qual_vars)
-    df_active = df_active[quant_vars + qual_vars]
-    logger.info(f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali")
+        # 3.3 Sélection des variables actives
+        df_active, quant_vars, qual_vars = select_variables(df_clean)
 
-    # --- Imputation / suppression des valeurs manquantes restantes ---
-    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+        # Sanity-check : retire variables non conformes
+        quant_vars, qual_vars = sanity_check(df_active, quant_vars, qual_vars)
+        df_active = df_active[quant_vars + qual_vars]
+        logger.info(f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali")
 
-    if df_active.isna().any().any():
-        logger.error("Des NA demeurent dans df_active après traitement")
-    else:
-        logger.info("DataFrame actif sans NA prêt pour FAMD")
+        # --- Imputation / suppression des valeurs manquantes restantes ---
+        df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
-    # --- comparaison baseline vs plan ---
-    if CONFIG.get('compare_baseline'):
-        q0 = CONFIG['baseline_vars']['quant']
-        c0 = CONFIG['baseline_vars']['qual']
-        df0 = df_clean[q0 + c0].copy()
-        df0 = handle_missing_values(df0, q0, c0)
-        famd0, inertia0, *_ = run_famd(
-            df0, q0, c0, famd_cfg=CONFIG['baseline_cfg']
+        if df_active.isna().any().any():
+            logger.error("Des NA demeurent dans df_active après traitement")
+        else:
+            logger.info("DataFrame actif sans NA prêt pour FAMD")
+
+        # --- comparaison baseline vs plan ---
+        if CONFIG.get('compare_baseline'):
+            q0 = CONFIG['baseline_vars']['quant']
+            c0 = CONFIG['baseline_vars']['qual']
+            df0 = df_clean[q0 + c0].copy()
+            df0 = handle_missing_values(df0, q0, c0)
+            famd0, inertia0, *_ = run_famd(
+                df0, q0, c0, famd_cfg=CONFIG['baseline_cfg']
+            )
+            # scree baseline
+            axes0 = [f"F{i+1}" for i in range(len(inertia0))]
+            plt.figure()
+            plt.bar(axes0, [i*100 for i in inertia0], edgecolor='black')
+            plt.plot(
+                axes0,
+                [100*inertia0[:i+1].sum() for i in range(len(inertia0))],
+                marker='o',
+                linestyle='--'
+            )
+            plt.title("Baseline Scree Plot (6+5 vars)")
+            plt.ylabel("% inertie")
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            plt.savefig(OUTPUT_DIR / "baseline_scree.png", dpi=300)
+            plt.close()
+            logger.info("Baseline scree-plot généré : baseline_scree.png")
+
+        # 3.4 Exécution de l'AFDM
+        famd, inertia, row_coords, col_coords, col_contrib = run_famd(
+            df_active, quant_vars, qual_vars
         )
-        # scree baseline
-        axes0 = [f"F{i+1}" for i in range(len(inertia0))]
-        plt.figure()
-        plt.bar(axes0, [i*100 for i in inertia0], edgecolor='black')
-        plt.plot(axes0, [100*inertia0[:i+1].sum() for i in range(len(inertia0))],
-                 marker='o', linestyle='--')
-        plt.title("Baseline Scree Plot (6+5 vars)")
-        plt.ylabel("% inertie")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig(OUTPUT_DIR / "baseline_scree.png", dpi=300)
-        plt.close()
-        logger.info("Baseline scree-plot généré : baseline_scree.png")
 
-    # 3.4 Exécution de l'AFDM
-    famd, inertia, row_coords, col_coords, col_contrib = run_famd(
-        df_active, quant_vars, qual_vars
-    )
+        # 3.5 Visualisation
+        plot_famd_results(
+            famd,
+            row_coords,
+            col_coords,
+            col_contrib,
+            quant_vars,
+            qual_vars,
+            str(OUTPUT_DIR)
+        )
 
-    # 3.5 Visualisation
-    plot_famd_results(
-        famd,
-        row_coords,
-        col_coords,
-        col_contrib,
-        quant_vars,
-        qual_vars,
-        str(OUTPUT_DIR)
-    )
+        # 3.6 Export des résultats
+        export_famd_results(
+            famd,
+            row_coords,
+            col_coords,
+            col_contrib,
+            quant_vars,
+            qual_vars,
+            str(OUTPUT_DIR)
+        )
 
-    # 3.6 Export des résultats
-    export_famd_results(
-        famd,
-        row_coords,
-        col_coords,
-        col_contrib,
-        quant_vars,
-        qual_vars,
-        str(OUTPUT_DIR)
-    )
+    except Exception as e:
+        logger.error(f"Erreur fatale durant la phase 4 : {e}", exc_info=True)
+        sys.exit(1)
 
-except Exception as e:
-    logger.error(f"Erreur fatale durant la phase 4 : {e}", exc_info=True)
-    sys.exit(1)
+    # ─── 4) Génération d’un PDF synthèse des figures ───────────
+    generate_pdf(OUTPUT_DIR)
+
+    # ─── 5) Listing des fichiers produits ───────────────────────
+    listing_path = OUTPUT_DIR / "phase4_output_files.txt"
+    with open(listing_path, "w", encoding="utf-8") as f:
+        for p in sorted(OUTPUT_DIR.iterdir()):
+            f.write(p.name + "\n")
+    logger.info(f"Listing des fichiers produit : {listing_path.name}")
 
 
-# ─── 4) Génération d’un PDF synthèse des figures ───────────
 def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf"):
+    logger = logging.getLogger(__name__)
     """
     Concatène tous les PNG du répertoire en un seul PDF, précédé d'une page d'index.
     """
@@ -897,11 +914,5 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf"):
     logger.info(f"PDF des figures Phase 4 généré : {pdf_path.name}")
 
 
-generate_pdf(OUTPUT_DIR)
-
-# ─── 5) Listing des fichiers produits ───────────────────────
-listing_path = OUTPUT_DIR / "phase4_output_files.txt"
-with open(listing_path, "w", encoding="utf-8") as f:
-    for p in sorted(OUTPUT_DIR.iterdir()):
-        f.write(p.name + "\n")
-logger.info(f"Listing des fichiers produit : {listing_path.name}")
+if __name__ == "__main__":
+    main()
