@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: fix pd.io.parsers.ParserBase">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: fix ValueError: Input X contains infinity or a value too large for dtype('float64').">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -87,7 +87,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747819311422</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="phase4v2.py: fix ValueError: Input X contains infinity or a value too large for dtype('float64').">
+      <option name="closed" value="true" />
+      <created>1747820063617</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1747820063617</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -107,6 +115,7 @@
     <MESSAGE value="create requirements.txt &amp; install packages" />
     <MESSAGE value="phase4v2.py: update for metrics_dir" />
     <MESSAGE value="phase4v2.py: fix pd.io.parsers.ParserBase" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: fix pd.io.parsers.ParserBase" />
+    <MESSAGE value="phase4v2.py: fix ValueError: Input X contains infinity or a value too large for dtype('float64')." />
+    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: fix ValueError: Input X contains infinity or a value too large for dtype('float64')." />
   </component>
 </project>

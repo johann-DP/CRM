@@ -8,3 +8,4 @@ scipy
 diptest
 matplotlib-venn
 prince==0.16
+openpyxl
