@@ -144,12 +144,22 @@ def load_data(file_path: str) -> pd.DataFrame:
     logger.debug(f"Noms de colonnes avant nettoyage : {list(df.columns)}")
 
     # Uniformisation des noms de colonnes (strip des espaces, normalisation Unicode)
-    df.columns = (
-        df.columns
-        .astype(str)
-        .map(lambda col: col.strip())
-        .map(lambda col: pd.io.parsers.ParserBase({'names': []})._maybe_dedup_names([col])[0])  # évite doublons
-    )
+    def _dedup_columns(cols):
+        seen = {}
+        new_cols = []
+        for col in cols:
+            base = col
+            i = seen.get(base, 0)
+            name = base if i == 0 else f"{base}.{i}"
+            while name in new_cols:
+                i += 1
+                name = f"{base}.{i}"
+            seen[base] = i
+            new_cols.append(name)
+        return new_cols
+
+    df.columns = _dedup_columns(df.columns.astype(str).map(str.strip))
+
     logger.debug(f"Noms de colonnes après nettoyage : {list(df.columns)}")
 
     # Aucune transformation métier ici : on renvoie le DataFrame brut prêt pour la préparation
