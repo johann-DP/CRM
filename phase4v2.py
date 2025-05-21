@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from typing import List, Optional, Tuple, Sequence
 import prince
 from sklearn.preprocessing import StandardScaler
+from sklearn.manifold import TSNE
 import logging
 import os
 import numpy as np
@@ -555,6 +556,76 @@ def run_pcamix(
     return pcamix, inertia, row_coords, col_coords
 
 
+def run_tsne(
+    embeddings: pd.DataFrame,
+    df_active: pd.DataFrame,
+    output_dir: Path,
+    perplexity: int = 30,
+    learning_rate: float = 200.0,
+    n_iter: int = 1_000,
+    random_state: int = 42
+) -> Tuple[TSNE, pd.DataFrame]:
+    """
+    Applique t-SNE sur des coordonnées factorielles existantes.
+
+    Args:
+        embeddings: DataFrame des coordonnées (index = ID affaire, colonnes = axes factoriels).
+        df_active: DataFrame complet, utilisé pour le coloriage (colonne "Statut commercial").
+        output_dir: Répertoire où sauvegarder le scatterplot et le CSV.
+        perplexity: Paramètre de t-SNE (voisinage).
+        learning_rate: Taux d’apprentissage pour t-SNE.
+        n_iter: Nombre d’itérations.
+        random_state: Graine pour la reproductibilité.
+
+    Returns:
+        - L’instance TSNE ajustée.
+        - DataFrame des embeddings t-SNE (colonnes "TSNE1","TSNE2", index = ID affaire).
+    """
+    # 2.1 Instanciation
+    tsne = TSNE(
+        n_components=2,
+        perplexity=perplexity,
+        learning_rate=learning_rate,
+        n_iter=n_iter,
+        random_state=random_state,
+        init='pca'
+    )
+
+    # 2.2 Fit & transform
+    tsne_results = tsne.fit_transform(embeddings.values)
+
+    # 2.3 DataFrame t-SNE
+    tsne_df = pd.DataFrame(
+        tsne_results,
+        columns=["TSNE1", "TSNE2"],
+        index=embeddings.index
+    )
+
+    # 2.4 Scatter plot coloré par Statut commercial
+    plt.figure()
+    codes = df_active["Statut commercial"].astype("category").cat.codes
+    scatter = plt.scatter(
+        tsne_df["TSNE1"], tsne_df["TSNE2"],
+        c=codes, s=15, alpha=0.7
+    )
+    plt.xlabel("TSNE1")
+    plt.ylabel("TSNE2")
+    plt.title("t-SNE sur axes factoriels")
+    cbar = plt.colorbar(scatter,
+                        ticks=range(len(df_active["Statut commercial"].unique())))
+    cbar.set_label("Statut commercial")
+
+    # 2.5 Sauvegardes
+    (output_dir / "phase4_tsne_scatter.png").parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(output_dir / "phase4_tsne_scatter.png")
+    plt.close()
+
+    tsne_df.to_csv(output_dir / "phase4_tsne_embeddings.csv", index=True)
+
+    return tsne, tsne_df
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -1016,6 +1087,16 @@ def main() -> None:
         # 3.4 Exécution de l'AFDM
         famd, inertia, row_coords, col_coords, col_contrib = run_famd(
             df_active, quant_vars, qual_vars
+        )
+
+        tsne_model, tsne_embeddings = run_tsne(
+            row_coords,
+            df_active,
+            OUTPUT_DIR,
+            perplexity=30,
+            learning_rate=200.0,
+            n_iter=1000,
+            random_state=42
         )
 
         # 3.5 Visualisation
