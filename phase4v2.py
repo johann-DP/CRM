@@ -1112,6 +1112,8 @@ def evaluate_methods(
     rows = []
     for method, info in results_dict.items():
         inertias = info.get("inertia", [])
+        if inertias is None:
+            inertias = []
         if isinstance(inertias, pd.Series):
             inertias = inertias.tolist()
         kaiser = sum(1 for eig in inertias if eig > 1)
