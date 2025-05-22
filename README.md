@@ -12,4 +12,6 @@ python phase4v2.py --config config.yaml
 ```
 
 Make sure the dependencies listed in `requirements.txt` are installed. The
-package `umap-learn` is required for the UMAP functionality.
+packages `umap-learn` and `PyYAML` are required for the UMAP functionality and
+for reading the YAML configuration. If `PyYAML` is not available, you may
+provide the configuration as a JSON file instead.
