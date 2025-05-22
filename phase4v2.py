@@ -479,7 +479,7 @@ def run_mfa(
     qual_vars: List[str],
     output_dir: Path,
     n_components: int = 5
-) -> prince.MFA:
+) -> Tuple[prince.MFA, pd.DataFrame]:
     """Exécute une MFA sur le jeu de données mixte.
 
     Args:
@@ -490,7 +490,8 @@ def run_mfa(
         n_components: Nombre de composantes factorielles à extraire.
 
     Returns:
-        L’objet prince.MFA entraîné.
+        - L’objet prince.MFA entraîné.
+        - DataFrame des coordonnées des individus dans l'espace MFA.
     """
     import prince
     import matplotlib.pyplot as plt
@@ -510,6 +511,7 @@ def run_mfa(
 
     mfa = prince.MFA(n_components=n_components)
     mfa = mfa.fit(df_mfa, groups=groups)
+    row_coords = mfa.row_coordinates(df_mfa)
 
     # Ensure compatibility with earlier code expecting explained_inertia_
     mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
@@ -525,7 +527,7 @@ def run_mfa(
     plt.savefig(output_dir / "phase4_mfa_scree_plot.png")
     plt.close()
 
-    return mfa
+    return mfa, row_coords
 
 
 def run_pcamix(
@@ -1204,12 +1206,12 @@ def main() -> None:
     # 3. MFA
     if "mfa" in config.get("methods", []):
         t0 = time.time()
-        mfa_model = run_mfa(
+        mfa_model, mfa_rows = run_mfa(
             df_active, quant_vars, qual_vars, output_dir, **config.get("mfa", {})
         )
         rt = time.time() - t0
         results["MFA"] = {
-            "embeddings": mfa_model.row_coordinates(df_active),
+            "embeddings": mfa_rows,
             "inertia": list(mfa_model.explained_inertia_),
             "runtime": rt,
         }
