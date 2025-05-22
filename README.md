@@ -12,6 +12,17 @@ python phase4v2.py --config config.yaml
 ```
 
 Make sure the dependencies listed in `requirements.txt` are installed. The
-packages `umap-learn` and `PyYAML` are required for the UMAP functionality and
-for reading the YAML configuration. If `PyYAML` is not available, you may
-provide the configuration as a JSON file instead.
+package `umap-learn` is required for the UMAP functionality.
+
+## Running `phase4_famd.py`
+
+For a streamlined FAMD-only pipeline without a configuration file, you can use
+`phase4_famd.py`. Provide the input Excel file and an output directory:
+
+```bash
+python phase4_famd.py --input "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx" \
+                       --output "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output"
+```
+
+This mirrors the paths used when the original script was created and will
+generate figures and CSV results inside the specified output folder.

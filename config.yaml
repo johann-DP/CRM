@@ -1,7 +1,9 @@
 # Example configuration for phase4v2.py
-input_file: donnees_crm.xlsx    # path to source Excel file
-output_dir: phase4_output       # directory where results will be stored
-metrics_dir: metrics            # optional directory for phases 1‑3 outputs
+# Adjust the paths as needed. Below reflects the original dataset location used
+# when `phase4_famd.py` was created.
+input_file: "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx"
+output_dir: "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output"
+metrics_dir: metrics            # optional directory for phases 1-3 outputs
 methods: [famd, mfa, pcamix, umap, tsne]
 
 # Method specific options (can be left empty)

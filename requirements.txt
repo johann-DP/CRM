@@ -11,4 +11,3 @@ prince==0.16
 openpyxl
 umap-learn
 PyYAML
-
