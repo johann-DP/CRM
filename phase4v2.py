@@ -1929,18 +1929,18 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
                 continue
 
             # Page de titre de la section
-            fig, ax = plt.subplots(figsize=(8.27, 11.69))
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
             ax.text(0.5, 0.5, method, fontsize=24, ha="center", va="center")
             ax.axis("off")
-            pdf.savefig(fig)
+            pdf.savefig(fig, dpi=300)
             plt.close(fig)
 
             for img_path in sorted(m_dir.glob("*.png")):
                 img = plt.imread(img_path)
-                fig, ax = plt.subplots()
+                fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
                 ax.imshow(img)
                 ax.axis("off")
-                pdf.savefig(fig)
+                pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
         # Figures comparatives globales
@@ -1952,7 +1952,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
         ]
         existing = [output_dir / f for f in global_imgs if (output_dir / f).exists()]
         if existing:
-            fig, ax = plt.subplots(figsize=(8.27, 11.69))
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
             ax.text(
                 0.5,
                 0.5,
@@ -1962,15 +1962,15 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
                 va="center",
             )
             ax.axis("off")
-            pdf.savefig(fig)
+            pdf.savefig(fig, dpi=300)
             plt.close(fig)
 
             for img_path in existing:
                 img = plt.imread(img_path)
-                fig, ax = plt.subplots()
+                fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
                 ax.imshow(img)
                 ax.axis("off")
-                pdf.savefig(fig)
+                pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
     logger.info(f"PDF des figures Phase 4 généré : {pdf_path.name}")
