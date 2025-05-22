@@ -1096,13 +1096,13 @@ def export_famd_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Harmonise les noms des axes
-    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    axes_names = [f"F{i + 1}" for i in range(row_coords.shape[1])]
     row_coords = row_coords.copy()
-    row_coords.columns = axes
+    row_coords.columns = axes_names
     col_coords = col_coords.copy()
-    col_coords.columns = axes
+    col_coords.columns = axes_names
     col_contrib = col_contrib.copy()
-    col_contrib.columns = axes
+    col_contrib.columns = axes_names
 
     # ─── Éboulis ──────────────────────────────────────────────────────
     ax_idx = list(range(1, len(inertia) + 1))
@@ -1218,16 +1218,16 @@ def export_famd_results(
 
     # ─── Contributions ───────────────────────────────────────────────
     contrib = col_contrib * 100
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
     for i, axis in enumerate(["F1", "F2"]):
         if axis in contrib.columns:
             top = contrib[axis].sort_values(ascending=False).head(10)
-            axes[i].bar(top.index.astype(str), top.values)
-            axes[i].set_title(f"Contributions FAMD – Axe {axis[-1]}")
-            axes[i].set_ylabel("% contribution")
-            axes[i].tick_params(axis="x", rotation=45)
+            axes_plot[i].bar(top.index.astype(str), top.values)
+            axes_plot[i].set_title(f"Contributions FAMD – Axe {axis[-1]}")
+            axes_plot[i].set_ylabel("% contribution")
+            axes_plot[i].tick_params(axis="x", rotation=45)
         else:
-            axes[i].axis("off")
+            axes_plot[i].axis("off")
     plt.tight_layout()
     plt.savefig(output_dir / "famd_contributions.png")
     plt.close()
@@ -1235,7 +1235,7 @@ def export_famd_results(
 
     # ─── Exports CSV ─────────────────────────────────────────────────
     var_df = pd.DataFrame({
-        "axe": axes,
+        "axe": axes_names,
         "variance_%": [v * 100 for v in inertia],
     })
     var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
@@ -1271,20 +1271,20 @@ def export_mfa_results(
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    axes_names = [f"F{i + 1}" for i in range(row_coords.shape[1])]
     row_coords = row_coords.copy()
-    row_coords.columns = axes
+    row_coords.columns = axes_names
 
     col_coords = getattr(mfa_model, "column_coordinates_", pd.DataFrame()).copy()
     if not col_coords.empty:
-        col_coords.columns = axes[:col_coords.shape[1]]
+        col_coords.columns = axes_names[:col_coords.shape[1]]
 
     col_contrib = getattr(mfa_model, "column_contributions_", pd.DataFrame()).copy()
     if col_contrib.empty and not col_coords.empty:
         tmp = col_coords ** 2
         col_contrib = tmp.div(tmp.sum(axis=0), axis=1)
     if not col_contrib.empty:
-        col_contrib.columns = axes[:col_contrib.shape[1]]
+        col_contrib.columns = axes_names[:col_contrib.shape[1]]
 
     # ─── Projection individus 2D ──────────────────────────────────────
     if {"F1", "F2"}.issubset(row_coords.columns):
@@ -1385,16 +1385,16 @@ def export_mfa_results(
     # ─── Contributions ───────────────────────────────────────────────
     contrib = col_contrib * 100
     if not contrib.empty:
-        fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+        fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
         for i, axis in enumerate(["F1", "F2"]):
             if axis in contrib.columns:
                 top = contrib[axis].sort_values(ascending=False).head(10)
-                axes[i].bar(top.index.astype(str), top.values)
-                axes[i].set_title(f"Contributions MFA – Axe {axis[-1]}")
-                axes[i].set_ylabel("% contribution")
-                axes[i].tick_params(axis="x", rotation=45)
+                axes_plot[i].bar(top.index.astype(str), top.values)
+                axes_plot[i].set_title(f"Contributions MFA – Axe {axis[-1]}")
+                axes_plot[i].set_ylabel("% contribution")
+                axes_plot[i].tick_params(axis="x", rotation=45)
             else:
-                axes[i].axis("off")
+                axes_plot[i].axis("off")
         plt.tight_layout()
         plt.savefig(output_dir / "mfa_contributions.png")
         plt.close()
@@ -1402,7 +1402,7 @@ def export_mfa_results(
 
     # ─── Exports CSV ─────────────────────────────────────────────────
     var_df = pd.DataFrame({
-        "axe": axes,
+        "axe": axes_names,
         "variance_%": [v * 100 for v in mfa_model.explained_inertia_],
     })
     var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
