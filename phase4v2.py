@@ -1875,6 +1875,9 @@ def main() -> None:
     pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
 
+    # 9. Index CSV des fichiers produits
+    create_index_file(output_dir)
+
 
 def generate_report_pdf(output_dir: Path) -> Path:
     """Assemble un PDF de synthèse à partir des figures générées.
@@ -1968,6 +1971,97 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
 
     logger.info(f"PDF des figures Phase 4 généré : {pdf_path.name}")
     return pdf_path
+
+
+def create_index_file(output_dir: Path) -> Path:
+    """Génère un index CSV de tous les fichiers produits en phase 4."""
+    logger = logging.getLogger(__name__)
+
+    rows: List[Dict[str, str]] = []
+
+    def guess_description(file_name: str, method: str) -> str:
+        name = file_name.lower()
+        if name.startswith("segment_"):
+            base = Path(file_name).stem[len("segment_"):]
+            if file_name.endswith(".csv"):
+                return f"Répartition par {base} (données)"
+            return f"Répartition par {base}"
+
+        mapping = {
+            "scree_plot.png": f"Éboulis {method}",
+            "indiv_plot.png": f"Projection {method} 2D (Statut commercial)",
+            "indiv_plot_3d.png": f"Projection {method} 3D (Statut commercial)",
+            "correlation_circle.png": f"Cercle des corrélations {method}",
+            "modalities_plot.png": f"Projection modalités {method}",
+            "contributions.png": f"Top contributions {method}",
+            "explained_variance.csv": f"Variance expliquée {method}",
+            "indiv_coords.csv": f"Coordonnées individus {method}",
+            "variables_coords.csv": f"Coordonnées variables {method}",
+            "modalities_coords.csv": f"Coordonnées modalités {method}",
+            "contributions.csv": f"Contributions {method}",
+            "embeddings.csv": f"Embeddings {method}",
+            "scatter.png": f"Projection {method} 2D (Statut commercial)",
+            "scatter_3d.png": f"Projection {method} 3D (Statut commercial)",
+        }
+        for key, desc in mapping.items():
+            if name.endswith(key):
+                return desc
+
+        other = {
+            "methods_heatmap.png": "Heatmap comparaison méthodes",
+            "methods_comparison.csv": "Tableau comparatif des méthodes",
+            "multi_scree.png": "Éboulis comparatif",
+            "multi_scatter.png": "Projection comparée des méthodes",
+            "multi_heatmap.png": "Heatmap multi-méthodes",
+            "phase4_figures.pdf": "PDF de toutes les figures",
+            "phase4_report.pdf": "PDF synthèse",
+        }
+        if file_name in other:
+            return other[file_name]
+
+        # Fallback: nom lisible
+        desc = Path(file_name).stem
+        desc = desc.replace(method.lower() + "_", "")
+        desc = desc.replace("phase4_", "")
+        desc = desc.replace("_", " ").strip().capitalize()
+        if method != "Global" and method not in desc:
+            desc = f"{desc} {method}".strip()
+        return desc
+
+    for file_path in sorted(output_dir.rglob("*")):
+        if not file_path.is_file():
+            continue
+        if file_path.name in {"phase4.log", "phase4_index.csv"}:
+            continue
+        ext = file_path.suffix.lower()
+        if ext not in {".png", ".csv", ".pdf"}:
+            continue
+
+        rel = file_path.relative_to(output_dir)
+        method = "Global"
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "TSNE"}:
+            method = rel.parts[0]
+
+        file_type = {
+            ".png": "figure",
+            ".csv": "data",
+            ".pdf": "report",
+        }[ext]
+
+        desc = guess_description(file_path.name, method)
+
+        rows.append({
+            "Méthode": method,
+            "Fichier": str(rel),
+            "Type": file_type,
+            "Description": desc,
+        })
+
+    df = pd.DataFrame(rows)
+    index_path = output_dir / "phase4_index.csv"
+    df.to_csv(index_path, index=False, encoding="utf-8")
+    logger.info(f"Index des fichiers exporté -> {index_path.name}")
+    return index_path
 
 
 if __name__ == "__main__":
