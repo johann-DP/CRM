@@ -530,6 +530,7 @@ def run_mfa(
     plt.title("Éboulis MFA")
     plt.xticks(axes)
     plt.tight_layout()
+    output_dir.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_dir / "mfa_scree_plot.png")
     plt.close()
 
