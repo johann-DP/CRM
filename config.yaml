@@ -5,7 +5,7 @@ input_file: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19)
 output_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
 optimize_params: false
-methods: [famd, mfa, pcamix, umap, tsne]
+methods: [famd, mfa, pcamix, umap, pacmap, phate, tsne]
 
 # Method specific options (can be left empty)
 famd: {}
@@ -17,3 +17,4 @@ umap:
   random_state: 42
   n_jobs: 1
 tsne: {}
+phate: {}
