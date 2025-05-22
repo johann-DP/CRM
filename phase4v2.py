@@ -657,6 +657,145 @@ def run_pcamix(
     return md_pca, inertia, row_coords, col_coords
 
 
+def run_pca(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: Optional[int] = None,
+        optimize: bool = False,
+) -> Tuple[Any, pd.Series, pd.DataFrame, pd.DataFrame]:
+    """Réalise une analyse en composantes principales (ACP) sur les seules
+    variables quantitatives.
+
+    Cette étape isole l'information portée par les montants, durées ou scores
+    numériques afin d'identifier les grands facteurs de variation indépendamment
+    des catégories CRM. Les coordonnées des individus et des variables sont
+    renvoyées pour pouvoir comparer leur contribution aux axes principaux."""
+
+    logger = logging.getLogger(__name__)
+
+    # 1) Standardisation des variables quantitatives pour éviter qu'une échelle
+    #    domine l'analyse
+    scaler = StandardScaler()
+    X = scaler.fit_transform(df_active[quant_vars])
+    df_scaled = pd.DataFrame(X, index=df_active.index, columns=quant_vars)
+
+    n_comp = n_components
+    if optimize and n_components is None:
+        n_init = df_scaled.shape[1]
+        tmp = prince.PCA(n_components=n_init).fit(df_scaled)
+        inertia_tmp = getattr(tmp, "explained_inertia_", tmp.explained_variance_ratio_)
+        cum = np.cumsum(inertia_tmp)
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        logger.info(
+            "PCA auto: %d composantes retenues (%.1f%% variance cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100,
+        )
+
+    n_comp = n_comp or min(df_scaled.shape)
+
+    pca = prince.PCA(n_components=n_comp)
+    pca = pca.fit(df_scaled)
+
+    inertia = pd.Series(
+        getattr(pca, "explained_inertia_", pca.explained_variance_ratio_),
+        index=[f"F{i + 1}" for i in range(pca.n_components)],
+    )
+
+    row_coords = pca.row_coordinates(df_scaled)
+    if hasattr(pca, "column_correlations"):
+        col_coords = pca.column_correlations(df_scaled)
+    elif hasattr(pca, "column_correlations_"):
+        col_coords = pca.column_correlations_
+    else:
+        col_coords = pd.DataFrame(pca.components_.T, index=quant_vars)
+
+    contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
+
+    axes = list(range(1, len(inertia) + 1))
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(axes, [i * 100 for i in inertia], edgecolor="black")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis PCA")
+    plt.xticks(axes)
+    plt.tight_layout()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "pca_scree_plot.png")
+    plt.close()
+
+    return pca, inertia, row_coords, col_coords, contrib
+
+
+def run_mca(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: Optional[int] = None,
+        optimize: bool = False,
+) -> Tuple[Any, pd.Series, pd.DataFrame, pd.DataFrame]:
+    """Effectue une analyse des correspondances multiples (ACM) sur les seules
+    variables qualitatives.
+
+    L'ACM révèle les proximités ou oppositions entre modalités (secteur,
+    statut, typologie…) sans influence des mesures numériques. Elle complète
+    ainsi l'ACP pour comprendre l'information catégorielle du CRM."""
+
+    logger = logging.getLogger(__name__)
+
+    df_cat = df_active[qual_vars].astype("category")
+
+    n_comp = n_components
+    if optimize and n_components is None:
+        max_dim = sum(df_cat[c].nunique() for c in df_cat.columns) - len(df_cat.columns)
+        tmp = prince.MCA(n_components=max_dim).fit(df_cat)
+        inertia_tmp = getattr(tmp, "explained_inertia_", tmp.eigenvalues_ / tmp.eigenvalues_.sum())
+        cum = np.cumsum(inertia_tmp)
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), max_dim)
+        logger.info(
+            "MCA auto: %d dimensions retenues (%.1f%% inertie cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100,
+        )
+
+    n_comp = n_comp or 5
+
+    mca = prince.MCA(n_components=n_comp)
+    mca = mca.fit(df_cat)
+
+    inertia = pd.Series(
+        getattr(mca, "explained_inertia_", mca.eigenvalues_ / mca.eigenvalues_.sum()),
+        index=[f"F{i + 1}" for i in range(mca.n_components)],
+    )
+
+    row_coords = mca.row_coordinates(df_cat)
+    if hasattr(mca, "column_coordinates"):
+        col_coords = mca.column_coordinates(df_cat)
+    elif hasattr(mca, "column_coordinates_"):
+        col_coords = mca.column_coordinates_
+    else:
+        col_coords = pd.DataFrame()
+
+    contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
+
+    axes = list(range(1, len(inertia) + 1))
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(axes, [i * 100 for i in inertia], edgecolor="black")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis MCA")
+    plt.xticks(axes)
+    plt.tight_layout()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "mca_scree_plot.png")
+    plt.close()
+
+    return mca, inertia, row_coords, col_coords, contrib
+
+
 def run_tsne(
         embeddings: pd.DataFrame,
         df_active: pd.DataFrame,
@@ -1781,6 +1920,221 @@ def export_mfa_results(
     logger.info("Export des résultats MFA terminé")
 
 
+def export_pca_results(
+        pca_model,
+        inertia: pd.Series,
+        row_coords: pd.DataFrame,
+        col_coords: pd.DataFrame,
+        output_dir: Path,
+        quant_vars: List[str],
+        df_active: Optional[pd.DataFrame] = None,
+) -> None:
+    """Exporte figures et CSV pour l'ACP."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    row_coords = row_coords.copy(); row_coords.columns = axes
+    col_coords = col_coords.copy(); col_coords.columns = axes[:col_coords.shape[1]]
+
+    contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
+
+    # Scree plot
+    ax_idx = list(range(1, len(inertia) + 1))
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(ax_idx, [v * 100 for v in inertia], edgecolor="black")
+    plt.plot(ax_idx, np.cumsum(inertia) * 100, "-o", color="orange")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis PCA")
+    plt.xticks(ax_idx)
+    plt.tight_layout()
+    plt.savefig(output_dir / "pca_scree_plot.png")
+    plt.close()
+
+    # Individuals 2D
+    if {"F1", "F2"}.issubset(row_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+        else:
+            codes = None
+        sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
+        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.title("PCA – individus (F1–F2)")
+        if codes is not None:
+            plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pca_indiv_plot.png")
+        plt.close()
+
+    # Individuals 3D
+    if {"F1", "F2", "F3"}.issubset(row_coords.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+        else:
+            codes = None
+        sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
+        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
+        ax.set_title("PCA – individus (3D)")
+        if codes is not None:
+            fig.colorbar(sc3, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pca_indiv_plot_3D.png")
+        plt.close()
+
+    # Correlation circle
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+        ax = plt.gca(); ax.add_patch(circle)
+        ax.axhline(0, color="grey", lw=0.5); ax.axvline(0, color="grey", lw=0.5)
+        for var in col_coords.index:
+            x, y = col_coords.loc[var, ["F1", "F2"]]
+            ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+            ax.text(x, y, var, fontsize=8)
+        ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1)
+        ax.set_xlabel("F1"); ax.set_ylabel("F2")
+        ax.set_title("PCA – cercle des corrélations (F1–F2)")
+        ax.set_aspect("equal")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pca_correlation_circle.png")
+        plt.close()
+
+    # Contributions
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    for i, axis in enumerate(["F1", "F2"]):
+        if axis in contrib.columns:
+            top = contrib[axis].sort_values(ascending=False).head(10)
+            axes_plot[i].bar(top.index.astype(str), top.values)
+            axes_plot[i].set_title(f"Contributions PCA – Axe {axis[-1]}")
+            axes_plot[i].set_ylabel("% contribution")
+            axes_plot[i].tick_params(axis="x", rotation=45)
+        else:
+            axes_plot[i].axis("off")
+    plt.tight_layout()
+    plt.savefig(output_dir / "pca_contributions.png")
+    plt.close()
+
+    # CSV exports
+    var_df = pd.DataFrame({"axe": axes, "variance_%": [v * 100 for v in inertia]})
+    var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
+    var_df.to_csv(output_dir / "pca_explained_variance.csv", index=False)
+    row_coords.to_csv(output_dir / "pca_indiv_coords.csv", index=True)
+    col_coords.to_csv(output_dir / "pca_variables_coords.csv", index=True)
+    contrib.to_csv(output_dir / "pca_contributions.csv", index=True)
+    logger.info("Export PCA terminé")
+
+
+def export_mca_results(
+        mca_model,
+        inertia: pd.Series,
+        row_coords: pd.DataFrame,
+        col_coords: pd.DataFrame,
+        output_dir: Path,
+        qual_vars: List[str],
+        df_active: Optional[pd.DataFrame] = None,
+) -> None:
+    """Exporte figures et CSV pour l'ACM."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    row_coords = row_coords.copy(); row_coords.columns = axes
+    col_coords = col_coords.copy(); col_coords.columns = axes[:col_coords.shape[1]]
+
+    contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
+
+    # Scree
+    ax_idx = list(range(1, len(inertia) + 1))
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(ax_idx, [v * 100 for v in inertia], edgecolor="black")
+    plt.plot(ax_idx, np.cumsum(inertia) * 100, "-o", color="orange")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis MCA")
+    plt.xticks(ax_idx)
+    plt.tight_layout()
+    plt.savefig(output_dir / "mca_scree_plot.png")
+    plt.close()
+
+    # Individuals 2D
+    if {"F1", "F2"}.issubset(row_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+        else:
+            codes = None
+        sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
+        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.title("MCA – individus (F1–F2)")
+        if codes is not None:
+            plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mca_indiv_plot.png")
+        plt.close()
+
+    # Individuals 3D
+    if {"F1", "F2", "F3"}.issubset(row_coords.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+        else:
+            codes = None
+        sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
+        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
+        ax.set_title("MCA – individus (3D)")
+        if codes is not None:
+            fig.colorbar(sc3, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mca_indiv_plot_3D.png")
+        plt.close()
+
+    # Modalities
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        plt.scatter(col_coords["F1"], col_coords["F2"], alpha=0.7)
+        for mod in col_coords.index:
+            label = mod
+            if "_" in mod:
+                var, val = mod.split("_", 1)
+                label = f"{var}={val}"
+            plt.text(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], label, fontsize=8)
+        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.title("MCA – modalités (F1–F2)")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mca_modalities_plot.png")
+        plt.close()
+
+    # Contributions
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    for i, axis in enumerate(["F1", "F2"]):
+        if axis in contrib.columns:
+            top = contrib[axis].sort_values(ascending=False).head(10)
+            axes_plot[i].bar(top.index.astype(str), top.values)
+            axes_plot[i].set_title(f"Contributions MCA – Axe {axis[-1]}")
+            axes_plot[i].set_ylabel("% contribution")
+            axes_plot[i].tick_params(axis="x", rotation=45)
+        else:
+            axes_plot[i].axis("off")
+    plt.tight_layout()
+    plt.savefig(output_dir / "mca_contributions.png")
+    plt.close()
+
+    # CSV
+    var_df = pd.DataFrame({"axe": axes, "variance_%": [v * 100 for v in inertia]})
+    var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
+    var_df.to_csv(output_dir / "mca_explained_variance.csv", index=False)
+    row_coords.to_csv(output_dir / "mca_indiv_coords.csv", index=True)
+    col_coords.to_csv(output_dir / "mca_modalities_coords.csv", index=True)
+    contrib.to_csv(output_dir / "mca_contributions.csv", index=True)
+    logger.info("Export MCA terminé")
+
+
+
 def export_pcamix_results(
         mdpca_model,
         mdpca_inertia: pd.Series,
@@ -2133,7 +2487,75 @@ def main() -> None:
             df_active=df_active,
         )
 
-    # 3. MFA
+    # 3. PCA (quantitatives seulement)
+    if "pca" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_pca = output_dir / "PCA"
+        pca_model, pca_inertia, pca_rows, pca_cols, pca_contrib = run_pca(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_pca,
+            optimize=optimize_params,
+            **config.get("pca", {})
+        )
+        rt = time.time() - t0
+        results["PCA"] = {
+            "embeddings": pca_rows,
+            "inertia": list(pca_inertia),
+            "runtime": rt,
+        }
+        logger.info(
+            "PCA : %d composantes, %.1f%% variance cumulée, %.1fs",
+            pca_model.n_components,
+            sum(pca_inertia) * 100,
+            rt,
+        )
+        export_pca_results(
+            pca_model,
+            pca_inertia,
+            pca_rows,
+            pca_cols,
+            output_dir_pca,
+            quant_vars,
+            df_active=df_active,
+        )
+
+    # 4. MCA (qualitatives seulement)
+    if "mca" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_mca = output_dir / "MCA"
+        mca_model, mca_inertia, mca_rows, mca_cols, mca_contrib = run_mca(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_mca,
+            optimize=optimize_params,
+            **config.get("mca", {})
+        )
+        rt = time.time() - t0
+        results["MCA"] = {
+            "embeddings": mca_rows,
+            "inertia": list(mca_inertia),
+            "runtime": rt,
+        }
+        logger.info(
+            "MCA : %d dimensions, %.1f%% inertie cumulée, %.1fs",
+            mca_model.n_components,
+            sum(mca_inertia) * 100,
+            rt,
+        )
+        export_mca_results(
+            mca_model,
+            mca_inertia,
+            mca_rows,
+            mca_cols,
+            output_dir_mca,
+            qual_vars,
+            df_active=df_active,
+        )
+
+    # 5. MFA
     if "mfa" in config.get("methods", []):
         t0 = time.time()
         output_dir_mfa = output_dir / "MFA"
@@ -2166,7 +2588,7 @@ def main() -> None:
             df_active=df_active,
         )
 
-    # 4. PCAmix
+    # 6. PCAmix
     if "pcamix" in config.get("methods", []):
         t0 = time.time()
         output_dir_pcamix = output_dir / "PCAmix"
@@ -2201,7 +2623,7 @@ def main() -> None:
             df_active=df_active,
         )
 
-    # 5. UMAP
+    # 7. UMAP
     if "umap" in config.get("methods", []):
         t0 = time.time()
         output_dir_umap = output_dir / "UMAP"
@@ -2228,7 +2650,7 @@ def main() -> None:
             rt,
         )
 
-    # 6. PaCMAP
+    # 8. PaCMAP
     if "pacmap" in config.get("methods", []):
         t0 = time.time()
         output_dir_pacmap = output_dir / "PaCMAP"
@@ -2251,7 +2673,7 @@ def main() -> None:
                 f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
             )
 
-    # 7. PHATE
+    # 9. PHATE
     if "phate" in config.get("methods", []):
         t0 = time.time()
         output_dir_phate = output_dir / "PHATE"
@@ -2272,7 +2694,7 @@ def main() -> None:
             }
             logger.info(f"PHATE : r\u00e9alis\u00e9 en {rt:.1f}s")
 
-    # 8. t-SNE
+    # 10. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
@@ -2345,7 +2767,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"]
+    methods = ["FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
@@ -2469,7 +2891,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"}:
             method = rel.parts[0]
 
         file_type = {
