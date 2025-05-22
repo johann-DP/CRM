@@ -16,6 +16,10 @@ import logging
 import os
 import numpy as np
 import umap
+try:
+    import phate
+except ImportError:  # pragma: no cover - optional dependency
+    phate = None
 import time
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
@@ -853,6 +857,104 @@ def export_umap_results(
     csv_path = output_dir / "umap_embeddings.csv"
     umap_df.to_csv(csv_path, index=True)
     logger.info("CSV embeddings UMAP enregistré: %s", csv_path)
+
+
+def run_phate(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 2,
+) -> Tuple["phate.PHATE" | None, pd.DataFrame]:
+    """Exécute PHATE sur un jeu de données mixte.
+
+    PHATE est particulièrement adapté pour mettre en évidence des trajectoires
+    continues ou transitions progressives entre individus. Dans un contexte CRM,
+    cette méthode peut révéler l'évolution des prospects vers des clients
+    fidèles lorsque la structure des données ne se prête pas à un
+    clustering net. L'algorithme construit un graphe de voisins (``knn``=5 par
+    défaut) puis applique une diffusion. Le paramètre ``t="auto"`` choisit
+    automatiquement la profondeur de diffusion, généralement adéquate pour des
+    données CRM de taille modérée. ``n_jobs=-1`` exploite tous les cœurs
+    disponibles pour accélérer le calcul.
+    """
+
+    logger = logging.getLogger(__name__)
+
+    if phate is None:  # pragma: no cover - module optional
+        logger.error(
+            "Le module PHATE n’est pas installé. Installez-le pour utiliser l’analyse PHATE."
+        )
+        return None, pd.DataFrame()
+
+    # 1) Standardisation des quantitatives
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+
+    # 2) Encodage des qualitatives
+    try:
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = encoder.fit_transform(df_active[qual_vars])
+
+    # 3) Fusion des features
+    X_mix = pd.DataFrame(np.hstack([X_num, X_cat]), index=df_active.index)
+
+    # 4) PHATE
+    phate_operator = phate.PHATE(
+        n_components=n_components,
+        n_jobs=-1,
+        random_state=42,
+    )
+    Y = phate_operator.fit_transform(X_mix)
+
+    cols = [f"PHATE{i + 1}" for i in range(n_components)]
+    phate_df = pd.DataFrame(Y, columns=cols, index=df_active.index)
+
+    return phate_operator, phate_df
+
+
+def export_phate_results(phate_df: pd.DataFrame, df_active: pd.DataFrame, output_dir: Path) -> None:
+    """Génère graphiques et CSV pour l'analyse PHATE."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = plt.scatter(phate_df["PHATE1"], phate_df["PHATE2"], c=codes, s=10, alpha=0.7)
+        plt.xlabel("PHATE1")
+        plt.ylabel("PHATE2")
+        plt.title("PHATE – individus (dim 1–2)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        fig_path = output_dir / "phate_scatter.png"
+        plt.savefig(fig_path)
+        plt.close()
+        logger.info("Projection PHATE 2D enregistrée: %s", fig_path)
+
+    if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc3d = ax.scatter(
+            phate_df["PHATE1"], phate_df["PHATE2"], phate_df["PHATE3"],
+            c=codes, s=10, alpha=0.7,
+        )
+        ax.set_xlabel("PHATE1")
+        ax.set_ylabel("PHATE2")
+        ax.set_zlabel("PHATE3")
+        ax.set_title("PHATE – individus (3D)")
+        fig.colorbar(sc3d, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        fig3d_path = output_dir / "phate_scatter_3D.png"
+        plt.savefig(fig3d_path)
+        plt.close()
+        logger.info("Projection PHATE 3D enregistrée: %s", fig3d_path)
+
+    csv_path = output_dir / "phate_coordinates.csv"
+    phate_df.to_csv(csv_path, index=True)
+    logger.info("Coordonnées PHATE exportées: %s", csv_path)
 
 
 def get_explained_inertia(famd) -> List[float]:
@@ -1854,7 +1956,27 @@ def main() -> None:
         }
         logger.info("UMAP : %d composantes, %.1fs", umap_model.n_components, rt)
 
-    # 6. t-SNE
+    # 6. PHATE
+    if "phate" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_phate = output_dir / "PHATE"
+        phate_op, phate_df = run_phate(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_phate,
+            **config.get("phate", {}),
+        )
+        export_phate_results(phate_df, df_active, output_dir_phate)
+        rt = time.time() - t0
+        results["PHATE"] = {
+            "embeddings": phate_df,
+            "inertia": None,
+            "runtime": rt,
+        }
+        logger.info(f"PHATE : réalisé en {rt:.1f}s")
+
+    # 7. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
@@ -1872,14 +1994,14 @@ def main() -> None:
         }
         logger.info("t-SNE : %.1fs", rt)
 
-    # 7. Évaluation croisée
+    # 8. Évaluation croisée
     comp_df = evaluate_methods(results, output_dir, n_clusters=3)
 
-    # 8. PDF comparatif
+    # 9. PDF comparatif
     pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
 
-    # 9. Index CSV des fichiers produits
+    # 10. Index CSV des fichiers produits
     create_index_file(output_dir)
 
 
@@ -1888,7 +2010,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
 
     The PDF will include the following images if present in ``output_dir``:
     ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
-    ``UMAP/umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``UMAP/umap_scatter.png``, ``PHATE/phate_scatter.png``, ``phase4_tsne_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
@@ -1897,6 +2019,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
         str(Path("MFA") / "mfa_scree_plot.png"),
         "phase4_pcamix_scree_plot.png",
         str(Path("UMAP") / "umap_scatter.png"),
+        str(Path("PHATE") / "phate_scatter.png"),
         "phase4_tsne_scatter.png",
         "methods_heatmap.png",
     ]
@@ -1919,7 +2042,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "TSNE"]
+    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PHATE", "TSNE"]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
