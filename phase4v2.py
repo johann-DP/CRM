@@ -688,7 +688,8 @@ def run_umap(
     n_neighbors: int = 15,
     min_dist: float = 0.1,
     n_components: int = 2,
-    random_state: int = 42
+    random_state: int | None = 42,
+    n_jobs: int | None = None,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
     """
     Exécute UMAP sur un jeu mixte de variables quantitatives et qualitatives.
@@ -701,7 +702,11 @@ def run_umap(
         n_neighbors: Paramètre UMAP « voisinage ».
         min_dist: Distance minimale UMAP.
         n_components: Dimension de sortie (2 ou 3).
-        random_state: Graine pour reproductibilité.
+        random_state: Graine pour reproductibilité. ``None`` pour laisser
+            UMAP utiliser le parallélisme.
+        n_jobs: Nombre de threads UMAP. Si ``random_state`` est défini et
+            ``n_jobs`` n'est pas ``1``, la valeur sera forcée à ``1`` pour
+            éviter le warning de ``umap-learn``.
 
     Returns:
         - L’objet UMAP entraîné,
@@ -727,12 +732,24 @@ def run_umap(
         index=df_active.index
     )
 
+    logger = logging.getLogger(__name__)
+
     # 2.4 Exécution de UMAP
+    if random_state is not None:
+        if n_jobs not in (None, 1):
+            logger.warning(
+                "random_state défini (%s) : n_jobs=%s forcé à 1 pour garantir la reproductibilité",
+                random_state,
+                n_jobs,
+            )
+        n_jobs = 1
+
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
         n_components=n_components,
-        random_state=random_state
+        random_state=random_state,
+        n_jobs=n_jobs,
     )
     embedding = reducer.fit_transform(X_mix)
 
