@@ -1178,8 +1178,8 @@ def main() -> None:
     # 2. FAMD
     if "famd" in config.get("methods", []):
         t0 = time.time()
-        famd_model, famd_inertia, famd_rows, famd_cols = run_famd(
-            df_active, quant_vars, qual_vars, output_dir, **config.get("famd", {})
+        famd_model, famd_inertia, famd_rows, famd_cols, famd_contrib = run_famd(
+            df_active, quant_vars, qual_vars, **config.get("famd", {})
         )
         rt = time.time() - t0
         results["FAMD"] = {
