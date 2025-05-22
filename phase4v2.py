@@ -7,6 +7,7 @@ import pandas as pd
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from typing import List, Optional, Tuple, Sequence, Dict, Any
 import prince
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
