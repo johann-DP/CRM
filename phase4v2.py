@@ -22,20 +22,21 @@ import time
 CONFIG = {
     'compare_baseline': True,
     'baseline_vars': {
-        'quant': ['Total recette actualisé','Total recette réalisé','Budget client estimé','duree_projet_jours','taux_realisation','marge_estimee'],
-        'qual': ['Statut commercial','Statut production','Type opportunité','Catégorie','Sous-catégorie']
+        'quant': ['Total recette actualisé', 'Total recette réalisé', 'Budget client estimé', 'duree_projet_jours',
+                  'taux_realisation', 'marge_estimee'],
+        'qual': ['Statut commercial', 'Statut production', 'Type opportunité', 'Catégorie', 'Sous-catégorie']
     },
-    'baseline_cfg': {'weighting':'balanced'}
+    'baseline_cfg': {'weighting': 'balanced'}
 }
 
 
 def sanity_check(
-    df: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    na_threshold: float = 0.30,
-    max_levels: int = 50,
-    corr_threshold: float = 0.98
+        df: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        na_threshold: float = 0.30,
+        max_levels: int = 50,
+        corr_threshold: float = 0.98
 ) -> Tuple[List[str], List[str]]:
     """
     Vérifie variance, NA, corrélations, cardinalité.
@@ -51,9 +52,11 @@ def sanity_check(
     na_pc = sub.isna().mean()
     for v in quant_vars:
         if na_pc[v] > na_threshold:
-            drop_q.add(v); logger.warning(f"Drop {v} – NA {na_pc[v]:.0%} > {na_threshold:.0%}")
+            drop_q.add(v);
+            logger.warning(f"Drop {v} – NA {na_pc[v]:.0%} > {na_threshold:.0%}")
         elif sub[v].var() == 0:
-            drop_q.add(v); logger.warning(f"Drop {v} – variance nulle")
+            drop_q.add(v);
+            logger.warning(f"Drop {v} – variance nulle")
     # Corrélations trop élevées : parcours du triangle supérieur uniquement
     # et suppression de la seconde variable de chaque paire corrélée
     corr = sub.corr().abs()
@@ -72,9 +75,11 @@ def sanity_check(
         prop_na = df[v].isna().mean()
         nlev = df[v].nunique(dropna=False)
         if prop_na > na_threshold:
-            drop_c.add(v); logger.warning(f"Drop {v} – NA {prop_na:.0%} > {na_threshold:.0%}")
+            drop_c.add(v);
+            logger.warning(f"Drop {v} – NA {prop_na:.0%} > {na_threshold:.0%}")
         elif nlev > max_levels:
-            drop_c.add(v); logger.warning(f"Drop {v} – {nlev} modalités > {max_levels}")
+            drop_c.add(v);
+            logger.warning(f"Drop {v} – {nlev} modalités > {max_levels}")
     # Résultats
     q_final = [v for v in quant_vars if v not in drop_q]
     c_final = [v for v in qual_vars if v not in drop_c]
@@ -130,7 +135,7 @@ def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
     """
     if na_df.empty:
         return
-    plt.figure(figsize=(12,6), dpi=200)
+    plt.figure(figsize=(12, 6), dpi=200)
     na_df = na_df.sort_values('missing_pct', ascending=False).head(30)
     plt.barh(na_df['variable'], na_df['missing_pct'], color='lightcoral', edgecolor='black')
     plt.xlabel('% Missing')
@@ -434,9 +439,9 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
 
 
 def segment_data(
-    df: pd.DataFrame,
-    qual_vars: List[str],
-    output_dir: Path
+        df: pd.DataFrame,
+        qual_vars: List[str],
+        output_dir: Path
 ) -> None:
     """Generate simple segmentation reports for qualitative variables.
 
@@ -460,7 +465,7 @@ def segment_data(
         csv_path = seg_dir / f"segment_{col}.csv"
         seg_df.to_csv(csv_path, index=False)
 
-        plt.figure(figsize=(8, 4), dpi=200)
+        plt.figure(figsize=(12, 6), dpi=200)
         plt.bar(seg_df["modalité"].astype(str), seg_df["count"], edgecolor="black")
         plt.title(f"Répartition par {col}")
         plt.xlabel(col)
@@ -475,11 +480,11 @@ def segment_data(
 
 
 def run_mfa(
-    df_active: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    output_dir: Path,
-    n_components: int = 5
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 5
 ) -> Tuple[prince.MFA, pd.DataFrame]:
     """Exécute une MFA sur le jeu de données mixte.
 
@@ -518,7 +523,7 @@ def run_mfa(
     mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
 
     axes = list(range(1, len(mfa.explained_inertia_) + 1))
-    plt.figure()
+    plt.figure(figsize=(12, 6), dpi=200)
     plt.bar(axes, [v * 100 for v in mfa.explained_inertia_], edgecolor="black")
     plt.xlabel("Composante")
     plt.ylabel("% Inertie expliquée")
@@ -532,11 +537,11 @@ def run_mfa(
 
 
 def run_pcamix(
-    df_active: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    output_dir: Path,
-    n_components: int = 5,
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 5,
 ) -> Tuple[prince.FAMD, pd.Series, pd.DataFrame, pd.DataFrame]:
     """Exécute une analyse de type PCAmix via :class:`prince.FAMD`."""
 
@@ -573,7 +578,7 @@ def run_pcamix(
     )
 
     axes = list(range(1, len(inertia) + 1))
-    plt.figure()
+    plt.figure(figsize=(12, 6), dpi=200)
     plt.bar(axes, [i * 100 for i in inertia], edgecolor="black")
     plt.xlabel("Composante")
     plt.ylabel("% Inertie expliquée")
@@ -603,13 +608,13 @@ def run_pcamix(
 
 
 def run_tsne(
-    embeddings: pd.DataFrame,
-    df_active: pd.DataFrame,
-    output_dir: Path,
-    perplexity: int = 30,
-    learning_rate: float = 200.0,
-    n_iter: int = 1_000,
-    random_state: int = 42
+        embeddings: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+        perplexity: int = 30,
+        learning_rate: float = 200.0,
+        n_iter: int = 1_000,
+        random_state: int = 42
 ) -> Tuple[TSNE, pd.DataFrame]:
     """
     Applique t-SNE sur des coordonnées factorielles existantes.
@@ -658,7 +663,7 @@ def run_tsne(
     )
 
     # 2.4 Scatter plot coloré par Statut commercial
-    plt.figure()
+    plt.figure(figsize=(12, 6), dpi=200)
     codes = df_active["Statut commercial"].astype("category").cat.codes
     scatter = plt.scatter(
         tsne_df["TSNE1"], tsne_df["TSNE2"],
@@ -681,16 +686,17 @@ def run_tsne(
 
     return tsne, tsne_df
 
+
 def run_umap(
-    df_active: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    output_dir: Path,
-    n_neighbors: int = 15,
-    min_dist: float = 0.1,
-    n_components: int = 2,
-    random_state: int | None = 42,
-    n_jobs: int | None = None,
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_neighbors: int = 15,
+        min_dist: float = 0.1,
+        n_components: int = 2,
+        random_state: int | None = 42,
+        n_jobs: int | None = None,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
     """
     Exécute UMAP sur un jeu mixte de variables quantitatives et qualitatives.
@@ -755,11 +761,11 @@ def run_umap(
     embedding = reducer.fit_transform(X_mix)
 
     # 2.5 Mise en DataFrame
-    cols = [f"UMAP{i+1}" for i in range(n_components)]
+    cols = [f"UMAP{i + 1}" for i in range(n_components)]
     umap_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
 
     # 2.6 Scatterplot coloré par statut commercial
-    plt.figure()
+    plt.figure(figsize=(12, 6), dpi=200)
     scatter = plt.scatter(
         umap_df["UMAP1"], umap_df["UMAP2"],
         c=df_active["Statut commercial"].astype('category').cat.codes,
@@ -781,8 +787,6 @@ def run_umap(
     return reducer, umap_df
 
 
-
-
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -802,11 +806,11 @@ def get_explained_inertia(famd) -> List[float]:
 
 
 def run_famd(
-    df_active: pd.DataFrame,
-    quant_vars: List[str],
-    qual_vars: List[str],
-    n_components: Optional[int] = None,
-    famd_cfg: dict = None
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        n_components: Optional[int] = None,
+        famd_cfg: dict = None
 ) -> Tuple[
     prince.FAMD,
     pd.Series,
@@ -869,12 +873,12 @@ def run_famd(
     # 3b) Initialisation de l’AFDM
     n_comp = n_components or df_for_famd.shape[1]
     famd = prince.FAMD(
-            n_components = n_comp,
-            n_iter = 3,
-            copy = True,
-            check_input = True,
-            # normalize = (weighting == 'balanced'),
-            engine = 'sklearn'
+        n_components=n_comp,
+        n_iter=3,
+        copy=True,
+        check_input=True,
+        # normalize = (weighting == 'balanced'),
+        engine='sklearn'
     )
     logger.info(f"FAMD initialisé (weighting={weighting}) avec {n_comp} composantes")
 
@@ -930,10 +934,10 @@ def run_famd(
 
 
 def plot_multimethod_results(
-    results_dict: Dict[str, Dict[str, Any]],
-    df_active: pd.DataFrame,
-    comp_df: pd.DataFrame,
-    output_dir: Path,
+        results_dict: Dict[str, Dict[str, Any]],
+        df_active: pd.DataFrame,
+        comp_df: pd.DataFrame,
+        output_dir: Path,
 ) -> None:
     """Visualisations comparatives pour plusieurs méthodes factorielles."""
 
@@ -1087,7 +1091,7 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
             intra = 0.0
         intra_diam.append(intra)
 
-        for cj in unique[i + 1 :]:
+        for cj in unique[i + 1:]:
             idx_j = np.where(labels == cj)[0]
             inter = dist[np.ix_(idx_i, idx_j)].min()
             if inter < min_inter:
@@ -1100,9 +1104,9 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
 
 
 def evaluate_methods(
-    results_dict: Dict[str, Dict[str, Any]],
-    output_dir: Path,
-    n_clusters: int = 3,
+        results_dict: Dict[str, Dict[str, Any]],
+        output_dir: Path,
+        n_clusters: int = 3,
 ) -> pd.DataFrame:
     """Compare diverses méthodes de réduction de dimension."""
 
@@ -1146,7 +1150,7 @@ def evaluate_methods(
         if cmax > cmin:
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
-    plt.figure(figsize=(8, 4), dpi=200)
+    plt.figure(figsize=(12, 6), dpi=200)
     sns.heatmap(df_norm, annot=True, cmap="viridis")
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
