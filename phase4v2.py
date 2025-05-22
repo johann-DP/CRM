@@ -495,17 +495,24 @@ def run_mfa(
     import prince
     import matplotlib.pyplot as plt
 
-    groups = [len(quant_vars), len(qual_vars)]
-    group_names = ["Quantitatives", "Qualitatives"]
+    # One-hot encode qualitative variables
+    df_dummies = pd.get_dummies(df_active[qual_vars].astype(str))
 
-    mfa = prince.MFA(
-        groups=groups,
-        group_names=group_names,
-        n_components=n_components,
-        normalize=True,
-    )
+    # Build groups dictionary compatible with prince >= 0.16
+    groups = {"Quantitatives": quant_vars}
+    for var in qual_vars:
+        cols = [c for c in df_dummies.columns if c.startswith(f"{var}_")]
+        if cols:
+            groups[var] = cols
 
-    mfa = mfa.fit(df_active[quant_vars + qual_vars])
+    # Combine numeric columns with the dummy-encoded qualitative variables
+    df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)
+
+    mfa = prince.MFA(n_components=n_components)
+    mfa = mfa.fit(df_mfa, groups=groups)
+
+    # Ensure compatibility with earlier code expecting explained_inertia_
+    mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
 
     axes = list(range(1, len(mfa.explained_inertia_) + 1))
     plt.figure()
