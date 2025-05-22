@@ -1158,6 +1158,19 @@ def main() -> None:
     df_clean = prepare_data(df_raw, config.get("metrics_dir"))
     df_active, quant_vars, qual_vars = select_variables(df_clean)
 
+    # Nettoyage supplémentaire des variables sélectionnées
+    quant_vars, qual_vars = sanity_check(df_active, quant_vars, qual_vars)
+    df_active = df_active[quant_vars + qual_vars]
+    logger.info(
+        f"Après sanity_check : {len(quant_vars)} quanti, {len(qual_vars)} quali"
+    )
+
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+    if df_active.isna().any().any():
+        logger.error("Des NA demeurent dans df_active après traitement")
+    else:
+        logger.info("DataFrame actif sans NA prêt pour FAMD")
+
     segment_data(df_active, qual_vars, output_dir)
 
     results: Dict[str, Dict[str, Any]] = {}
