@@ -13,6 +13,7 @@ python phase4v2.py --config config.yaml
 
 Make sure the dependencies listed in `requirements.txt` are installed. The
 package `umap-learn` is required for the UMAP functionality.
+The optional `phate` package enables PHATE embeddings.
 
 ### UMAP warnings
 
