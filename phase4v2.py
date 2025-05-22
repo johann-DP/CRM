@@ -611,77 +611,115 @@ def run_tsne(
         perplexity: int = 30,
         learning_rate: float = 200.0,
         n_iter: int = 1_000,
-        random_state: int = 42
+        random_state: int = 42,
+        n_components: int = 2,
 ) -> Tuple[TSNE, pd.DataFrame]:
     """
-    Applique t-SNE sur des coordonnées factorielles existantes.
+    Applique t-SNE sur des coordonnées factorielles existantes et renvoie les
+    embeddings calculés. Les figures et CSV sont enregistrés via
+    :func:`export_tsne_results`.
 
-    Args:
-        embeddings: DataFrame des coordonnées (index = ID affaire, colonnes = axes factoriels).
-        df_active: DataFrame complet, utilisé pour le coloriage (colonne "Statut commercial").
-        output_dir: Répertoire où sauvegarder le scatterplot et le CSV.
-        perplexity: Paramètre de t-SNE (voisinage).
-        learning_rate: Taux d’apprentissage pour t-SNE.
-        n_iter: Nombre d’itérations.
-        random_state: Graine pour la reproductibilité.
+    Parameters
+    ----------
+    embeddings : pd.DataFrame
+        Coordonnées factorielles (lignes = individus).
+    df_active : pd.DataFrame
+        DataFrame complet pour récupérer la variable ``Statut commercial``.
+    output_dir : Path
+        Répertoire des résultats (créé dans ``main``).
+    perplexity : int
+        Paramètre "voisinage" du t-SNE.
+    learning_rate : float
+        Taux d'apprentissage du t-SNE.
+    n_iter : int
+        Nombre d'itérations d'entraînement.
+    random_state : int
+        Graine pour la reproductibilité.
+    n_components : int
+        Dimension de la projection t-SNE (2 ou 3).
 
     Returns:
-        - L’instance TSNE ajustée.
-        - DataFrame des embeddings t-SNE (colonnes "TSNE1","TSNE2", index = ID affaire).
+    -------
+    tuple
+        L'instance :class:`TSNE` ajustée et le ``DataFrame`` des embeddings
+        (colonnes ``TSNE1``, ``TSNE2`` (, ``TSNE3``)).
     """
     # 2.1 Instanciation
     try:
         tsne = TSNE(
-            n_components=2,
+            n_components=n_components,
             perplexity=perplexity,
             learning_rate=learning_rate,
             max_iter=n_iter,
             random_state=random_state,
-            init='pca'
+            init="pca",
         )
     except TypeError:  # pragma: no cover - older scikit-learn
         tsne = TSNE(
-            n_components=2,
+            n_components=n_components,
             perplexity=perplexity,
             learning_rate=learning_rate,
             n_iter=n_iter,
             random_state=random_state,
-            init='pca'
+            init="pca",
         )
 
     # 2.2 Fit & transform
     tsne_results = tsne.fit_transform(embeddings.values)
 
     # 2.3 DataFrame t-SNE
-    tsne_df = pd.DataFrame(
-        tsne_results,
-        columns=["TSNE1", "TSNE2"],
-        index=embeddings.index
-    )
-
-    # 2.4 Scatter plot coloré par Statut commercial
-    plt.figure(figsize=(12, 6), dpi=200)
-    codes = df_active["Statut commercial"].astype("category").cat.codes
-    scatter = plt.scatter(
-        tsne_df["TSNE1"], tsne_df["TSNE2"],
-        c=codes, s=15, alpha=0.7
-    )
-    plt.xlabel("TSNE1")
-    plt.ylabel("TSNE2")
-    plt.title("t-SNE sur axes factoriels")
-    cbar = plt.colorbar(scatter,
-                        ticks=range(len(df_active["Statut commercial"].unique())))
-    cbar.set_label("Statut commercial")
-
-    # 2.5 Sauvegardes
-    (output_dir / "phase4_tsne_scatter.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(output_dir / "phase4_tsne_scatter.png")
-    plt.close()
-
-    tsne_df.to_csv(output_dir / "phase4_tsne_embeddings.csv", index=True)
+    cols = [f"TSNE{i + 1}" for i in range(n_components)]
+    tsne_df = pd.DataFrame(tsne_results, columns=cols, index=embeddings.index)
 
     return tsne, tsne_df
+
+
+def export_tsne_results(tsne_df: pd.DataFrame, df_active: pd.DataFrame, output_dir: Path) -> None:
+    """Save scatter plot(s) and embeddings for t-SNE."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Scatter 2D
+    if {"TSNE1", "TSNE2"}.issubset(tsne_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[tsne_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = plt.scatter(
+            tsne_df["TSNE1"], tsne_df["TSNE2"], c=codes, s=15, alpha=0.7
+        )
+        plt.xlabel("TSNE1")
+        plt.ylabel("TSNE2")
+        plt.title("t-SNE sur axes factoriels (FAMD)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        fig_path = output_dir / "tsne_scatter.png"
+        plt.savefig(fig_path)
+        plt.close()
+        logger.info(f"Export t-SNE -> {fig_path}")
+
+    # Scatter 3D
+    if {"TSNE1", "TSNE2", "TSNE3"}.issubset(tsne_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[tsne_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = ax.scatter(
+            tsne_df["TSNE1"], tsne_df["TSNE2"], tsne_df["TSNE3"],
+            c=codes, s=15, alpha=0.7
+        )
+        ax.set_xlabel("TSNE1")
+        ax.set_ylabel("TSNE2")
+        ax.set_zlabel("TSNE3")
+        ax.set_title("t-SNE 3D (axes factoriels)")
+        fig.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        fig3d_path = output_dir / "tsne_scatter_3D.png"
+        plt.savefig(fig3d_path)
+        plt.close()
+        logger.info(f"Export t-SNE -> {fig3d_path}")
+
+    csv_path = output_dir / "tsne_embeddings.csv"
+    tsne_df.to_csv(csv_path, index=True)
+    logger.info(f"Export t-SNE -> {csv_path}")
+
 
 
 def run_umap(
@@ -1782,9 +1820,11 @@ def main() -> None:
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
         t0 = time.time()
+        output_dir_tsne = output_dir / "TSNE"
         tsne_model, tsne_df = run_tsne(
-            results["FAMD"]["embeddings"], df_active, output_dir, **config.get("tsne", {})
+            results["FAMD"]["embeddings"], df_active, output_dir_tsne, **config.get("tsne", {})
         )
+        export_tsne_results(tsne_df, df_active, output_dir_tsne)
         rt = time.time() - t0
         results["TSNE"] = {
             "embeddings": tsne_df,
