@@ -10,4 +10,5 @@ matplotlib-venn
 prince==0.16
 openpyxl
 umap-learn
+phate
 PyYAML
