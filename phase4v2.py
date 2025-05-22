@@ -18,6 +18,11 @@ import numpy as np
 import umap
 import time
 
+try:  # PaCMAP is optional
+    import pacmap
+except Exception:  # pragma: no cover - PaCMAP may not be installed
+    pacmap = None
+
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
     'compare_baseline': True,
@@ -853,6 +858,116 @@ def export_umap_results(
     csv_path = output_dir / "umap_embeddings.csv"
     umap_df.to_csv(csv_path, index=True)
     logger.info("CSV embeddings UMAP enregistré: %s", csv_path)
+
+
+def run_pacmap(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 2,
+        n_neighbors: int = 10,
+        MN_ratio: float = 0.5,
+        FP_ratio: float = 2.0,
+) -> Tuple[Any, pd.DataFrame]:
+    """Exécute PaCMAP sur les données CRM pour visualiser clients et tendances.
+
+    PaCMAP vise à préserver simultanément les structures locales et globales ;
+    il peut ainsi révéler des regroupements de clients équilibrés, utiles pour
+    la segmentation CRM. L'initialisation ``pca`` améliore la stabilité des
+    résultats. Les paramètres par défaut conviennent généralement (``n_neighbors``
+    agit sur la granularité).
+    """
+
+    logger = logging.getLogger(__name__)
+    if pacmap is None:
+        logger.error(
+            "Le module pacmap n\u2019est pas install\u00e9. Veuillez l\u2019installer pour utiliser PaCMAP."
+        )
+        return None, pd.DataFrame()
+
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = enc.fit_transform(df_active[qual_vars])
+
+    X = np.hstack([X_num, X_cat])
+
+    pacmap_model = pacmap.PaCMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        MN_ratio=MN_ratio,
+        FP_ratio=FP_ratio,
+        init="pca",
+    )
+
+    embedding = pacmap_model.fit_transform(X)
+
+    cols = [f"PACMAP{i + 1}" for i in range(n_components)]
+    pacmap_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
+
+    return pacmap_model, pacmap_df
+
+
+def export_pacmap_results(
+        pacmap_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+) -> None:
+    """Génère les visualisations et CSV pour PaCMAP."""
+
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"PACMAP1", "PACMAP2"}.issubset(pacmap_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
+            "category"
+        ).cat.codes
+        sc = plt.scatter(
+            pacmap_df["PACMAP1"],
+            pacmap_df["PACMAP2"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        plt.xlabel("PACMAP1")
+        plt.ylabel("PACMAP2")
+        plt.title("PaCMAP \u2013 individus (dim 1 vs dim 2)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pacmap_scatter.png")
+        plt.close()
+        logger.info("Projection PaCMAP 2D enregistr\u00e9e")
+
+    if {"PACMAP1", "PACMAP2", "PACMAP3"}.issubset(pacmap_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
+            "category"
+        ).cat.codes
+        sc3 = ax.scatter(
+            pacmap_df["PACMAP1"],
+            pacmap_df["PACMAP2"],
+            pacmap_df["PACMAP3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("PACMAP1")
+        ax.set_ylabel("PACMAP2")
+        ax.set_zlabel("PACMAP3")
+        ax.set_title("PaCMAP \u2013 individus (3D)")
+        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pacmap_scatter_3D.png")
+        plt.close()
+        logger.info("Projection PaCMAP 3D enregistr\u00e9e")
+
+    pacmap_df.to_csv(output_dir / "pacmap_coordinates.csv", index=True)
+    logger.info("CSV PaCMAP enregistr\u00e9")
 
 
 def get_explained_inertia(famd) -> List[float]:
@@ -1854,7 +1969,30 @@ def main() -> None:
         }
         logger.info("UMAP : %d composantes, %.1fs", umap_model.n_components, rt)
 
-    # 6. t-SNE
+    # 6. PaCMAP
+    if "pacmap" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_pacmap = output_dir / "PaCMAP"
+        pacmap_model, pacmap_df = run_pacmap(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_pacmap,
+            **config.get("pacmap", {}),
+        )
+        if pacmap_model is not None:
+            export_pacmap_results(pacmap_df, df_active, output_dir_pacmap)
+            rt = time.time() - t0
+            results["PaCMAP"] = {
+                "embeddings": pacmap_df,
+                "inertia": None,
+                "runtime": rt,
+            }
+            logger.info(
+                f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
+            )
+
+    # 7. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
@@ -1872,14 +2010,14 @@ def main() -> None:
         }
         logger.info("t-SNE : %.1fs", rt)
 
-    # 7. Évaluation croisée
+    # 8. Évaluation croisée
     comp_df = evaluate_methods(results, output_dir, n_clusters=3)
 
-    # 8. PDF comparatif
+    # 9. PDF comparatif
     pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
 
-    # 9. Index CSV des fichiers produits
+    # 10. Index CSV des fichiers produits
     create_index_file(output_dir)
 
 
@@ -1919,7 +2057,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "TSNE"]
+    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "TSNE"]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
@@ -2043,7 +2181,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "TSNE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "TSNE"}:
             method = rel.parts[0]
 
         file_type = {
