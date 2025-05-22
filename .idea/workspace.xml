@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: update YAML with METRICS_DIR">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: update figures' sizes">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/phase4v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4v2.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -147,7 +146,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747899975599</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="phase4v2.py: update figures' sizes">
+      <option name="closed" value="true" />
+      <created>1747906957415</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1747906957415</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -172,8 +179,8 @@
     <MESSAGE value="phase4v2.py: fix ValueError: NA détectés dans df_for_famd" />
     <MESSAGE value="phase4v2.py: new fix ValueError: NA détectés dans df_for_famd" />
     <MESSAGE value="phase4v2.py: fix TypeError: FAMD.__init__() got an unexpected keyword argument 'normalize'" />
-    <MESSAGE value="phase4v2.py: update figures' sizes" />
     <MESSAGE value="phase4v2.py: update YAML with METRICS_DIR" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: update YAML with METRICS_DIR" />
+    <MESSAGE value="phase4v2.py: update figures' sizes" />
+    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: update figures' sizes" />
   </component>
 </project>

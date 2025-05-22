@@ -1145,7 +1145,7 @@ def export_famd_results(
 
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
-        fig = plt.figure(figsize=(8, 6), dpi=200)
+        fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
             codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
@@ -1175,7 +1175,7 @@ def export_famd_results(
     # ─── Cercle des corrélations ─────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[quant_vars].dropna(how="any")
-        plt.figure(figsize=(6, 6), dpi=200)
+        plt.figure(figsize=(12, 6), dpi=200)
         circle = plt.Circle((0, 0), 1, color="grey", fill=False)
         ax = plt.gca()
         ax.add_patch(circle)
@@ -1199,7 +1199,7 @@ def export_famd_results(
     # ─── Modalités qualitatives ──────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         modalities = col_coords.drop(index=quant_vars, errors="ignore")
-        plt.figure(figsize=(8, 6), dpi=200)
+        plt.figure(figsize=(12, 6), dpi=200)
         plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
         for mod in modalities.index:
             plt.text(
@@ -1310,7 +1310,7 @@ def export_mfa_results(
 
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
-        fig = plt.figure(figsize=(8, 6), dpi=200)
+        fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
             codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
@@ -1341,7 +1341,7 @@ def export_mfa_results(
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
         if not qcoords.empty:
-            plt.figure(figsize=(6, 6), dpi=200)
+            plt.figure(figsize=(12, 6), dpi=200)
             circle = plt.Circle((0, 0), 1, color="grey", fill=False)
             ax = plt.gca()
             ax.add_patch(circle)
@@ -1366,7 +1366,7 @@ def export_mfa_results(
     if {"F1", "F2"}.issubset(col_coords.columns):
         modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
         if not modalities.empty:
-            plt.figure(figsize=(8, 6), dpi=200)
+            plt.figure(figsize=(12, 6), dpi=200)
             plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
             for mod in modalities.index:
                 label = mod
@@ -1475,7 +1475,7 @@ def export_pcamix_results(
 
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
-        fig = plt.figure(figsize=(8, 6), dpi=200)
+        fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
             codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
@@ -1506,7 +1506,7 @@ def export_pcamix_results(
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
         if not qcoords.empty:
-            plt.figure(figsize=(6, 6), dpi=200)
+            plt.figure(figsize=(12, 6), dpi=200)
             circle = plt.Circle((0, 0), 1, color="grey", fill=False)
             ax = plt.gca()
             ax.add_patch(circle)
@@ -1531,7 +1531,7 @@ def export_pcamix_results(
     if {"F1", "F2"}.issubset(col_coords.columns):
         modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
         if not modalities.empty:
-            plt.figure(figsize=(8, 6), dpi=200)
+            plt.figure(figsize=(12, 6), dpi=200)
             plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
             for mod in modalities.index:
                 label = mod
