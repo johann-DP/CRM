@@ -627,14 +627,24 @@ def run_tsne(
         - DataFrame des embeddings t-SNE (colonnes "TSNE1","TSNE2", index = ID affaire).
     """
     # 2.1 Instanciation
-    tsne = TSNE(
-        n_components=2,
-        perplexity=perplexity,
-        learning_rate=learning_rate,
-        n_iter=n_iter,
-        random_state=random_state,
-        init='pca'
-    )
+    try:
+        tsne = TSNE(
+            n_components=2,
+            perplexity=perplexity,
+            learning_rate=learning_rate,
+            max_iter=n_iter,
+            random_state=random_state,
+            init='pca'
+        )
+    except TypeError:  # pragma: no cover - older scikit-learn
+        tsne = TSNE(
+            n_components=2,
+            perplexity=perplexity,
+            learning_rate=learning_rate,
+            n_iter=n_iter,
+            random_state=random_state,
+            init='pca'
+        )
 
     # 2.2 Fit & transform
     tsne_results = tsne.fit_transform(embeddings.values)
@@ -1084,9 +1094,11 @@ def evaluate_methods(
 
     rows = []
     for method, info in results_dict.items():
-        inertias = info.get("inertia") or []
+        inertias = info.get("inertia", [])
+        if isinstance(inertias, pd.Series):
+            inertias = inertias.tolist()
         kaiser = sum(1 for eig in inertias if eig > 1)
-        cum_inertia = sum(inertias) if inertias else None
+        cum_inertia = sum(inertias) if len(inertias) > 0 else None
 
         X = info["embeddings"].values
         labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X)
