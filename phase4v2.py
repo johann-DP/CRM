@@ -995,7 +995,8 @@ def export_famd_results(
         col_contrib: pd.DataFrame,
         quant_vars,
         qual_vars,
-        output_dir: str
+        output_dir: Path,
+        df_active: Optional[pd.DataFrame] = None,
 ):
     """
     Exporte les résultats clés de l’AFDM sous forme de CSV pour réutilisation :
@@ -1025,49 +1026,170 @@ def export_famd_results(
         Répertoire où écrire les fichiers CSV.
     """
     logger = logging.getLogger(__name__)
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1) Variance expliquée (éigenvalues et % inertie)
-    if isinstance(inertia, pd.Series):
-        inertia = inertia.values
-    axes = [f"F{i + 1}" for i in range(len(inertia))]
+    # Harmonise les noms des axes
+    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    row_coords = row_coords.copy()
+    row_coords.columns = axes
+    col_coords = col_coords.copy()
+    col_coords.columns = axes
+    col_contrib = col_contrib.copy()
+    col_contrib.columns = axes
+
+    # ─── Éboulis ──────────────────────────────────────────────────────
+    ax_idx = list(range(1, len(inertia) + 1))
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(ax_idx, [v * 100 for v in inertia], edgecolor="black")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis FAMD")
+    plt.xticks(ax_idx)
+    plt.tight_layout()
+    plt.savefig(output_dir / "famd_scree_plot.png")
+    plt.close()
+    logger.info("Scree plot enregistré")
+
+    # ─── Projection individus 2D ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(row_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        scatter = plt.scatter(
+            row_coords["F1"],
+            row_coords["F2"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        plt.xlabel("F1")
+        plt.ylabel("F2")
+        plt.title("FAMD – individus (F1 vs F2)")
+        if codes is not None:
+            plt.colorbar(scatter, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "famd_indiv_plot.png")
+        plt.close()
+        logger.info("Projection F1-F2 enregistrée")
+
+    # ─── Projection individus 3D ──────────────────────────────────────
+    if {"F1", "F2", "F3"}.issubset(row_coords.columns):
+        fig = plt.figure(figsize=(8, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        sc = ax.scatter(
+            row_coords["F1"],
+            row_coords["F2"],
+            row_coords["F3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("F1")
+        ax.set_ylabel("F2")
+        ax.set_zlabel("F3")
+        ax.set_title("FAMD – individus (3D)")
+        if codes is not None:
+            fig.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "famd_indiv_plot_3D.png")
+        plt.close()
+        logger.info("Projection 3D enregistrée")
+
+    # ─── Cercle des corrélations ─────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        qcoords = col_coords.loc[quant_vars].dropna(how="any")
+        plt.figure(figsize=(6, 6), dpi=200)
+        circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+        ax = plt.gca()
+        ax.add_patch(circle)
+        ax.axhline(0, color="grey", lw=0.5)
+        ax.axvline(0, color="grey", lw=0.5)
+        for var in qcoords.index:
+            x, y = qcoords.loc[var, ["F1", "F2"]]
+            ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+            ax.text(x, y, var, fontsize=8)
+        ax.set_xlim(-1.1, 1.1)
+        ax.set_ylim(-1.1, 1.1)
+        ax.set_xlabel("F1")
+        ax.set_ylabel("F2")
+        ax.set_title("FAMD – cercle des corrélations (F1–F2)")
+        ax.set_aspect("equal")
+        plt.tight_layout()
+        plt.savefig(output_dir / "famd_correlation_circle.png")
+        plt.close()
+        logger.info("Cercle des corrélations enregistré")
+
+    # ─── Modalités qualitatives ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        modalities = col_coords.drop(index=quant_vars, errors="ignore")
+        plt.figure(figsize=(8, 6), dpi=200)
+        plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
+        for mod in modalities.index:
+            plt.text(
+                modalities.loc[mod, "F1"],
+                modalities.loc[mod, "F2"],
+                str(mod),
+                fontsize=8,
+            )
+        plt.xlabel("F1")
+        plt.ylabel("F2")
+        plt.title("FAMD – modalités (F1–F2)")
+        plt.tight_layout()
+        plt.savefig(output_dir / "famd_modalities_plot.png")
+        plt.close()
+        logger.info("Modalités enregistrées")
+
+    # ─── Contributions ───────────────────────────────────────────────
+    contrib = col_contrib * 100
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    for i, axis in enumerate(["F1", "F2"]):
+        if axis in contrib.columns:
+            top = contrib[axis].sort_values(ascending=False).head(10)
+            axes[i].bar(top.index.astype(str), top.values)
+            axes[i].set_title(f"Contributions FAMD – Axe {axis[-1]}")
+            axes[i].set_ylabel("% contribution")
+            axes[i].tick_params(axis="x", rotation=45)
+        else:
+            axes[i].axis("off")
+    plt.tight_layout()
+    plt.savefig(output_dir / "famd_contributions.png")
+    plt.close()
+    logger.info("Contributions enregistrées")
+
+    # ─── Exports CSV ─────────────────────────────────────────────────
     var_df = pd.DataFrame({
-        'axe': axes,
-        'variance_%': [100 * v for v in inertia]
+        "axe": axes,
+        "variance_%": [v * 100 for v in inertia],
     })
-    var_df['variance_cum_%'] = var_df['variance_%'].cumsum()
-    path_var = os.path.join(output_dir, "phase4_variance_expliquee.csv")
-    var_df.to_csv(path_var, index=False)
-    logger.info(f"Export variance expliquée → {path_var}")
+    var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
+    var_df.to_csv(output_dir / "famd_explained_variance.csv", index=False)
+    logger.info("CSV variance expliqué enregistré")
 
-    # 2) Coordonnées des individus
-    path_rows = os.path.join(output_dir, "phase4_individus_coordonnees.csv")
-    row_coords.to_csv(path_rows, index=True)
-    logger.info(f"Export coordonnées individus → {path_rows}")
+    row_coords.to_csv(output_dir / "famd_indiv_coords.csv", index=True)
+    logger.info("CSV coordonnées individus enregistré")
 
-    # 3) Coordonnées des variables/modalités
-    quant_coords = col_coords.loc[quant_vars]
-    qual_coords = col_coords.loc[qual_vars]
+    vars_coords = col_coords.loc[quant_vars]
+    vars_coords.to_csv(output_dir / "famd_variables_coords.csv", index=True)
+    logger.info("CSV coordonnées variables enregistré")
 
-    path_quant = os.path.join(output_dir, "phase4_variables_coordonnees.csv")
-    quant_coords.to_csv(path_quant, index=True)
-    logger.info(f"Export coords variables quantitatives → {path_quant}")
+    mods_coords = col_coords.drop(index=quant_vars, errors="ignore")
+    mods_coords.to_csv(output_dir / "famd_modalities_coords.csv", index=True)
+    logger.info("CSV coordonnées modalités enregistré")
 
-    path_qual = os.path.join(output_dir, "phase4_modalites_coordonnees.csv")
-    qual_coords.to_csv(path_qual, index=True)
-    logger.info(f"Export coords modalités qualitatives → {path_qual}")
+    contrib.to_csv(output_dir / "famd_contributions.csv", index=True)
+    logger.info("CSV contributions enregistré")
 
-    # 4) Contributions aux axes
-    contrib_df = col_contrib * 100
-    contrib_df.index.name = 'variable_or_modalite'
-    path_contrib = os.path.join(output_dir, "phase4_contributions_variables.csv")
-    contrib_df.to_csv(path_contrib, index=True)
-    logger.info(f"Export contributions variables/modalités → {path_contrib}")
-
-    # (Optionnel) contributions détaillées par modalité
-    # -- non implémenté par défaut, activer si besoin --
-
-    logger.info("Export des résultats AFDM terminé.")
+    logger.info("Export des résultats FAMD terminé")
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -1242,6 +1364,18 @@ def main() -> None:
             famd_model.n_components,
             sum(famd_inertia) * 100 if famd_inertia is not None else 0,
             rt,
+        )
+        output_dir_famd = output_dir / "FAMD"
+        export_famd_results(
+            famd_model,
+            famd_inertia,
+            famd_rows,
+            famd_cols,
+            famd_contrib,
+            quant_vars,
+            qual_vars,
+            output_dir_famd,
+            df_active=df_active,
         )
 
     # 3. MFA
