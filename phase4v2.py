@@ -1625,6 +1625,9 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
 
 def evaluate_methods(
         results_dict: Dict[str, Dict[str, Any]],
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
         output_dir: Path,
         n_clusters: int = 3,
 ) -> pd.DataFrame:
@@ -1632,7 +1635,20 @@ def evaluate_methods(
 
     from sklearn.cluster import KMeans
     from sklearn.metrics import silhouette_score
+    from sklearn.manifold import trustworthiness
     import seaborn as sns
+
+    try:
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+    X_cat = encoder.fit_transform(df_active[qual_vars])
+    X_full = pd.DataFrame(
+        np.hstack([X_num, X_cat]),
+        index=df_active.index,
+    )
 
     rows = []
     for method, info in results_dict.items():
@@ -1644,10 +1660,15 @@ def evaluate_methods(
         kaiser = sum(1 for eig in inertias if eig > 1)
         cum_inertia = sum(inertias) if len(inertias) > 0 else None
 
-        X = info["embeddings"].values
+        emb = info["embeddings"]
+        X = emb.values
         labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X)
         sil = silhouette_score(X, labels)
         dunn = dunn_index(X, labels)
+
+        X_high = X_full.loc[emb.index].values
+        T = trustworthiness(X_high, X, n_neighbors=10)
+        C = trustworthiness(X, X_high, n_neighbors=10)
         runtime = info.get("runtime")
 
         rows.append(
@@ -1657,6 +1678,8 @@ def evaluate_methods(
                 "cum_inertia": cum_inertia,
                 "silhouette": sil,
                 "dunn": dunn,
+                "trustworthiness": T,
+                "continuity": C,
                 "runtime_s": runtime,
             }
         )
@@ -1706,6 +1729,9 @@ def main() -> None:
             if yaml is None:
                 raise RuntimeError("PyYAML est requis pour lire ce fichier")
             config = yaml.safe_load(fh)
+
+    import copy
+    effective_config = copy.deepcopy(config)
 
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1763,6 +1789,17 @@ def main() -> None:
             sum(famd_inertia) * 100 if famd_inertia is not None else 0,
             rt,
         )
+        famd_weight = config.get("famd", {}).get("famd_cfg", {}).get("weighting", "balanced")
+        logger.info(
+            "Paramètres FAMD: n_components=%s, weighting=%s",
+            famd_model.n_components,
+            famd_weight,
+        )
+        effective_config.setdefault("famd", {})
+        effective_config["famd"].update({
+            "n_components": famd_model.n_components,
+            "famd_cfg": {"weighting": famd_weight},
+        })
         output_dir_famd = output_dir / "FAMD"
         export_famd_results(
             famd_model,
@@ -1795,6 +1832,9 @@ def main() -> None:
             mfa_model.explained_inertia_.sum() * 100,
             rt,
         )
+        logger.info("Paramètres MFA: n_components=%s", mfa_model.n_components)
+        effective_config.setdefault("mfa", {})
+        effective_config["mfa"].update({"n_components": mfa_model.n_components})
         export_mfa_results(
             mfa_model,
             mfa_rows,
@@ -1823,6 +1863,9 @@ def main() -> None:
             sum(mdpca_inertia) * 100,
             rt,
         )
+        logger.info("Paramètres PCAmix: n_components=%s", mdpca_model.n_components)
+        effective_config.setdefault("pcamix", {})
+        effective_config["pcamix"].update({"n_components": mdpca_model.n_components})
         export_pcamix_results(
             mdpca_model,
             mdpca_inertia,
@@ -1852,7 +1895,23 @@ def main() -> None:
             "inertia": None,
             "runtime": rt,
         }
-        logger.info("UMAP : %d composantes, %.1fs", umap_model.n_components, rt)
+        logger.info(
+            "UMAP : %d composantes, %.1fs", umap_model.n_components, rt
+        )
+        logger.info(
+            "Paramètres UMAP: n_neighbors=%s, min_dist=%s, random_state=%s",
+            umap_model.n_neighbors,
+            umap_model.min_dist,
+            umap_model.random_state,
+        )
+        effective_config.setdefault("umap", {})
+        effective_config["umap"].update({
+            "n_neighbors": umap_model.n_neighbors,
+            "min_dist": umap_model.min_dist,
+            "n_components": umap_model.n_components,
+            "random_state": umap_model.random_state,
+            "n_jobs": umap_model.n_jobs,
+        })
 
     # 6. t-SNE
     if "tsne" in config.get("methods", []):
@@ -1861,7 +1920,10 @@ def main() -> None:
         t0 = time.time()
         output_dir_tsne = output_dir / "TSNE"
         tsne_model, tsne_df = run_tsne(
-            results["FAMD"]["embeddings"], df_active, output_dir_tsne, **config.get("tsne", {})
+            results["FAMD"]["embeddings"],
+            df_active,
+            output_dir_tsne,
+            **config.get("tsne", {}),
         )
         export_tsne_results(tsne_df, df_active, output_dir_tsne)
         rt = time.time() - t0
@@ -1871,9 +1933,30 @@ def main() -> None:
             "runtime": rt,
         }
         logger.info("t-SNE : %.1fs", rt)
+        logger.info(
+            "Paramètres t-SNE: perplexity=%s, learning_rate=%s, random_state=%s",
+            tsne_model.perplexity,
+            tsne_model.learning_rate,
+            tsne_model.random_state,
+        )
+        effective_config.setdefault("tsne", {})
+        effective_config["tsne"].update({
+            "perplexity": tsne_model.perplexity,
+            "learning_rate": tsne_model.learning_rate,
+            "n_iter": tsne_model.n_iter,
+            "random_state": tsne_model.random_state,
+            "n_components": tsne_model.n_components,
+        })
 
     # 7. Évaluation croisée
-    comp_df = evaluate_methods(results, output_dir, n_clusters=3)
+    comp_df = evaluate_methods(
+        results,
+        df_active,
+        quant_vars,
+        qual_vars,
+        output_dir,
+        n_clusters=3,
+    )
 
     # 8. PDF comparatif
     pdf_path = generate_pdf(output_dir)
@@ -1881,6 +1964,12 @@ def main() -> None:
 
     # 9. Index CSV des fichiers produits
     create_index_file(output_dir)
+
+    # 10. Sauvegarde de la configuration effective
+    eff_cfg_path = output_dir / "phase4_effective_config.json"
+    with open(eff_cfg_path, "w", encoding="utf-8") as fh:
+        json.dump(effective_config, fh, indent=2, ensure_ascii=False)
+    logger.info(f"Configuration effective enregistrée : {eff_cfg_path.name}")
 
 
 def generate_report_pdf(output_dir: Path) -> Path:
@@ -1919,7 +2008,17 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "TSNE"]
+    methods = [
+        "FAMD",
+        "MFA",
+        "PCAmix",
+        "PCA",
+        "MCA",
+        "UMAP",
+        "TSNE",
+        "PaCMAP",
+        "PHATE",
+    ]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
@@ -2043,7 +2142,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "TSNE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PCA", "MCA", "PaCMAP", "PHATE"}:
             method = rel.parts[0]
 
         file_type = {
