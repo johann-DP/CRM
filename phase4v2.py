@@ -703,8 +703,13 @@ def run_umap(
     X_num = StandardScaler().fit_transform(X_num)
 
     # 2.2 Encodage one‐hot des qualitatives
-    X_cat = OneHotEncoder(sparse=False, handle_unknown='ignore') \
-        .fit_transform(df_active[qual_vars])
+    try:
+        # scikit-learn >= 1.2
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    except TypeError:  # pragma: no cover - older scikit-learn
+        encoder = OneHotEncoder(sparse=False, handle_unknown='ignore')
+
+    X_cat = encoder.fit_transform(df_active[qual_vars])
 
     # 2.3 Fusion des données
     X_mix = pd.DataFrame(
