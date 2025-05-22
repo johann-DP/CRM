@@ -585,8 +585,8 @@ def run_pcamix(
     plt.title("Éboulis PCAmix")
     plt.xticks(axes)
     plt.tight_layout()
-    (output_dir / "phase4_pcamix_scree_plot.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "phase4_pcamix_scree_plot.png")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / "pcamix_scree_plot.png")
     plt.close()
 
     row_coords = md_pca.row_coordinates(df_mix)
@@ -600,9 +600,6 @@ def run_pcamix(
     else:
         logger.warning("Aucune méthode de coordonnées colonnes disponible")
         col_coords = pd.DataFrame()
-
-    row_coords.to_csv(output_dir / "phase4_pcamix_individus_coord.csv", index=True)
-    col_coords.to_csv(output_dir / "phase4_pcamix_modalites_coord.csv", index=True)
 
     return md_pca, inertia, row_coords, col_coords
 
@@ -1391,6 +1388,167 @@ def export_mfa_results(
     logger.info("Export des résultats MFA terminé")
 
 
+def export_pcamix_results(
+        mdpca_model,
+        mdpca_inertia: pd.Series,
+        row_coords: pd.DataFrame,
+        col_coords: pd.DataFrame,
+        output_dir: Path,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        df_active: Optional[pd.DataFrame] = None,
+) -> None:
+    """Exports figures and CSV results for PCAmix."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    row_coords = row_coords.copy()
+    row_coords.columns = axes
+    col_coords = col_coords.copy()
+    col_coords.columns = axes[:col_coords.shape[1]]
+
+    contrib = (col_coords ** 2)
+    contrib = contrib.div(contrib.sum(axis=0), axis=1) * 100
+
+    # ─── Projection individus 2D ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(row_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        sc = plt.scatter(
+            row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7
+        )
+        plt.xlabel("F1")
+        plt.ylabel("F2")
+        plt.title("PCAmix – individus (F1–F2)")
+        if codes is not None:
+            plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pcamix_indiv_plot.png")
+        plt.close()
+        logger.info("Projection individus PCAmix F1-F2 enregistrée")
+
+    # ─── Projection individus 3D ──────────────────────────────────────
+    if {"F1", "F2", "F3"}.issubset(row_coords.columns):
+        fig = plt.figure(figsize=(8, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        sc = ax.scatter(
+            row_coords["F1"],
+            row_coords["F2"],
+            row_coords["F3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("F1")
+        ax.set_ylabel("F2")
+        ax.set_zlabel("F3")
+        ax.set_title("PCAmix – individus (3D)")
+        if codes is not None:
+            fig.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pcamix_indiv_plot_3D.png")
+        plt.close()
+        logger.info("Projection individus PCAmix 3D enregistrée")
+
+    # ─── Cercle des corrélations ─────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
+        if not qcoords.empty:
+            plt.figure(figsize=(6, 6), dpi=200)
+            circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+            ax = plt.gca()
+            ax.add_patch(circle)
+            ax.axhline(0, color="grey", lw=0.5)
+            ax.axvline(0, color="grey", lw=0.5)
+            for var in qcoords.index:
+                x, y = qcoords.loc[var, ["F1", "F2"]]
+                ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+                ax.text(x, y, var, fontsize=8)
+            ax.set_xlim(-1.1, 1.1)
+            ax.set_ylim(-1.1, 1.1)
+            ax.set_xlabel("F1")
+            ax.set_ylabel("F2")
+            ax.set_title("PCAmix – cercle des corrélations")
+            ax.set_aspect("equal")
+            plt.tight_layout()
+            plt.savefig(output_dir / "pcamix_correlation_circle.png")
+            plt.close()
+            logger.info("Cercle des corrélations PCAmix enregistré")
+
+    # ─── Modalités qualitatives ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
+        if not modalities.empty:
+            plt.figure(figsize=(8, 6), dpi=200)
+            plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
+            for mod in modalities.index:
+                label = mod
+                if "_" in mod:
+                    var, val = mod.split("_", 1)
+                    label = f"{var}={val}"
+                plt.text(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], label, fontsize=8)
+            plt.xlabel("F1")
+            plt.ylabel("F2")
+            plt.title("PCAmix – modalités (F1–F2)")
+            plt.tight_layout()
+            plt.savefig(output_dir / "pcamix_modalities_plot.png")
+            plt.close()
+            logger.info("Modalités PCAmix enregistrées")
+
+    # ─── Contributions ───────────────────────────────────────────────
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    for i, axis in enumerate(["F1", "F2"]):
+        if axis in contrib.columns:
+            top = contrib[axis].sort_values(ascending=False).head(10)
+            axes_plot[i].bar(top.index.astype(str), top.values)
+            axes_plot[i].set_title(f"Contributions PCAmix – Axe {axis[-1]}")
+            axes_plot[i].set_ylabel("% contribution")
+            axes_plot[i].tick_params(axis="x", rotation=45)
+        else:
+            axes_plot[i].axis("off")
+    plt.tight_layout()
+    plt.savefig(output_dir / "pcamix_contributions.png")
+    plt.close()
+    logger.info("Contributions PCAmix enregistrées")
+
+    # ─── Exports CSV ─────────────────────────────────────────────────
+    var_df = pd.DataFrame({
+        "axe": axes,
+        "variance_%": [v * 100 for v in mdpca_inertia],
+    })
+    var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
+    var_df.to_csv(output_dir / "pcamix_explained_variance.csv", index=False)
+    logger.info("CSV variance expliqué PCAmix enregistré")
+
+    row_coords.to_csv(output_dir / "pcamix_indiv_coords.csv", index=True)
+    logger.info("CSV coordonnées individus PCAmix enregistré")
+
+    vars_coords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
+    vars_coords.to_csv(output_dir / "pcamix_variables_coords.csv", index=True)
+    logger.info("CSV coordonnées variables PCAmix enregistré")
+
+    mods_coords = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
+    mods_coords.to_csv(output_dir / "pcamix_modalities_coords.csv", index=True)
+    logger.info("CSV coordonnées modalités PCAmix enregistré")
+
+    contrib.to_csv(output_dir / "pcamix_contributions.csv", index=True)
+    logger.info("CSV contributions PCAmix enregistré")
+
+    logger.info("Export des résultats PCAmix terminé")
+
+
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
     """Calcule l'indice de Dunn pour un partitionnement."""
     from scipy.spatial.distance import pdist, squareform
@@ -1608,8 +1766,9 @@ def main() -> None:
     # 4. PCAmix
     if "pcamix" in config.get("methods", []):
         t0 = time.time()
-        mdpca_model, mdpca_inertia, mdpca_rows, _ = run_pcamix(
-            df_active, quant_vars, qual_vars, output_dir, **config.get("pcamix", {})
+        output_dir_pcamix = output_dir / "PCAmix"
+        mdpca_model, mdpca_inertia, mdpca_rows, mdpca_cols = run_pcamix(
+            df_active, quant_vars, qual_vars, output_dir_pcamix, **config.get("pcamix", {})
         )
         rt = time.time() - t0
         results["PCAmix"] = {
@@ -1622,6 +1781,16 @@ def main() -> None:
             mdpca_model.n_components,
             sum(mdpca_inertia) * 100,
             rt,
+        )
+        export_pcamix_results(
+            mdpca_model,
+            mdpca_inertia,
+            mdpca_rows,
+            mdpca_cols,
+            output_dir_pcamix,
+            quant_vars,
+            qual_vars,
+            df_active=df_active,
         )
 
     # 5. UMAP
