@@ -14,6 +14,13 @@ python phase4v2.py --config config.yaml
 Make sure the dependencies listed in `requirements.txt` are installed. The
 package `umap-learn` is required for the UMAP functionality.
 
+### UMAP warnings
+
+UMAP emits a warning when `random_state` is provided while using multiple
+threads. The provided configuration sets `n_jobs: 1` whenever a seed is used to
+avoid this warning and keep results reproducible. You can remove the seed if you
+prefer parallelism over determinism.
+
 ## Running `phase4_famd.py`
 
 For a streamlined FAMD-only pipeline without a configuration file, you can use
