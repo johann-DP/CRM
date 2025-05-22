@@ -17,7 +17,9 @@ for FAMD/MFA/PCAmix, neighbors and distance for UMAP, perplexity for t-SNE).
 When disabled, the script uses the provided values or sensible defaults.
 
 Make sure the dependencies listed in `requirements.txt` are installed. The
-package `umap-learn` is required for the UMAP functionality.
+package `umap-learn` is required for the UMAP functionality. `phate` and
+`pacmap` are optional; install them if you want to run the corresponding
+analyses.
 
 ### UMAP warnings
 

@@ -18,6 +18,11 @@ import numpy as np
 import umap
 import time
 
+try:  # PHATE is optional
+    import phate
+except Exception:  # pragma: no cover - PHATE may not be installed
+    phate = None
+
 try:  # PaCMAP is optional
     import pacmap
 except Exception:  # pragma: no cover - PaCMAP may not be installed
@@ -1071,6 +1076,108 @@ def export_pacmap_results(
 
     pacmap_df.to_csv(output_dir / "pacmap_coordinates.csv", index=True)
     logger.info("CSV PaCMAP enregistr\u00e9")
+
+
+def run_phate(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 2,
+) -> Tuple[Any | None, pd.DataFrame]:
+    """Exécute PHATE sur les données CRM pour détecter des trajectoires potentielles.
+
+    PHATE est particulièrement adapté pour révéler des évolutions progressives,
+    par exemple le passage de prospect à client fidèle. Il s'appuie sur un
+    graphe de voisins et une diffusion pour préserver la structure globale. Les
+    valeurs par défaut (``knn=5``, ``t='auto'``) conviennent généralement aux
+    volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs et ``random_state=42``
+    assure la reproductibilité.
+    """
+
+    logger = logging.getLogger(__name__)
+    if phate is None:
+        logger.error(
+            "Le module PHATE n'est pas installé. Installez-le pour utiliser l'analyse PHATE."
+        )
+        return None, pd.DataFrame()
+
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = enc.fit_transform(df_active[qual_vars])
+
+    X_mix = np.hstack([X_num, X_cat])
+
+    phate_operator = phate.PHATE(
+        n_components=n_components,
+        n_jobs=-1,
+        random_state=42,
+    )
+
+    embedding = phate_operator.fit_transform(X_mix)
+
+    cols = [f"PHATE{i + 1}" for i in range(n_components)]
+    phate_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
+
+    return phate_operator, phate_df
+
+
+def export_phate_results(
+        phate_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+) -> None:
+    """Génère les visualisations et CSV pour PHATE."""
+
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = plt.scatter(
+            phate_df["PHATE1"],
+            phate_df["PHATE2"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        plt.xlabel("PHATE1")
+        plt.ylabel("PHATE2")
+        plt.title("PHATE – individus (dim 1–2)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "phate_scatter.png")
+        plt.close()
+        logger.info("Projection PHATE 2D enregistrée")
+
+    if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc3 = ax.scatter(
+            phate_df["PHATE1"],
+            phate_df["PHATE2"],
+            phate_df["PHATE3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("PHATE1")
+        ax.set_ylabel("PHATE2")
+        ax.set_zlabel("PHATE3")
+        ax.set_title("PHATE – individus (3D)")
+        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "phate_scatter_3D.png")
+        plt.close()
+        logger.info("Projection PHATE 3D enregistrée")
+
+    phate_df.to_csv(output_dir / "phate_coordinates.csv", index=True)
+    logger.info("CSV PHATE enregistré")
 
 
 def get_explained_inertia(famd) -> List[float]:
@@ -2144,7 +2251,28 @@ def main() -> None:
                 f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
             )
 
-    # 7. t-SNE
+    # 7. PHATE
+    if "phate" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_phate = output_dir / "PHATE"
+        phate_op, phate_df = run_phate(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_phate,
+            **config.get("phate", {}),
+        )
+        if phate_op is not None:
+            export_phate_results(phate_df, df_active, output_dir_phate)
+            rt = time.time() - t0
+            results["PHATE"] = {
+                "embeddings": phate_df,
+                "inertia": None,
+                "runtime": rt,
+            }
+            logger.info(f"PHATE : r\u00e9alis\u00e9 en {rt:.1f}s")
+
+    # 8. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
@@ -2217,7 +2345,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "TSNE"]
+    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
@@ -2341,7 +2469,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "TSNE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"}:
             method = rel.parts[0]
 
         file_type = {
