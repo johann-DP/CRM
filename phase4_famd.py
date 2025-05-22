@@ -200,7 +200,13 @@ def sanity_check(df: pd.DataFrame, quant_vars: list, qual_vars: list):
 
 
 # ----------------------------------------------------------------------
-def run_famd(df: pd.DataFrame, quant_vars: list, qual_vars: list, n_components: int = None):
+def run_famd(
+    df: pd.DataFrame,
+    quant_vars: list,
+    qual_vars: list,
+    n_components: int = None,
+    optimize: bool = False,
+):
     """
     Module 4 : FAMD (ou fallback PCA manuel).
     Retourne 4 objets : inertia (list), row_coords (DataFrame),
@@ -222,7 +228,27 @@ def run_famd(df: pd.DataFrame, quant_vars: list, qual_vars: list, n_components: 
 
     # Combine
     X_mix = pd.concat([Xq_scaled, Xc_dummies], axis=1)
-    n_comp = n_components or min(X_mix.shape)
+    n_comp = n_components
+
+    if optimize and n_components is None:
+        n_init = min(X_mix.shape)
+        try:
+            import prince
+            tmp = prince.FAMD(n_components=n_init, random_state=42).fit(X_mix)
+            inertia_tmp = tmp.eigenvalues_ / sum(tmp.eigenvalues_)
+        except Exception:
+            pca_tmp = PCA(n_components=n_init, random_state=42)
+            pca_tmp.fit(X_mix)
+            inertia_tmp = pca_tmp.explained_variance_ratio_
+        cum = np.cumsum(inertia_tmp)
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        logger.info(
+            "FAMD auto: %d composantes retenues (%.1f%% variance cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100,
+        )
+
+    n_comp = n_comp or min(X_mix.shape)
 
     # Tentative prince.FAMD
     try:
