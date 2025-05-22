@@ -4,7 +4,8 @@
 input_file: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx'
 output_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
-methods: [famd, mfa, pcamix, umap, tsne]
+optimize_params: false
+methods: [famd, mfa, pcamix, umap, pacmap, phate, tsne]
 
 # Method specific options (can be left empty)
 famd: {}
@@ -15,4 +16,6 @@ umap:
   # this case, preventing a warning from the library.
   random_state: 42
   n_jobs: 1
+pacmap: {}
+phate: {}
 tsne: {}
