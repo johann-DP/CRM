@@ -720,6 +720,8 @@ def run_umap(
         - DataFrame des embeddings, colonnes ['UMAP1', 'UMAP2' (, 'UMAP3')].
     """
 
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # 2.1 Prétraitement des quantitatives
     X_num = df_active[quant_vars].copy()
     X_num = StandardScaler().fit_transform(X_num)
@@ -765,11 +767,13 @@ def run_umap(
     umap_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
 
     # 2.6 Scatterplot coloré par statut commercial
+    codes = df_active["Statut commercial"].astype("category").cat.codes
     plt.figure(figsize=(12, 6), dpi=200)
     scatter = plt.scatter(
         umap_df["UMAP1"], umap_df["UMAP2"],
-        c=df_active["Statut commercial"].astype('category').cat.codes,
-        s=10, alpha=0.7
+        c=codes,
+        s=10,
+        alpha=0.7,
     )
     plt.xlabel("UMAP1")
     plt.ylabel("UMAP2")
@@ -777,12 +781,38 @@ def run_umap(
     plt.colorbar(scatter, ticks=range(len(df_active["Statut commercial"].unique())),
                  label="Statut commercial")
     plt.tight_layout()
-    (output_dir / "phase4_umap_scatter.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "phase4_umap_scatter.png")
+    plt.savefig(output_dir / "umap_scatter.png")
     plt.close()
+    logger.info("Projection UMAP 2D enregistrée: %s", output_dir / "umap_scatter.png")
+
+    # 2.6bis Scatter 3D si demandé
+    if n_components >= 3 and {"UMAP1", "UMAP2", "UMAP3"}.issubset(umap_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        sc3d = ax.scatter(
+            umap_df["UMAP1"],
+            umap_df["UMAP2"],
+            umap_df["UMAP3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("UMAP1")
+        ax.set_ylabel("UMAP2")
+        ax.set_zlabel("UMAP3")
+        ax.set_title("Projection UMAP 3D")
+        fig.colorbar(sc3d, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "umap_scatter_3D.png")
+        plt.close()
+        logger.info(
+            "Projection UMAP 3D enregistrée: %s",
+            output_dir / "umap_scatter_3D.png",
+        )
 
     # 2.7 Export CSV
-    umap_df.to_csv(output_dir / "phase4_umap_embeddings.csv", index=True)
+    umap_df.to_csv(output_dir / "umap_embeddings.csv", index=True)
+    logger.info("CSV embeddings UMAP enregistré: %s", output_dir / "umap_embeddings.csv")
 
     return reducer, umap_df
 
@@ -1597,8 +1627,13 @@ def main() -> None:
     # 5. UMAP
     if "umap" in config.get("methods", []):
         t0 = time.time()
+        output_dir_umap = output_dir / "UMAP"
         umap_model, umap_df = run_umap(
-            df_active, quant_vars, qual_vars, output_dir, **config.get("umap", {})
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_umap,
+            **config.get("umap", {}),
         )
         rt = time.time() - t0
         results["UMAP"] = {
@@ -1637,7 +1672,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
 
     The PDF will include the following images if present in ``output_dir``:
     ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
-    ``phase4_umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``UMAP/umap_scatter.png``, ``phase4_tsne_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
@@ -1645,7 +1680,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
     figures = [
         str(Path("MFA") / "mfa_scree_plot.png"),
         "phase4_pcamix_scree_plot.png",
-        "phase4_umap_scatter.png",
+        str(Path("UMAP") / "umap_scatter.png"),
         "phase4_tsne_scatter.png",
         "methods_heatmap.png",
     ]
