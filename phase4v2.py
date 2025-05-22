@@ -530,7 +530,7 @@ def run_mfa(
     plt.title("Éboulis MFA")
     plt.xticks(axes)
     plt.tight_layout()
-    plt.savefig(output_dir / "phase4_mfa_scree_plot.png")
+    plt.savefig(output_dir / "mfa_scree_plot.png")
     plt.close()
 
     return mfa, row_coords
@@ -1192,6 +1192,175 @@ def export_famd_results(
     logger.info("Export des résultats FAMD terminé")
 
 
+def export_mfa_results(
+        mfa_model,
+        row_coords: pd.DataFrame,
+        output_dir: Path,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        df_active: Optional[pd.DataFrame] = None,
+):
+    """Exports figures and CSV results for MFA."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
+    row_coords = row_coords.copy()
+    row_coords.columns = axes
+
+    col_coords = getattr(mfa_model, "column_coordinates_", pd.DataFrame()).copy()
+    if not col_coords.empty:
+        col_coords.columns = axes[:col_coords.shape[1]]
+
+    col_contrib = getattr(mfa_model, "column_contributions_", pd.DataFrame()).copy()
+    if col_contrib.empty and not col_coords.empty:
+        tmp = col_coords ** 2
+        col_contrib = tmp.div(tmp.sum(axis=0), axis=1)
+    if not col_contrib.empty:
+        col_contrib.columns = axes[:col_contrib.shape[1]]
+
+    # ─── Projection individus 2D ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(row_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        sc = plt.scatter(
+            row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7
+        )
+        plt.xlabel("F1")
+        plt.ylabel("F2")
+        plt.title("MFA – individus (F1–F2)")
+        if codes is not None:
+            plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mfa_indiv_plot.png")
+        plt.close()
+        logger.info("Projection MFA F1-F2 enregistrée")
+
+    # ─── Projection individus 3D ──────────────────────────────────────
+    if {"F1", "F2", "F3"}.issubset(row_coords.columns):
+        fig = plt.figure(figsize=(8, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        if df_active is not None and "Statut commercial" in df_active.columns:
+            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
+                "category"
+            ).cat.codes
+        else:
+            codes = None
+        sc = ax.scatter(
+            row_coords["F1"],
+            row_coords["F2"],
+            row_coords["F3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("F1")
+        ax.set_ylabel("F2")
+        ax.set_zlabel("F3")
+        ax.set_title("MFA – individus (3D)")
+        if codes is not None:
+            fig.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mfa_indiv_plot_3D.png")
+        plt.close()
+        logger.info("Projection MFA 3D enregistrée")
+
+    # ─── Cercle des corrélations ─────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
+        if not qcoords.empty:
+            plt.figure(figsize=(6, 6), dpi=200)
+            circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+            ax = plt.gca()
+            ax.add_patch(circle)
+            ax.axhline(0, color="grey", lw=0.5)
+            ax.axvline(0, color="grey", lw=0.5)
+            for var in qcoords.index:
+                x, y = qcoords.loc[var, ["F1", "F2"]]
+                ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+                ax.text(x, y, var, fontsize=8)
+            ax.set_xlim(-1.1, 1.1)
+            ax.set_ylim(-1.1, 1.1)
+            ax.set_xlabel("F1")
+            ax.set_ylabel("F2")
+            ax.set_title("MFA – cercle des corrélations")
+            ax.set_aspect("equal")
+            plt.tight_layout()
+            plt.savefig(output_dir / "mfa_correlation_circle.png")
+            plt.close()
+            logger.info("Cercle des corrélations MFA enregistré")
+
+    # ─── Modalités qualitatives ──────────────────────────────────────
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
+        if not modalities.empty:
+            plt.figure(figsize=(8, 6), dpi=200)
+            plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
+            for mod in modalities.index:
+                label = mod
+                if "_" in mod:
+                    var, val = mod.split("_", 1)
+                    label = f"{var}={val}"
+                plt.text(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], label, fontsize=8)
+            plt.xlabel("F1")
+            plt.ylabel("F2")
+            plt.title("MFA – modalités (F1–F2)")
+            plt.tight_layout()
+            plt.savefig(output_dir / "mfa_modalities_plot.png")
+            plt.close()
+            logger.info("Modalités MFA enregistrées")
+
+    # ─── Contributions ───────────────────────────────────────────────
+    contrib = col_contrib * 100
+    if not contrib.empty:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+        for i, axis in enumerate(["F1", "F2"]):
+            if axis in contrib.columns:
+                top = contrib[axis].sort_values(ascending=False).head(10)
+                axes[i].bar(top.index.astype(str), top.values)
+                axes[i].set_title(f"Contributions MFA – Axe {axis[-1]}")
+                axes[i].set_ylabel("% contribution")
+                axes[i].tick_params(axis="x", rotation=45)
+            else:
+                axes[i].axis("off")
+        plt.tight_layout()
+        plt.savefig(output_dir / "mfa_contributions.png")
+        plt.close()
+        logger.info("Contributions MFA enregistrées")
+
+    # ─── Exports CSV ─────────────────────────────────────────────────
+    var_df = pd.DataFrame({
+        "axe": axes,
+        "variance_%": [v * 100 for v in mfa_model.explained_inertia_],
+    })
+    var_df["variance_cum_%"] = var_df["variance_%"].cumsum()
+    var_df.to_csv(output_dir / "mfa_explained_variance.csv", index=False)
+    logger.info("CSV variance expliqué MFA enregistré")
+
+    row_coords.to_csv(output_dir / "mfa_indiv_coords.csv", index=True)
+    logger.info("CSV coordonnées individus MFA enregistré")
+
+    if not col_coords.empty:
+        vars_coords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
+        vars_coords.to_csv(output_dir / "mfa_variables_coords.csv", index=True)
+        logger.info("CSV coordonnées variables MFA enregistré")
+
+        mods_coords = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
+        mods_coords.to_csv(output_dir / "mfa_modalities_coords.csv", index=True)
+        logger.info("CSV coordonnées modalités MFA enregistré")
+
+    if not contrib.empty:
+        contrib.to_csv(output_dir / "mfa_contributions.csv", index=True)
+        logger.info("CSV contributions MFA enregistré")
+
+    logger.info("Export des résultats MFA terminé")
+
+
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
     """Calcule l'indice de Dunn pour un partitionnement."""
     from scipy.spatial.distance import pdist, squareform
@@ -1381,8 +1550,9 @@ def main() -> None:
     # 3. MFA
     if "mfa" in config.get("methods", []):
         t0 = time.time()
+        output_dir_mfa = output_dir / "MFA"
         mfa_model, mfa_rows = run_mfa(
-            df_active, quant_vars, qual_vars, output_dir, **config.get("mfa", {})
+            df_active, quant_vars, qual_vars, output_dir_mfa, **config.get("mfa", {})
         )
         rt = time.time() - t0
         results["MFA"] = {
@@ -1395,6 +1565,14 @@ def main() -> None:
             mfa_model.n_components,
             mfa_model.explained_inertia_.sum() * 100,
             rt,
+        )
+        export_mfa_results(
+            mfa_model,
+            mfa_rows,
+            output_dir_mfa,
+            quant_vars,
+            qual_vars,
+            df_active=df_active,
         )
 
     # 4. PCAmix
@@ -1458,14 +1636,14 @@ def generate_report_pdf(output_dir: Path) -> Path:
     """Assemble un PDF de synthèse à partir des figures générées.
 
     The PDF will include the following images if present in ``output_dir``:
-    ``phase4_mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
+    ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
     ``phase4_umap_scatter.png``, ``phase4_tsne_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
     pdf_path = output_dir / "phase4_report.pdf"
     figures = [
-        "phase4_mfa_scree_plot.png",
+        str(Path("MFA") / "mfa_scree_plot.png"),
         "phase4_pcamix_scree_plot.png",
         "phase4_umap_scatter.png",
         "phase4_tsne_scatter.png",
@@ -1473,7 +1651,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
     ]
     with PdfPages(pdf_path) as pdf:
         for name in figures:
-            img_path = output_dir / name
+            img_path = output_dir / Path(name)
             if not img_path.exists():
                 logger.warning(f"Figure manquante: {name}")
                 continue
