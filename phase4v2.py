@@ -1872,7 +1872,7 @@ def main() -> None:
     comp_df = evaluate_methods(results, output_dir, n_clusters=3)
 
     # 8. PDF comparatif
-    pdf_path = generate_report_pdf(output_dir)
+    pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
 
 
@@ -1908,48 +1908,66 @@ def generate_report_pdf(output_dir: Path) -> Path:
     return pdf_path
 
 
-def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf"):
+def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path:
     logger = logging.getLogger(__name__)
-    """
-    Concatène tous les PNG du répertoire en un seul PDF, précédé d'une page d'index.
-    """
-    png_files = sorted(output_dir.glob("*.png"))
-    if not png_files:
-        logger.warning("Aucune figure PNG trouvée pour générer le PDF.")
-        return
+    """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    # Créer la page d'index
-    index_lines = [f"Figure {i + 1:02d} – {p.name}" for i, p in enumerate(png_files)]
-    buf = io.BytesIO()
-    # On utilise PIL pour générer une image d'index
-    from PIL import ImageDraw, ImageFont
-    # Page A4 à 300 dpi
-    W, H = 2480, 3508
-    img_idx = Image.new("RGB", (W, H), "white")
-    draw = ImageDraw.Draw(img_idx)
-    font = ImageFont.load_default()
-    y = 50
-    for line in index_lines:
-        draw.text((50, y), line, fill="black", font=font)
-        y += 30
-    images = [img_idx]
-
-    # Ajouter les figures
-    for p in png_files:
-        img = Image.open(p)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        images.append(img)
-
+    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "TSNE"]
     pdf_path = output_dir / pdf_name
-    images[0].save(
-        pdf_path,
-        format="PDF",
-        save_all=True,
-        append_images=images[1:],
-        resolution=300
-    )
+
+    with PdfPages(pdf_path) as pdf:
+        for method in methods:
+            m_dir = output_dir / method
+            if not m_dir.exists():
+                continue
+
+            # Page de titre de la section
+            fig, ax = plt.subplots(figsize=(8.27, 11.69))
+            ax.text(0.5, 0.5, method, fontsize=24, ha="center", va="center")
+            ax.axis("off")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            for img_path in sorted(m_dir.glob("*.png")):
+                img = plt.imread(img_path)
+                fig, ax = plt.subplots()
+                ax.imshow(img)
+                ax.axis("off")
+                pdf.savefig(fig)
+                plt.close(fig)
+
+        # Figures comparatives globales
+        global_imgs = [
+            "multi_scree.png",
+            "multi_scatter.png",
+            "multi_heatmap.png",
+            "methods_heatmap.png",
+        ]
+        existing = [output_dir / f for f in global_imgs if (output_dir / f).exists()]
+        if existing:
+            fig, ax = plt.subplots(figsize=(8.27, 11.69))
+            ax.text(
+                0.5,
+                0.5,
+                "Comparaisons multi-méthodes",
+                fontsize=24,
+                ha="center",
+                va="center",
+            )
+            ax.axis("off")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            for img_path in existing:
+                img = plt.imread(img_path)
+                fig, ax = plt.subplots()
+                ax.imshow(img)
+                ax.axis("off")
+                pdf.savefig(fig)
+                plt.close(fig)
+
     logger.info(f"PDF des figures Phase 4 généré : {pdf_path.name}")
+    return pdf_path
 
 
 if __name__ == "__main__":
