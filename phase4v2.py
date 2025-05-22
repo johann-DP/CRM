@@ -18,6 +18,16 @@ import numpy as np
 import umap
 import time
 
+try:  # PHATE is optional
+    import phate
+except Exception:  # pragma: no cover - PHATE may not be installed
+    phate = None
+
+try:  # PaCMAP is optional
+    import pacmap
+except Exception:  # pragma: no cover - PaCMAP may not be installed
+    pacmap = None
+
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
     'compare_baseline': True,
@@ -484,7 +494,8 @@ def run_mfa(
         quant_vars: List[str],
         qual_vars: List[str],
         output_dir: Path,
-        n_components: int = 5
+        n_components: Optional[int] = None,
+        optimize: bool = False,
 ) -> Tuple[prince.MFA, pd.DataFrame]:
     """Exécute une MFA sur le jeu de données mixte.
 
@@ -494,6 +505,8 @@ def run_mfa(
         qual_vars: Liste des noms de colonnes qualitatives.
         output_dir: Répertoire où sauver les graphiques.
         n_components: Nombre de composantes factorielles à extraire.
+        optimize: Si ``True`` et ``n_components`` est ``None``, choisit
+            automatiquement le nombre d'axes (90 % de variance cumulée).
 
     Returns:
         - L’objet prince.MFA entraîné.
@@ -515,7 +528,24 @@ def run_mfa(
     # Combine numeric columns with the dummy-encoded qualitative variables
     df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)
 
-    mfa = prince.MFA(n_components=n_components)
+    logger = logging.getLogger(__name__)
+
+    n_comp = n_components
+    if optimize and n_components is None:
+        n_init = df_mfa.shape[1]
+        tmp = prince.MFA(n_components=n_init).fit(df_mfa, groups=groups)
+        inertia_tmp = tmp.percentage_of_variance_ / 100
+        cum = np.cumsum(inertia_tmp)
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        logger.info(
+            "MFA auto: %d composantes retenues (%.1f%% variance cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100,
+        )
+
+    n_comp = n_comp or 5
+
+    mfa = prince.MFA(n_components=n_comp)
     mfa = mfa.fit(df_mfa, groups=groups)
     row_coords = mfa.row_coordinates(df_mfa)
 
@@ -542,7 +572,8 @@ def run_pcamix(
         quant_vars: List[str],
         qual_vars: List[str],
         output_dir: Path,
-        n_components: int = 5,
+        n_components: Optional[int] = None,
+        optimize: bool = False,
 ) -> Tuple[prince.FAMD, pd.Series, pd.DataFrame, pd.DataFrame]:
     """Exécute une analyse de type PCAmix via :class:`prince.FAMD`."""
 
@@ -563,9 +594,30 @@ def run_pcamix(
         axis=1,
     )
 
+    n_comp = n_components
+    if optimize and n_components is None:
+        n_init = df_mix.shape[1]
+        tmp = prince.FAMD(
+            n_components=n_init,
+            n_iter=3,
+            copy=True,
+            check_input=True,
+            engine="sklearn",
+        ).fit(df_mix)
+        inertia_tmp = get_explained_inertia(tmp)
+        cum = np.cumsum(inertia_tmp)
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        logger.info(
+            "PCAmix auto: %d composantes retenues (%.1f%% variance cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100,
+        )
+
+    n_comp = n_comp or 5
+
     # 3) FAMD (équivalent PCAmix)
     md_pca = prince.FAMD(
-        n_components=n_components,
+        n_components=n_comp,
         n_iter=3,
         copy=True,
         check_input=True,
@@ -609,11 +661,13 @@ def run_tsne(
         embeddings: pd.DataFrame,
         df_active: pd.DataFrame,
         output_dir: Path,
-        perplexity: int = 30,
+        perplexity: Optional[int] = None,
         learning_rate: float = 200.0,
         n_iter: int = 1_000,
         random_state: int = 42,
         n_components: int = 2,
+        optimize: bool = False,
+        perplexity_grid: Sequence[int] | None = None,
 ) -> Tuple[TSNE, pd.DataFrame]:
     """
     Applique t-SNE sur des coordonnées factorielles existantes et renvoie les
@@ -628,8 +682,9 @@ def run_tsne(
         DataFrame complet pour récupérer la variable ``Statut commercial``.
     output_dir : Path
         Répertoire des résultats (créé dans ``main``).
-    perplexity : int
-        Paramètre "voisinage" du t-SNE.
+    perplexity : int, optional
+        Paramètre "voisinage" du t-SNE. S'il est omis et ``optimize`` vaut
+        ``True``, une recherche simple est effectuée.
     learning_rate : float
         Taux d'apprentissage du t-SNE.
     n_iter : int
@@ -638,6 +693,10 @@ def run_tsne(
         Graine pour la reproductibilité.
     n_components : int
         Dimension de la projection t-SNE (2 ou 3).
+    optimize : bool
+        Active l'optimisation automatique de ``perplexity``.
+    perplexity_grid : Sequence[int], optional
+        Valeurs testées si ``perplexity`` n'est pas fourni.
 
     Returns:
     -------
@@ -645,28 +704,49 @@ def run_tsne(
         L'instance :class:`TSNE` ajustée et le ``DataFrame`` des embeddings
         (colonnes ``TSNE1``, ``TSNE2`` (, ``TSNE3``)).
     """
-    # 2.1 Instanciation
-    try:
-        tsne = TSNE(
-            n_components=n_components,
-            perplexity=perplexity,
-            learning_rate=learning_rate,
-            max_iter=n_iter,
-            random_state=random_state,
-            init="pca",
-        )
-    except TypeError:  # pragma: no cover - older scikit-learn
-        tsne = TSNE(
-            n_components=n_components,
-            perplexity=perplexity,
-            learning_rate=learning_rate,
-            n_iter=n_iter,
-            random_state=random_state,
-            init="pca",
-        )
+    logger = logging.getLogger(__name__)
+    perpl = perplexity if perplexity is not None else 30
 
-    # 2.2 Fit & transform
-    tsne_results = tsne.fit_transform(embeddings.values)
+    def _fit_tsne(p):
+        try:
+            t = TSNE(
+                n_components=n_components,
+                perplexity=p,
+                learning_rate=learning_rate,
+                max_iter=n_iter,
+                random_state=random_state,
+                init="pca",
+            )
+        except TypeError:  # pragma: no cover - older scikit-learn
+            t = TSNE(
+                n_components=n_components,
+                perplexity=p,
+                learning_rate=learning_rate,
+                n_iter=n_iter,
+                random_state=random_state,
+                init="pca",
+            )
+        emb = t.fit_transform(embeddings.values)
+        return t, emb
+
+    if optimize and perplexity is None:
+        from sklearn.manifold import trustworthiness
+
+        grid = perplexity_grid or [5, 30, 50]
+        best = None
+        for p in grid:
+            t, emb = _fit_tsne(p)
+            score = trustworthiness(embeddings.values, emb)
+            if best is None or score > best[0]:
+                best = (score, p, t, emb)
+        best_score, perpl, tsne, tsne_results = best
+        logger.info(
+            "t-SNE optimal: perplexity=%d (trustworthiness=%.3f)",
+            perpl,
+            best_score,
+        )
+    else:
+        tsne, tsne_results = _fit_tsne(perpl)
 
     # 2.3 DataFrame t-SNE
     cols = [f"TSNE{i + 1}" for i in range(n_components)]
@@ -728,11 +808,12 @@ def run_umap(
         quant_vars: List[str],
         qual_vars: List[str],
         output_dir: Path,
-        n_neighbors: int = 15,
-        min_dist: float = 0.1,
+        n_neighbors: Optional[int] = None,
+        min_dist: Optional[float] = None,
         n_components: int = 2,
         random_state: int | None = 42,
         n_jobs: int | None = None,
+        optimize: bool = False,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
     """
     Exécute UMAP sur un jeu mixte de variables quantitatives et qualitatives.
@@ -751,6 +832,8 @@ def run_umap(
         n_jobs: Nombre de threads UMAP. Si ``random_state`` est défini et
             ``n_jobs`` n'est pas ``1``, la valeur sera forcée à ``1`` pour
             éviter le warning de ``umap-learn``.
+        optimize: si ``True`` et que ``n_neighbors``/``min_dist`` ne sont pas
+            fournis, recherche la meilleure combinaison (trustworthiness).
 
     Returns:
         - L’objet UMAP entraîné,
@@ -778,24 +861,54 @@ def run_umap(
 
     logger = logging.getLogger(__name__)
 
-    # 2.4 Exécution de UMAP
-    if random_state is not None:
-        if n_jobs not in (None, 1):
-            logger.warning(
-                "random_state défini (%s) : n_jobs=%s forcé à 1 pour garantir la reproductibilité",
-                random_state,
-                n_jobs,
-            )
-        n_jobs = 1
+    n_neigh = n_neighbors if n_neighbors is not None else 15
+    dist = min_dist if min_dist is not None else 0.1
 
-    reducer = umap.UMAP(
-        n_neighbors=n_neighbors,
-        min_dist=min_dist,
-        n_components=n_components,
-        random_state=random_state,
-        n_jobs=n_jobs,
-    )
-    embedding = reducer.fit_transform(X_mix)
+    def _build_umap(nn, md):
+        nj = n_jobs
+        if random_state is not None:
+            if nj not in (None, 1):
+                logger.warning(
+                    "random_state défini (%s) : n_jobs=%s forcé à 1 pour garantir la reproductibilité",
+                    random_state,
+                    nj,
+                )
+            nj = 1
+        return umap.UMAP(
+            n_neighbors=nn,
+            min_dist=md,
+            n_components=n_components,
+            random_state=random_state,
+            n_jobs=nj,
+        )
+
+    if optimize and (n_neighbors is None or min_dist is None):
+        from joblib import Parallel, delayed
+        from sklearn.manifold import trustworthiness
+
+        neigh_grid = [5, 15, 30, 50] if n_neighbors is None else [n_neighbors]
+        dist_grid = [0.1, 0.5] if min_dist is None else [min_dist]
+
+        def eval_combo(nn, md):
+            reducer = _build_umap(nn, md)
+            emb = reducer.fit_transform(X_mix)
+            score = trustworthiness(X_mix, emb)
+            return score, nn, md, emb, reducer
+
+        results = Parallel(n_jobs=-1)(
+            delayed(eval_combo)(nn, md) for nn in neigh_grid for md in dist_grid
+        )
+        best = max(results, key=lambda x: x[0])
+        best_score, n_neigh, dist, embedding, reducer = best
+        logger.info(
+            "UMAP optimal: n_neighbors=%d, min_dist=%.2f (trustworthiness=%.3f)",
+            n_neigh,
+            dist,
+            best_score,
+        )
+    else:
+        reducer = _build_umap(n_neigh, dist)
+        embedding = reducer.fit_transform(X_mix)
 
     # 2.5 Mise en DataFrame
     cols = [f"UMAP{i + 1}" for i in range(n_components)]
@@ -855,6 +968,214 @@ def export_umap_results(
     logger.info("CSV embeddings UMAP enregistré: %s", csv_path)
 
 
+def run_pacmap(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 2,
+        n_neighbors: int = 10,
+        MN_ratio: float = 0.5,
+        FP_ratio: float = 2.0,
+) -> Tuple[Any, pd.DataFrame]:
+    """Exécute PaCMAP sur les données CRM pour visualiser clients et tendances.
+
+    PaCMAP vise à préserver simultanément les structures locales et globales ;
+    il peut ainsi révéler des regroupements de clients équilibrés, utiles pour
+    la segmentation CRM. L'initialisation ``pca`` améliore la stabilité des
+    résultats. Les paramètres par défaut conviennent généralement (``n_neighbors``
+    agit sur la granularité).
+    """
+
+    logger = logging.getLogger(__name__)
+    if pacmap is None:
+        logger.error(
+            "Le module pacmap n\u2019est pas install\u00e9. Veuillez l\u2019installer pour utiliser PaCMAP."
+        )
+        return None, pd.DataFrame()
+
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = enc.fit_transform(df_active[qual_vars])
+
+    X = np.hstack([X_num, X_cat])
+
+    pacmap_model = pacmap.PaCMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        MN_ratio=MN_ratio,
+        FP_ratio=FP_ratio,
+        init="pca",
+    )
+
+    embedding = pacmap_model.fit_transform(X)
+
+    cols = [f"PACMAP{i + 1}" for i in range(n_components)]
+    pacmap_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
+
+    return pacmap_model, pacmap_df
+
+
+def export_pacmap_results(
+        pacmap_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+) -> None:
+    """Génère les visualisations et CSV pour PaCMAP."""
+
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"PACMAP1", "PACMAP2"}.issubset(pacmap_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
+            "category"
+        ).cat.codes
+        sc = plt.scatter(
+            pacmap_df["PACMAP1"],
+            pacmap_df["PACMAP2"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        plt.xlabel("PACMAP1")
+        plt.ylabel("PACMAP2")
+        plt.title("PaCMAP \u2013 individus (dim 1 vs dim 2)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pacmap_scatter.png")
+        plt.close()
+        logger.info("Projection PaCMAP 2D enregistr\u00e9e")
+
+    if {"PACMAP1", "PACMAP2", "PACMAP3"}.issubset(pacmap_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
+            "category"
+        ).cat.codes
+        sc3 = ax.scatter(
+            pacmap_df["PACMAP1"],
+            pacmap_df["PACMAP2"],
+            pacmap_df["PACMAP3"],
+            c=codes,
+            s=10,
+            alpha=0.7,
+        )
+        ax.set_xlabel("PACMAP1")
+        ax.set_ylabel("PACMAP2")
+        ax.set_zlabel("PACMAP3")
+        ax.set_title("PaCMAP \u2013 individus (3D)")
+        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        plt.savefig(output_dir / "pacmap_scatter_3D.png")
+        plt.close()
+        logger.info("Projection PaCMAP 3D enregistr\u00e9e")
+
+    pacmap_df.to_csv(output_dir / "pacmap_coordinates.csv", index=True)
+    logger.info("CSV PaCMAP enregistr\u00e9")
+
+
+def run_phate(
+        df_active: pd.DataFrame,
+        quant_vars: List[str],
+        qual_vars: List[str],
+        output_dir: Path,
+        n_components: int = 2,
+) -> Tuple["phate.PHATE" | None, pd.DataFrame]:
+    """Exécute PHATE sur un jeu de données mixte.
+
+    PHATE est particulièrement adapté pour mettre en évidence des trajectoires
+    continues ou transitions progressives entre individus. Dans un contexte CRM,
+    cette méthode peut révéler l'évolution des prospects vers des clients
+    fidèles lorsque la structure des données ne se prête pas à un clustering net.
+    L'algorithme construit un graphe de voisins (``knn``=5 par défaut) puis
+    applique une diffusion. Le paramètre ``t="auto"`` choisit automatiquement la
+    profondeur de diffusion, généralement adaptée pour des données CRM de taille
+    modérée. ``n_jobs=-1`` exploite tous les cœurs disponibles pour accélérer le
+    calcul.
+    """
+
+    logger = logging.getLogger(__name__)
+
+    if phate is None:  # pragma: no cover - module optional
+        logger.error(
+            "Le module PHATE n’est pas installé. Installez-le pour utiliser l’analyse PHATE."
+        )
+        return None, pd.DataFrame()
+
+    # 1) Standardisation des quantitatives
+    X_num = StandardScaler().fit_transform(df_active[quant_vars])
+
+    # 2) Encodage des qualitatives
+    try:
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # pragma: no cover - older scikit-learn
+        encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = encoder.fit_transform(df_active[qual_vars])
+
+    # 3) Fusion des features
+    X_mix = pd.DataFrame(np.hstack([X_num, X_cat]), index=df_active.index)
+
+    # 4) PHATE
+    phate_operator = phate.PHATE(
+        n_components=n_components,
+        n_jobs=-1,
+        random_state=42,
+    )
+    Y = phate_operator.fit_transform(X_mix)
+
+    cols = [f"PHATE{i + 1}" for i in range(n_components)]
+    phate_df = pd.DataFrame(Y, columns=cols, index=df_active.index)
+
+    return phate_operator, phate_df
+
+
+def export_phate_results(phate_df: pd.DataFrame, df_active: pd.DataFrame, output_dir: Path) -> None:
+    """Génère graphiques et CSV pour l'analyse PHATE."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = plt.scatter(phate_df["PHATE1"], phate_df["PHATE2"], c=codes, s=10, alpha=0.7)
+        plt.xlabel("PHATE1")
+        plt.ylabel("PHATE2")
+        plt.title("PHATE – individus (dim 1–2)")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        fig_path = output_dir / "phate_scatter.png"
+        plt.savefig(fig_path)
+        plt.close()
+        logger.info("Projection PHATE 2D enregistrée: %s", fig_path)
+
+    if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        sc3d = ax.scatter(
+            phate_df["PHATE1"], phate_df["PHATE2"], phate_df["PHATE3"],
+            c=codes, s=10, alpha=0.7,
+        )
+        ax.set_xlabel("PHATE1")
+        ax.set_ylabel("PHATE2")
+        ax.set_zlabel("PHATE3")
+        ax.set_title("PHATE – individus (3D)")
+        fig.colorbar(sc3d, ax=ax, label="Statut commercial")
+        plt.tight_layout()
+        fig3d_path = output_dir / "phate_scatter_3D.png"
+        plt.savefig(fig3d_path)
+        plt.close()
+        logger.info("Projection PHATE 3D enregistrée: %s", fig3d_path)
+
+    csv_path = output_dir / "phate_coordinates.csv"
+    phate_df.to_csv(csv_path, index=True)
+    logger.info("Coordonnées PHATE exportées: %s", csv_path)
+
+
 def get_explained_inertia(famd) -> List[float]:
     """Return the percentage of explained inertia for each FAMD component."""
     try:
@@ -878,7 +1199,8 @@ def run_famd(
         quant_vars: List[str],
         qual_vars: List[str],
         n_components: Optional[int] = None,
-        famd_cfg: dict = None
+        famd_cfg: dict = None,
+        optimize: bool = False,
 ) -> Tuple[
     prince.FAMD,
     pd.Series,
@@ -900,6 +1222,9 @@ def run_famd(
     n_components : int, optional
         Nombre de composantes factorielles à extraire. Si None, utilise toutes les composantes possibles.
     famd_cfg:  dict
+    optimize : bool
+        Si ``True`` et ``n_components`` est ``None``, choisit automatiquement le
+        nombre d'axes en fonction de la variance expliquée (seuil 90 %).
 
     Returns
     -------
@@ -938,8 +1263,31 @@ def run_famd(
     cfg = famd_cfg or {}
     weighting = cfg.get('weighting', 'balanced')  # 'balanced' | 'auto' | 'manual'
 
+    n_comp = n_components
+
+    if optimize and n_components is None:
+        # Exploration avec le nombre maximal de composantes pour estimer la variance
+        n_init = df_for_famd.shape[1]
+        tmp = prince.FAMD(
+            n_components=n_init,
+            n_iter=3,
+            copy=True,
+            check_input=True,
+            engine='sklearn'
+        ).fit(df_for_famd)
+        inertia_tmp = get_explained_inertia(tmp)
+        cum = np.cumsum(inertia_tmp)
+        thresh = 0.9
+        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= thresh), n_init)
+        logger.info(
+            "FAMD auto: %d composantes retenues (%.1f%% variance cumulée)",
+            n_comp,
+            cum[n_comp - 1] * 100
+        )
+
+    n_comp = n_comp or df_for_famd.shape[1]
+
     # 3b) Initialisation de l’AFDM
-    n_comp = n_components or df_for_famd.shape[1]
     famd = prince.FAMD(
         n_components=n_comp,
         n_iter=3,
@@ -1743,13 +2091,18 @@ def main() -> None:
 
     segment_data(df_active, qual_vars, output_dir)
 
+    optimize_params = config.get("optimize_params", False)
     results: Dict[str, Dict[str, Any]] = {}
 
     # 2. FAMD
     if "famd" in config.get("methods", []):
         t0 = time.time()
         famd_model, famd_inertia, famd_rows, famd_cols, famd_contrib = run_famd(
-            df_active, quant_vars, qual_vars, **config.get("famd", {})
+            df_active,
+            quant_vars,
+            qual_vars,
+            optimize=optimize_params,
+            **config.get("famd", {})
         )
         rt = time.time() - t0
         results["FAMD"] = {
@@ -1781,7 +2134,12 @@ def main() -> None:
         t0 = time.time()
         output_dir_mfa = output_dir / "MFA"
         mfa_model, mfa_rows = run_mfa(
-            df_active, quant_vars, qual_vars, output_dir_mfa, **config.get("mfa", {})
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_mfa,
+            optimize=optimize_params,
+            **config.get("mfa", {})
         )
         rt = time.time() - t0
         results["MFA"] = {
@@ -1809,7 +2167,12 @@ def main() -> None:
         t0 = time.time()
         output_dir_pcamix = output_dir / "PCAmix"
         mdpca_model, mdpca_inertia, mdpca_rows, mdpca_cols = run_pcamix(
-            df_active, quant_vars, qual_vars, output_dir_pcamix, **config.get("pcamix", {})
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_pcamix,
+            optimize=optimize_params,
+            **config.get("pcamix", {})
         )
         rt = time.time() - t0
         results["PCAmix"] = {
@@ -1843,6 +2206,7 @@ def main() -> None:
             quant_vars,
             qual_vars,
             output_dir_umap,
+            optimize=optimize_params,
             **config.get("umap", {}),
         )
         export_umap_results(umap_df, df_active, output_dir_umap)
@@ -1852,16 +2216,69 @@ def main() -> None:
             "inertia": None,
             "runtime": rt,
         }
-        logger.info("UMAP : %d composantes, %.1fs", umap_model.n_components, rt)
+        logger.info(
+            "UMAP : %d composantes, n_neighbors=%d, min_dist=%.2f, %.1fs",
+            umap_model.n_components,
+            getattr(umap_model, "n_neighbors", -1),
+            getattr(umap_model, "min_dist", 0.0),
+            rt,
+        )
 
-    # 6. t-SNE
+    # 6. PaCMAP
+    if "pacmap" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_pacmap = output_dir / "PaCMAP"
+        pacmap_model, pacmap_df = run_pacmap(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_pacmap,
+            **config.get("pacmap", {}),
+        )
+        if pacmap_model is not None:
+            export_pacmap_results(pacmap_df, df_active, output_dir_pacmap)
+            rt = time.time() - t0
+            results["PaCMAP"] = {
+                "embeddings": pacmap_df,
+                "inertia": None,
+                "runtime": rt,
+            }
+            logger.info(
+                f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
+            )
+
+    # 7. PHATE
+    if "phate" in config.get("methods", []):
+        t0 = time.time()
+        output_dir_phate = output_dir / "PHATE"
+        phate_op, phate_df = run_phate(
+            df_active,
+            quant_vars,
+            qual_vars,
+            output_dir_phate,
+            **config.get("phate", {}),
+        )
+        export_phate_results(phate_df, df_active, output_dir_phate)
+        rt = time.time() - t0
+        results["PHATE"] = {
+            "embeddings": phate_df,
+            "inertia": None,
+            "runtime": rt,
+        }
+        logger.info(f"PHATE : réalisé en {rt:.1f}s")
+
+    # 8. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
             raise RuntimeError("t-SNE requires FAMD embeddings")
         t0 = time.time()
         output_dir_tsne = output_dir / "TSNE"
         tsne_model, tsne_df = run_tsne(
-            results["FAMD"]["embeddings"], df_active, output_dir_tsne, **config.get("tsne", {})
+            results["FAMD"]["embeddings"],
+            df_active,
+            output_dir_tsne,
+            optimize=optimize_params,
+            **config.get("tsne", {})
         )
         export_tsne_results(tsne_df, df_active, output_dir_tsne)
         rt = time.time() - t0
@@ -1870,16 +2287,20 @@ def main() -> None:
             "inertia": None,
             "runtime": rt,
         }
-        logger.info("t-SNE : %.1fs", rt)
+        logger.info(
+            "t-SNE : perplexity=%s, %.1fs",
+            getattr(tsne_model, "perplexity", "?"),
+            rt,
+        )
 
-    # 7. Évaluation croisée
+    # 9. Évaluation croisée
     comp_df = evaluate_methods(results, output_dir, n_clusters=3)
 
-    # 8. PDF comparatif
+    # 10. PDF comparatif
     pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
 
-    # 9. Index CSV des fichiers produits
+    # 11. Index CSV des fichiers produits
     create_index_file(output_dir)
 
 
@@ -1888,7 +2309,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
 
     The PDF will include the following images if present in ``output_dir``:
     ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
-    ``UMAP/umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``UMAP/umap_scatter.png``, ``PHATE/phate_scatter.png``, ``phase4_tsne_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
@@ -1897,6 +2318,7 @@ def generate_report_pdf(output_dir: Path) -> Path:
         str(Path("MFA") / "mfa_scree_plot.png"),
         "phase4_pcamix_scree_plot.png",
         str(Path("UMAP") / "umap_scatter.png"),
+        str(Path("PHATE") / "phate_scatter.png"),
         "phase4_tsne_scatter.png",
         "methods_heatmap.png",
     ]
@@ -1919,7 +2341,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "TSNE"]
+    methods = ["FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
@@ -2043,7 +2465,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "TSNE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"}:
             method = rel.parts[0]
 
         file_type = {

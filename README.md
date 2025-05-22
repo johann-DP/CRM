@@ -11,8 +11,14 @@ is provided in `config.yaml`. Copy or modify it to suit your dataset and run:
 python phase4v2.py --config config.yaml
 ```
 
+Set `optimize_params: true` in the configuration to automatically tune the main
+hyperparameters of each dimensionality reduction method (number of components
+for FAMD/MFA/PCAmix, neighbors and distance for UMAP, perplexity for t-SNE).
+When disabled, the script uses the provided values or sensible defaults.
+
 Make sure the dependencies listed in `requirements.txt` are installed. The
-package `umap-learn` is required for the UMAP functionality.
+package `umap-learn` is required for the UMAP functionality. The PHATE
+embeddings rely on the optional `phate` library.
 
 ### UMAP warnings
 
