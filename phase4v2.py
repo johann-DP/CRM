@@ -740,7 +740,8 @@ def run_umap(
         df_active: DataFrame contenant uniquement les colonnes actives.
         quant_vars: Liste de noms de colonnes quantitatives.
         qual_vars: Liste de noms de colonnes qualitatives.
-        output_dir: Répertoire où sauver les graphiques et CSV.
+        output_dir: Répertoire où seront exportés les résultats (via
+            :func:`export_umap_results`).
         n_neighbors: Paramètre UMAP « voisinage ».
         min_dist: Distance minimale UMAP.
         n_components: Dimension de sortie (2 ou 3).
@@ -754,8 +755,6 @@ def run_umap(
         - L’objet UMAP entraîné,
         - DataFrame des embeddings, colonnes ['UMAP1', 'UMAP2' (, 'UMAP3')].
     """
-
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     # 2.1 Prétraitement des quantitatives
     X_num = df_active[quant_vars].copy()
@@ -801,36 +800,43 @@ def run_umap(
     cols = [f"UMAP{i + 1}" for i in range(n_components)]
     umap_df = pd.DataFrame(embedding, columns=cols, index=df_active.index)
 
-    # 2.6 Scatterplot coloré par statut commercial
-    codes = df_active["Statut commercial"].astype("category").cat.codes
-    plt.figure(figsize=(12, 6), dpi=200)
-    scatter = plt.scatter(
-        umap_df["UMAP1"], umap_df["UMAP2"],
-        c=codes,
-        s=10,
-        alpha=0.7,
-    )
-    plt.xlabel("UMAP1")
-    plt.ylabel("UMAP2")
-    plt.title("Projection UMAP (colorée par Statut commercial)")
-    plt.colorbar(scatter, ticks=range(len(df_active["Statut commercial"].unique())),
-                 label="Statut commercial")
-    plt.tight_layout()
-    plt.savefig(output_dir / "umap_scatter.png")
-    plt.close()
-    logger.info("Projection UMAP 2D enregistrée: %s", output_dir / "umap_scatter.png")
+    # Les figures et CSV seront générés par ``export_umap_results`` dans ``main``.
 
-    # 2.6bis Scatter 3D si demandé
-    if n_components >= 3 and {"UMAP1", "UMAP2", "UMAP3"}.issubset(umap_df.columns):
+    return reducer, umap_df
+
+
+def export_umap_results(
+        umap_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+) -> None:
+    """Enregistre les figures et CSV pour les embeddings UMAP."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Scatter 2D
+    if {"UMAP1", "UMAP2"}.issubset(umap_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        codes = df_active.loc[umap_df.index, "Statut commercial"].astype("category").cat.codes
+        sc = plt.scatter(umap_df["UMAP1"], umap_df["UMAP2"], c=codes, s=10, alpha=0.7)
+        plt.xlabel("UMAP1")
+        plt.ylabel("UMAP2")
+        plt.title("Projection UMAP")
+        plt.colorbar(sc, label="Statut commercial")
+        plt.tight_layout()
+        fig_path = output_dir / "umap_scatter.png"
+        plt.savefig(fig_path)
+        plt.close()
+        logger.info("Projection UMAP 2D enregistrée: %s", fig_path)
+
+    # Scatter 3D
+    if {"UMAP1", "UMAP2", "UMAP3"}.issubset(umap_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
+        codes = df_active.loc[umap_df.index, "Statut commercial"].astype("category").cat.codes
         sc3d = ax.scatter(
-            umap_df["UMAP1"],
-            umap_df["UMAP2"],
-            umap_df["UMAP3"],
-            c=codes,
-            s=10,
-            alpha=0.7,
+            umap_df["UMAP1"], umap_df["UMAP2"], umap_df["UMAP3"],
+            c=codes, s=10, alpha=0.7,
         )
         ax.set_xlabel("UMAP1")
         ax.set_ylabel("UMAP2")
@@ -838,18 +844,14 @@ def run_umap(
         ax.set_title("Projection UMAP 3D")
         fig.colorbar(sc3d, ax=ax, label="Statut commercial")
         plt.tight_layout()
-        plt.savefig(output_dir / "umap_scatter_3D.png")
+        fig3d_path = output_dir / "umap_scatter_3D.png"
+        plt.savefig(fig3d_path)
         plt.close()
-        logger.info(
-            "Projection UMAP 3D enregistrée: %s",
-            output_dir / "umap_scatter_3D.png",
-        )
+        logger.info("Projection UMAP 3D enregistrée: %s", fig3d_path)
 
-    # 2.7 Export CSV
-    umap_df.to_csv(output_dir / "umap_embeddings.csv", index=True)
-    logger.info("CSV embeddings UMAP enregistré: %s", output_dir / "umap_embeddings.csv")
-
-    return reducer, umap_df
+    csv_path = output_dir / "umap_embeddings.csv"
+    umap_df.to_csv(csv_path, index=True)
+    logger.info("CSV embeddings UMAP enregistré: %s", csv_path)
 
 
 def get_explained_inertia(famd) -> List[float]:
@@ -1842,6 +1844,7 @@ def main() -> None:
             output_dir_umap,
             **config.get("umap", {}),
         )
+        export_umap_results(umap_df, df_active, output_dir_umap)
         rt = time.time() - t0
         results["UMAP"] = {
             "embeddings": umap_df,
