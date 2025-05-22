@@ -82,23 +82,45 @@ def sanity_check(
 
 def load_phase_metrics(metrics_dir: str) -> pd.DataFrame:
     """
-    Charge les CSV de complétude des phases 1/2/3 et renvoie un DataFrame
-    avec taux de NA par variable.
+    Charge les rapports de complétude des phases 1, 2 et 3 et renvoie
+    un ``DataFrame`` avec le taux de valeurs manquantes par variable.
     """
     files = [
         Path(metrics_dir) / "phase1_missing_report.csv",
-        Path(metrics_dir) / "phase2_data_dictionary.csv",           # à ajuster si besoin
-        Path(metrics_dir) / "phase3_categorical_overview.csv"
+        Path(metrics_dir) / "phase2_data_dictionary.xlsx",
+        Path(metrics_dir) / "phase3_categorical_overview.csv",
     ]
     dfs = []
     for f in files:
-        if f.exists():
+        if not f.exists():
+            continue
+
+        if f.suffix.lower() == ".xlsx":
+            df = pd.read_excel(f)
+        else:
             df = pd.read_csv(f)
-            if 'missing_pct' in df.columns:
-                dfs.append(df[['variable', 'missing_pct']])
+
+        cols = {c.lower(): c for c in df.columns}
+        var_col = next((cols[c] for c in ["variable", "colonne", "column"] if c in cols), None)
+        pct_col = next((cols[c] for c in ["missing_pct", "pct_missing"] if c in cols), None)
+        if var_col is None or pct_col is None:
+            continue
+
+        series_pct = df[pct_col]
+        if series_pct.dtype == object:
+            series_pct = series_pct.str.replace(",", ".", regex=False)
+
+        df_sub = pd.DataFrame({
+            "variable": df[var_col].astype(str),
+            "missing_pct": pd.to_numeric(series_pct, errors="coerce"),
+        })
+
+        dfs.append(df_sub)
+
     if not dfs:
-        return pd.DataFrame(columns=['variable','missing_pct'])
-    return pd.concat(dfs).groupby('variable', as_index=False).mean()
+        return pd.DataFrame(columns=["variable", "missing_pct"])
+
+    return pd.concat(dfs).groupby("variable", as_index=False).mean()
 
 
 def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
