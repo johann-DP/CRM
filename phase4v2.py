@@ -1142,6 +1142,14 @@ def run_pacmap(
 
     X = np.hstack([X_num, X_cat])
 
+    logger.info(
+        "Paramètres PaCMAP: n_components=%d, n_neighbors=%d, MN_ratio=%.2f, FP_ratio=%.2f",
+        n_components,
+        n_neighbors,
+        MN_ratio,
+        FP_ratio,
+    )
+
     pacmap_model = pacmap.PaCMAP(
         n_components=n_components,
         n_neighbors=n_neighbors,
@@ -1249,6 +1257,8 @@ def run_phate(
     X_cat = enc.fit_transform(df_active[qual_vars])
 
     X_mix = np.hstack([X_num, X_cat])
+
+    logger.info("Paramètres PHATE: n_components=%d", n_components)
 
     phate_operator = phate.PHATE(
         n_components=n_components,
@@ -2333,12 +2343,17 @@ def evaluate_methods(
         results_dict: Dict[str, Dict[str, Any]],
         output_dir: Path,
         n_clusters: int = 3,
+        df_active: pd.DataFrame | None = None,
+        quant_vars: Sequence[str] | None = None,
+        qual_vars: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Compare diverses méthodes de réduction de dimension."""
 
     from sklearn.cluster import KMeans
     from sklearn.metrics import silhouette_score
+    from sklearn.manifold import trustworthiness
     import seaborn as sns
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
     rows = []
     for method, info in results_dict.items():
@@ -2356,6 +2371,21 @@ def evaluate_methods(
         dunn = dunn_index(X, labels)
         runtime = info.get("runtime")
 
+        T = None
+        C = None
+        if df_active is not None and quant_vars is not None and qual_vars is not None:
+            # Build the high-dimensional representation aligned on the embedding index
+            try:
+                enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+            except TypeError:  # pragma: no cover - older scikit-learn
+                enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            X_num = StandardScaler().fit_transform(df_active.loc[info["embeddings"].index, quant_vars])
+            X_cat = enc.fit_transform(df_active.loc[info["embeddings"].index, qual_vars])
+            X_high = np.hstack([X_num, X_cat])
+            X_low = X
+            T = trustworthiness(X_high, X_low, n_neighbors=10)
+            C = trustworthiness(X_low, X_high, n_neighbors=10)
+
         rows.append(
             {
                 "method": method,
@@ -2363,6 +2393,8 @@ def evaluate_methods(
                 "cum_inertia": cum_inertia,
                 "silhouette": sil,
                 "dunn": dunn,
+                "trustworthiness": T,
+                "continuity": C,
                 "runtime_s": runtime,
             }
         )
@@ -2412,6 +2444,9 @@ def main() -> None:
             if yaml is None:
                 raise RuntimeError("PyYAML est requis pour lire ce fichier")
             config = yaml.safe_load(fh)
+
+    import copy
+    effective_config = copy.deepcopy(config)
 
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2474,6 +2509,7 @@ def main() -> None:
             sum(famd_inertia) * 100 if famd_inertia is not None else 0,
             rt,
         )
+        effective_config.setdefault("famd", {})["n_components"] = famd_model.n_components
         output_dir_famd = output_dir / "FAMD"
         export_famd_results(
             famd_model,
@@ -2511,6 +2547,7 @@ def main() -> None:
             sum(pca_inertia) * 100,
             rt,
         )
+        effective_config.setdefault("pca", {})["n_components"] = pca_model.n_components
         export_pca_results(
             pca_model,
             pca_inertia,
@@ -2545,6 +2582,7 @@ def main() -> None:
             sum(mca_inertia) * 100,
             rt,
         )
+        effective_config.setdefault("mca", {})["n_components"] = mca_model.n_components
         export_mca_results(
             mca_model,
             mca_inertia,
@@ -2579,6 +2617,7 @@ def main() -> None:
             mfa_model.explained_inertia_.sum() * 100,
             rt,
         )
+        effective_config.setdefault("mfa", {})["n_components"] = mfa_model.n_components
         export_mfa_results(
             mfa_model,
             mfa_rows,
@@ -2612,6 +2651,7 @@ def main() -> None:
             sum(mdpca_inertia) * 100,
             rt,
         )
+        effective_config.setdefault("pcamix", {})["n_components"] = mdpca_model.n_components
         export_pcamix_results(
             mdpca_model,
             mdpca_inertia,
@@ -2649,6 +2689,11 @@ def main() -> None:
             getattr(umap_model, "min_dist", 0.0),
             rt,
         )
+        effective_config.setdefault("umap", {}).update({
+            "n_components": umap_model.n_components,
+            "n_neighbors": getattr(umap_model, "n_neighbors", None),
+            "min_dist": getattr(umap_model, "min_dist", None),
+        })
 
     # 8. PaCMAP
     if "pacmap" in config.get("methods", []):
@@ -2672,6 +2717,12 @@ def main() -> None:
             logger.info(
                 f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
             )
+            effective_config.setdefault("pacmap", {}).update({
+                "n_components": pacmap_model.n_components,
+                "n_neighbors": pacmap_model.n_neighbors,
+                "MN_ratio": pacmap_model.MN_ratio,
+                "FP_ratio": pacmap_model.FP_ratio,
+            })
 
     # 9. PHATE
     if "phate" in config.get("methods", []):
@@ -2693,6 +2744,7 @@ def main() -> None:
                 "runtime": rt,
             }
             logger.info(f"PHATE : r\u00e9alis\u00e9 en {rt:.1f}s")
+            effective_config.setdefault("phate", {})["n_components"] = phate_op.n_components
 
     # 10. t-SNE
     if "tsne" in config.get("methods", []):
@@ -2719,13 +2771,27 @@ def main() -> None:
             getattr(tsne_model, "perplexity", "?"),
             rt,
         )
+        effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
 
     # 8. Évaluation croisée
-    comp_df = evaluate_methods(results, output_dir, n_clusters=3)
+    comp_df = evaluate_methods(
+        results,
+        output_dir,
+        n_clusters=3,
+        df_active=df_active,
+        quant_vars=quant_vars,
+        qual_vars=qual_vars,
+    )
 
     # 9. PDF comparatif
     pdf_path = generate_pdf(output_dir)
     logger.info(f"Rapport PDF généré : {pdf_path}")
+
+    # Sauvegarde de la configuration effective
+    cfg_path = output_dir / "phase4_effective_config.json"
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        json.dump(effective_config, fh, indent=2, ensure_ascii=False)
+    logger.info("Configuration effective exportée : %s", cfg_path.name)
 
     # 10. Index CSV des fichiers produits
     create_index_file(output_dir)
@@ -2913,6 +2979,14 @@ def create_index_file(output_dir: Path) -> Path:
     index_path = output_dir / "phase4_index.csv"
     df.to_csv(index_path, index=False, encoding="utf-8")
     logger.info(f"Index des fichiers exporté -> {index_path.name}")
+
+    txt_path = output_dir / "phase4_output_files.txt"
+    with open(txt_path, "w", encoding="utf-8") as fh:
+        for rel in sorted(output_dir.rglob("*")):
+            if rel.is_file() and rel.name not in {"phase4.log", "phase4_index.csv"}:
+                fh.write(str(rel.relative_to(output_dir)) + "\n")
+    logger.info("Liste de fichiers enregistrée -> %s", txt_path.name)
+
     return index_path
 
 
