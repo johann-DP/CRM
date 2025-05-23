@@ -1149,10 +1149,13 @@ def run_pacmap(
         qual_vars: List[str],
         output_dir: Path,
         n_components: int = 2,
-        n_neighbors: int = 10,
+        n_neighbors: Optional[int] = None,
         MN_ratio: float = 0.5,
         FP_ratio: float = 2.0,
-) -> Tuple[Any, pd.DataFrame]:
+        random_state: int | None = 42,
+        optimize: bool = False,
+        neighbor_grid: Sequence[int] | None = None,
+) -> Tuple[Any | None, pd.DataFrame]:
     """Exécute PaCMAP sur les données CRM pour visualiser clients et tendances.
 
     PaCMAP vise à préserver simultanément les structures locales et globales ;
@@ -1179,39 +1182,58 @@ def run_pacmap(
     X = np.hstack([X_num, X_cat])
 
     logger.info(
-        "Paramètres PaCMAP: n_components=%d, n_neighbors=%d, MN_ratio=%.2f, FP_ratio=%.2f",
+        "Paramètres PaCMAP: n_components=%d, n_neighbors=%s, MN_ratio=%.2f, FP_ratio=%.2f",
         n_components,
         n_neighbors,
         MN_ratio,
         FP_ratio,
     )
 
-    # PaCMAP has changed the name of the initialization parameter across
-    # versions (``init`` -> ``initialization``).  We inspect the signature at
-    # runtime to remain compatible with both.
-    pacmap_params = dict(
-        n_components=n_components,
-        n_neighbors=n_neighbors,
-        MN_ratio=MN_ratio,
-        FP_ratio=FP_ratio,
-    )
-    try:
-        from inspect import signature
+    def _build_pacmap(nn: int):
+        params = dict(
+            n_components=n_components,
+            n_neighbors=nn,
+            MN_ratio=MN_ratio,
+            FP_ratio=FP_ratio,
+            random_state=random_state,
+        )
+        try:
+            from inspect import signature
 
-        init_param = None
-        sig = signature(pacmap.PaCMAP.__init__)
-        if "init" in sig.parameters:
-            init_param = "init"
-        elif "initialization" in sig.parameters:
-            init_param = "initialization"
-        if init_param:
-            pacmap_params[init_param] = "pca"
-    except Exception:  # pragma: no cover - very old versions
-        pacmap_params["init"] = "pca"
+            init_param = None
+            sig = signature(pacmap.PaCMAP.__init__)
+            if "init" in sig.parameters:
+                init_param = "init"
+            elif "initialization" in sig.parameters:
+                init_param = "initialization"
+            if init_param:
+                params[init_param] = "pca"
+        except Exception:  # pragma: no cover - very old versions
+            params["init"] = "pca"
 
-    pacmap_model = pacmap.PaCMAP(**pacmap_params)
+        return pacmap.PaCMAP(**params)
 
-    embedding = pacmap_model.fit_transform(X)
+    if optimize and n_neighbors is None:
+        from sklearn.manifold import trustworthiness
+
+        grid = neighbor_grid or [10, 15, 30]
+        best = None
+        for nn in grid:
+            reducer = _build_pacmap(nn)
+            emb = reducer.fit_transform(X)
+            score = trustworthiness(X, emb)
+            if best is None or score > best[0]:
+                best = (score, reducer, emb, nn)
+        best_score, pacmap_model, embedding, n_neighbors = best
+        logger.info(
+            "PaCMAP optimal: n_neighbors=%d (trustworthiness=%.3f)",
+            n_neighbors,
+            best_score,
+        )
+    else:
+        nn = n_neighbors or 10
+        pacmap_model = _build_pacmap(nn)
+        embedding = pacmap_model.fit_transform(X)
 
     cols = [f"PACMAP{i + 1}" for i in range(n_components)]
     pacmap_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
@@ -2895,6 +2917,7 @@ def main() -> None:
             quant_vars,
             qual_vars,
             output_dir_pacmap,
+            optimize=optimize_params,
             **config.get("pacmap", {}),
         )
         if pacmap_model is not None:
