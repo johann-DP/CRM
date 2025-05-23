@@ -1290,7 +1290,9 @@ def run_phate(
     graphe de voisins et une diffusion pour préserver la structure globale. Les
     valeurs par défaut (``knn=5``, ``t='auto'``) conviennent généralement aux
     volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs et ``random_state=42``
-    assure la reproductibilité.
+    assure la reproductibilité. Lorsque ``optimize`` est activé et qu'aucun
+    ``knn`` n'est fourni, une recherche sur grille utilise le nombre de
+    modalités des variables de segmentation comme valeurs candidates.
     """
 
     logger = logging.getLogger(__name__)
@@ -1327,7 +1329,24 @@ def run_phate(
     if optimize and knn is None:
         from sklearn.manifold import trustworthiness
 
-        grid = [5, 10, 20]
+        candidate_vars = [
+            "Catégorie",
+            "Entité opérationnelle",
+            "Pilier",
+            "Sous-catégorie",
+            "Statut commercial",
+            "Statut production",
+            "Type opportunité",
+        ]
+
+        counts = [
+            df_active[v].nunique()
+            for v in candidate_vars
+            if v in df_active.columns
+        ]
+
+        grid = sorted(set(counts)) or [5, 10, 20]
+
         scores: list[tuple[float, int, Any, np.ndarray]] = []
         for nn in grid:
             op, emb = _fit_phate(nn)
