@@ -4,9 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="phase4v2.py: update figures' sizes">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="implémenter-optimisation-automatique-des-hyperparamètres">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phase4_famd.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/phase4v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4v2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -14,7 +16,13 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="integration-clean" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
   </component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/.venv/.gitignore" root0="SKIP_INSPECTION" />
@@ -163,10 +171,33 @@
       <option name="project" value="LOCAL" />
       <updated>1747915377036</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="implémenter-optimisation-automatique-des-hyperparamètres">
+      <option name="closed" value="true" />
+      <created>1747943582105</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1747943582105</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
+    <option name="RECENT_FILTERS">
+      <map>
+        <entry key="Branch">
+          <value>
+            <list>
+              <RecentGroup>
+                <option name="FILTER_VALUES">
+                  <option value="integration-clean" />
+                </option>
+              </RecentGroup>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
     <option name="TAB_STATES">
       <map>
         <entry key="MAIN">
@@ -190,6 +221,7 @@
     <MESSAGE value="phase4v2.py: fix TypeError: FAMD.__init__() got an unexpected keyword argument 'normalize'" />
     <MESSAGE value="phase4v2.py: update YAML with METRICS_DIR" />
     <MESSAGE value="phase4v2.py: update figures' sizes" />
-    <option name="LAST_COMMIT_MESSAGE" value="phase4v2.py: update figures' sizes" />
+    <MESSAGE value="implémenter-optimisation-automatique-des-hyperparamètres" />
+    <option name="LAST_COMMIT_MESSAGE" value="implémenter-optimisation-automatique-des-hyperparamètres" />
   </component>
 </project>
