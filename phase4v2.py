@@ -3,7 +3,16 @@
 
 import sys
 from pathlib import Path
-import pandas as pd
+try:
+    import pandas as pd
+except ValueError as err:
+    if "dtype size changed" in str(err):
+        raise ImportError(
+            "Detected an incompatible combination of pandas and NumPy. "
+            "Reinstall the packages with the pinned versions from "
+            "requirements.txt."
+        ) from err
+    raise
 from PIL import Image
 import io
 import matplotlib.pyplot as plt
