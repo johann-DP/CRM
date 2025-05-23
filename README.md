@@ -67,3 +67,32 @@ python phase4_famd.py --input "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\e
 
 This mirrors the paths used when the original script was created and will
 generate figures and CSV results inside the specified output folder.
+
+## Fine tuning MFA
+
+The script `fine_tune_mfa.py` automates a small grid search over the number of
+components and optional group weights for a Multiple Factor Analysis. Provide a
+YAML configuration describing the groups and ranges:
+
+```yaml
+input_file: path/to/data.xlsx
+output_dir: phase4_output/fine_tuning_mfa
+group_defs:
+  Financier: ["Total recette actualisé", "Budget client estimé"]
+  Temporalité: ["duree_projet_jours", "taux_realisation"]
+mfa_params:
+  min_components: 2
+  max_components: 6
+  weights:
+    - null
+    - {Financier: 1.5, Temporalité: 1.0}
+```
+
+Run it with:
+
+```bash
+python fine_tune_mfa.py --config config_mfa.yaml
+```
+
+The script exports metrics for each configuration and saves the best model (by
+silhouette and Calinski–Harabasz indices) in the configured output directory.
