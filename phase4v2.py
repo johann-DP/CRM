@@ -660,6 +660,14 @@ def run_mfa(
             if cols:
                 new_groups[gname] = cols
                 used_cols.extend(cols)
+
+        # Automatically include variables not listed in any group
+        all_cols = quant_vars + list(df_dummies.columns)
+        remaining = [c for c in all_cols if c not in used_cols]
+        if remaining:
+            new_groups["Autres"] = remaining
+            used_cols.extend(remaining)
+
         groups = new_groups
     # Combine numeric columns with the dummy-encoded qualitative variables
     df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)[used_cols]
@@ -2051,7 +2059,15 @@ def plot_multimethod_results(
                 df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
         fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-        sns.heatmap(df_norm, ax=ax, annot=comp_df, fmt=".2f", cmap="coolwarm")
+        sns.heatmap(
+            df_norm,
+            ax=ax,
+            annot=comp_df,
+            fmt=".2f",
+            cmap="coolwarm",
+            vmin=0,
+            vmax=1,
+        )
         ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
         ax.set_yticklabels(comp_df.index)
         ax.set_title("Comparaison méthodes")
@@ -3174,7 +3190,15 @@ def evaluate_methods(
 
     plt.figure(figsize=(12, 6), dpi=200)
     ax = plt.gca()
-    sns.heatmap(df_norm, annot=df_comp, fmt=".2f", cmap="coolwarm", ax=ax)
+    sns.heatmap(
+        df_norm,
+        annot=df_comp,
+        fmt=".2f",
+        cmap="coolwarm",
+        ax=ax,
+        vmin=0,
+        vmax=1,
+    )
     ax.set_title("Évaluation des méthodes")
     plt.yticks(rotation=0)
     plt.tight_layout()
@@ -3219,14 +3243,13 @@ def compare_method_clusters(
 
     ari.to_csv(output_dir / "methods_similarity.csv")
 
-    plt.figure(figsize=(12, 6), dpi=200)
-    ax = plt.gca()
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm", ax=ax)
     ax.set_title("Corrélations entre méthodes")
     plt.yticks(rotation=0)
-    plt.tight_layout()
+    fig.tight_layout()
     plt.savefig(output_dir / "methods_similarity_heatmap.png")
-    plt.close()
+    plt.close(fig)
 
     return ari
 
