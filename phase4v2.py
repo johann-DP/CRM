@@ -2117,29 +2117,10 @@ def plot_multimethod_results(
         plt.close()
 
     # ─── Heatmap d'évaluation ──────────────────────────────────
-    if not comp_df.empty:
-        df_norm = comp_df.copy()
-        for col in df_norm.columns:
-            cmin, cmax = df_norm[col].min(), df_norm[col].max()
-            if cmax > cmin:
-                df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
-
-        fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-        sns.heatmap(
-            df_norm,
-            ax=ax,
-            annot=comp_df,
-            fmt=".2f",
-            cmap="coolwarm",
-            vmin=0,
-            vmax=1,
-        )
-        ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
-        ax.set_yticklabels(comp_df.index)
-        ax.set_title("Comparaison méthodes")
-        plt.tight_layout()
-        plt.savefig(output_dir / "multi_heatmap.png")
-        plt.close()
+    # Cette visualisation est désormais générée uniquement par
+    # ``evaluate_methods`` et exportée sous le nom
+    # ``methods_heatmap.png``. L'ancienne heatmap "multi_heatmap.png"
+    # était redondante et a été retirée.
 
 
 def export_famd_results(
@@ -3906,7 +3887,6 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
             "multi_scree.png",
             "multi_scatter.png",
             "methods_similarity_heatmap.png",
-            "multi_heatmap.png",
             "methods_heatmap.png",
         ]
         existing = [output_dir / f for f in global_imgs if (output_dir / f).exists()]
@@ -3981,11 +3961,10 @@ def create_index_file(output_dir: Path) -> Path:
                 return desc
 
         other = {
-            "methods_heatmap.png": "Heatmap comparaison méthodes",
+            "methods_heatmap.png": "Heatmap évaluation des méthodes",
             "methods_comparison.csv": "Tableau comparatif des méthodes",
             "multi_scree.png": "Éboulis comparatif",
             "multi_scatter.png": "Projection comparée des méthodes",
-            "multi_heatmap.png": "Heatmap multi-méthodes",
             "phase4_figures.pdf": "PDF de toutes les figures",
             "phase4_report.pdf": "PDF synthèse",
         }
