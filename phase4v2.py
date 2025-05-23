@@ -609,7 +609,28 @@ def run_pcamix(
         n_components: Optional[int] = None,
         optimize: bool = False,
 ) -> Tuple[prince.FAMD, pd.Series, pd.DataFrame, pd.DataFrame]:
-    """Exécute une analyse de type PCAmix via :class:`prince.FAMD`."""
+    """Exécute une analyse de type PCAmix via :class:`prince.FAMD`.
+
+    Parameters
+    ----------
+    df_active : pd.DataFrame
+        Données préfiltrées contenant uniquement les variables retenues.
+    quant_vars : list of str
+        Noms des colonnes quantitatives à standardiser.
+    qual_vars : list of str
+        Noms des colonnes qualitatives.
+    output_dir : Path
+        Répertoire où sauvegarder les figures de diagnostic.
+    n_components : int, optional
+        Nombre de dimensions à conserver. Si ``None`` (par défaut) et que
+        ``optimize`` est vrai, le nombre d'axes est déterminé
+        automatiquement en combinant le critère de Kaiser (valeurs propres
+        supérieures à 1) et l'inertie cumulée (90 %). Sans optimisation, la
+        valeur par défaut est 5.
+    optimize : bool
+        Active la sélection automatique du nombre d'axes quand
+        ``n_components`` est omis.
+    """
 
     logger = logging.getLogger(__name__)
 
@@ -640,7 +661,13 @@ def run_pcamix(
         ).fit(df_mix)
         inertia_tmp = get_explained_inertia(tmp)
         cum = np.cumsum(inertia_tmp)
-        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        eigenvalues = getattr(tmp, "eigenvalues_", None)
+        if eigenvalues is not None:
+            n_kaiser = int(np.sum(np.array(eigenvalues) > 1))
+        else:
+            n_kaiser = 0
+        n_inertia = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
+        n_comp = max(n_kaiser, n_inertia)
         logger.info(
             "PCAmix auto: %d composantes retenues (%.1f%% variance cumulée)",
             n_comp,
