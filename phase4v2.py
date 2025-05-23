@@ -1284,6 +1284,10 @@ def run_phate(
         qual_vars: List[str],
         output_dir: Path,
         n_components: int = 2,
+        knn: int | str | None = None,
+        t: int | str | None = "auto",
+        random_state: int | None = 42,
+        optimize: bool = False,
 ) -> Tuple[Any | None, pd.DataFrame]:
     """Exécute PHATE sur les données CRM pour détecter des trajectoires potentielles.
 
@@ -1311,15 +1315,47 @@ def run_phate(
 
     X_mix = np.hstack([X_num, X_cat])
 
-    logger.info("Paramètres PHATE: n_components=%d", n_components)
+    if t is None:
+        t = "auto"
 
-    phate_operator = phate.PHATE(
-        n_components=n_components,
-        n_jobs=-1,
-        random_state=42,
+    def _fit_phate(nn: int | None) -> tuple[Any, np.ndarray]:
+        op = phate.PHATE(
+            n_components=n_components,
+            knn=nn if nn is not None else 5,
+            t=t,
+            n_jobs=-1,
+            random_state=random_state,
+        )
+        emb = op.fit_transform(X_mix)
+        return op, emb
+
+    best_knn = knn
+    if optimize and knn is None:
+        from sklearn.manifold import trustworthiness
+
+        grid = [5, 10, 20]
+        scores: list[tuple[float, int, Any, np.ndarray]] = []
+        for nn in grid:
+            op, emb = _fit_phate(nn)
+            score = trustworthiness(X_mix, emb)
+            scores.append((score, nn, op, emb))
+        best = max(scores, key=lambda x: x[0])
+        best_score, best_knn, phate_operator, embedding = best
+        logger.info(
+            "PHATE optimal: knn=%d (trustworthiness=%.3f)",
+            best_knn,
+            best_score,
+        )
+    else:
+        phate_operator, embedding = _fit_phate(knn)
+        best_knn = knn if knn is not None else 5
+
+    logger.info(
+        "Paramètres PHATE: n_components=%d, knn=%s, t=%s",
+        n_components,
+        best_knn,
+        t,
     )
-
-    embedding = phate_operator.fit_transform(X_mix)
 
     cols = [f"PHATE{i + 1}" for i in range(n_components)]
     phate_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
@@ -1337,28 +1373,21 @@ def export_phate_results(
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Automatic clustering on PHATE embedding using several algorithms
-    labels, method_name, param = best_clustering_labels(phate_df.values)
-    best_labels = labels
-    best_k = len(np.unique(best_labels))
-    phate_df["cluster_method"] = method_name
-    phate_df["cluster"] = best_labels
+    codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
 
     if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        palette = sns.color_palette("tab10", best_k)
         sc = plt.scatter(
             phate_df["PHATE1"],
             phate_df["PHATE2"],
-            c=[palette[i] for i in best_labels],
+            c=codes,
             s=10,
             alpha=0.7,
         )
         plt.xlabel("PHATE1")
         plt.ylabel("PHATE2")
-        plt.title("PHATE – individus (dim 1–2)")
-        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}") for i in range(best_k)]
-        plt.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.title("Projection PHATE des individus")
+        plt.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter.png")
         plt.close()
@@ -1367,21 +1396,19 @@ def export_phate_results(
     if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        palette = sns.color_palette("tab10", best_k)
         sc3 = ax.scatter(
             phate_df["PHATE1"],
             phate_df["PHATE2"],
             phate_df["PHATE3"],
-            c=[palette[i] for i in best_labels],
+            c=codes,
             s=10,
             alpha=0.7,
         )
         ax.set_xlabel("PHATE1")
         ax.set_ylabel("PHATE2")
         ax.set_zlabel("PHATE3")
-        ax.set_title("PHATE – individus (3D)")
-        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}") for i in range(best_k)]
-        ax.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.set_title("Projection PHATE des individus (3D)")
+        fig.colorbar(sc3, ax=ax, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter_3D.png")
         plt.close()
@@ -2924,6 +2951,7 @@ def main() -> None:
             quant_vars,
             qual_vars,
             output_dir_phate,
+            optimize=optimize_params,
             **config.get("phate", {}),
         )
         if phate_op is not None:
@@ -2935,7 +2963,11 @@ def main() -> None:
                 "runtime": rt,
             }
             logger.info(f"PHATE : r\u00e9alis\u00e9 en {rt:.1f}s")
-            effective_config.setdefault("phate", {})["n_components"] = phate_op.n_components
+            effective_config.setdefault("phate", {}).update({
+                "n_components": phate_op.n_components,
+                "knn": getattr(phate_op, "knn", None),
+                "t": getattr(phate_op, "t", None),
+            })
 
     # 10. t-SNE
     if "tsne" in config.get("methods", []):
