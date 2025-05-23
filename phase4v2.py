@@ -55,6 +55,17 @@ CONFIG = {
     'baseline_cfg': {'weighting': 'balanced'}
 }
 
+# Principal CRM segmentation columns used to generate variant scatters
+SEGMENT_COLUMNS = [
+    "Catégories",
+    "Entité opérationnelle",
+    "Pilier",
+    "Sous-catégorie",
+    "Statut commercial",
+    "Statut production",
+    "Type opportunité",
+]
+
 
 def plot_correlation_circle(
         ax,
@@ -533,8 +544,11 @@ def segment_data(
 
 
 def get_segment_columns(df: pd.DataFrame) -> List[str]:
-    """Return columns containing the word 'segment'."""
-    return [c for c in df.columns if "segment" in c.lower()]
+    """Return configured segmentation columns present in ``df``."""
+    cols = [c for c in SEGMENT_COLUMNS if c in df.columns]
+    # Backward compatibility: also include columns containing 'segment'
+    cols += [c for c in df.columns if "segment" in c.lower() and c not in cols]
+    return cols
 
 
 def scatter_all_segments(
@@ -543,7 +557,15 @@ def scatter_all_segments(
         output_dir: Path,
         prefix: str,
 ) -> None:
-    """Generate scatter plots colored by each segment column."""
+    """Generate scatter plots colored by each segment column.
+
+    For each segmentation variable present in ``df_active`` the function
+    creates two figures:
+        - ``{prefix}_{segment}.png`` colored by the segment categories.
+        - ``{prefix}_{segment}_clusters.png`` where colors correspond to
+          ``k`` clusters, with ``k`` equal to the number of modalities of the
+          segment.
+    """
     seg_cols = get_segment_columns(df_active)
     if not seg_cols:
         return
@@ -570,6 +592,33 @@ def scatter_all_segments(
         fname = f"{prefix.lower()}_{col}.png"
         plt.savefig(output_dir / fname)
         plt.close()
+
+        # Version clustered with k equal to number of modalities
+        from sklearn.cluster import KMeans
+
+        k = len(categories.cat.categories)
+        if k >= 2:
+            labels = KMeans(n_clusters=k, random_state=0).fit_predict(
+                emb_df.values
+            )
+            palette = sns.color_palette("tab10", k)
+            plt.figure(figsize=(12, 6), dpi=200)
+            sc = plt.scatter(
+                emb_df.iloc[:, 0],
+                emb_df.iloc[:, 1],
+                c=labels,
+                cmap=ListedColormap(palette),
+                s=10,
+                alpha=0.7,
+            )
+            plt.xlabel(emb_df.columns[0])
+            plt.ylabel(emb_df.columns[1])
+            plt.title(f"{prefix} – {col} clusters")
+            plt.colorbar(sc, label="cluster")
+            plt.tight_layout()
+            fname = f"{prefix.lower()}_{col}_clusters.png"
+            plt.savefig(output_dir / fname)
+            plt.close()
 
 
 def scatter_cluster_variants(
@@ -1094,6 +1143,13 @@ def export_tsne_results(
         plt.savefig(fig_path)
         plt.close()
         logger.info(f"Export t-SNE -> {fig_path}")
+
+        scatter_all_segments(
+            tsne_df[["TSNE1", "TSNE2"]],
+            df_active,
+            output_dir,
+            "tsne_scatter",
+        )
 
     if {"TSNE1", "TSNE2", "TSNE3"}.issubset(tsne_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
