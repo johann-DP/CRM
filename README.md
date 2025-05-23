@@ -44,7 +44,8 @@ python -m pip install --force-reinstall -r requirements.txt
 
 The package `umap-learn` is required for the UMAP functionality. `phate` and
 `pacmap` are optional; install them if you want to run the corresponding
-analyses.
+analyses. UMAP accepts several parameters in `config.yaml`, including
+`n_neighbors`, `min_dist` and the distance `metric` (default `euclidean`).
 
 ### UMAP warnings
 
