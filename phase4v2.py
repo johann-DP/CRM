@@ -694,7 +694,7 @@ def run_pca(
     if optimize and n_components is None:
         n_init = df_scaled.shape[1]
         tmp = prince.PCA(n_components=n_init).fit(df_scaled)
-        inertia_tmp = getattr(tmp, "explained_inertia_", tmp.explained_variance_ratio_)
+        inertia_tmp = get_explained_inertia(tmp)
         cum = np.cumsum(inertia_tmp)
         n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
         logger.info(
@@ -709,7 +709,7 @@ def run_pca(
     pca = pca.fit(df_scaled)
 
     inertia = pd.Series(
-        getattr(pca, "explained_inertia_", pca.explained_variance_ratio_),
+        get_explained_inertia(pca),
         index=[f"F{i + 1}" for i in range(pca.n_components)],
     )
 
@@ -1338,18 +1338,18 @@ def export_phate_results(
     logger.info("CSV PHATE enregistré")
 
 
-def get_explained_inertia(famd) -> List[float]:
-    """Return the percentage of explained inertia for each FAMD component."""
+def get_explained_inertia(model) -> List[float]:
+    """Return the percentage of explained inertia for a decomposition model."""
     try:
-        inertia = getattr(famd, "explained_inertia_", None)
+        inertia = getattr(model, "explained_inertia_", None)
         if inertia is not None:
             return list(inertia)
     except Exception:
         inertia = None
     try:
-        eigenvalues = famd.eigenvalues_
+        eigenvalues = model.eigenvalues_
     except Exception:
-        eigenvalues = getattr(famd, "eigenvalues_", None)
+        eigenvalues = getattr(model, "eigenvalues_", None)
     if eigenvalues is None:
         return []
     total = sum(eigenvalues)
