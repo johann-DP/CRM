@@ -570,6 +570,41 @@ def scatter_all_segments(
         plt.close()
 
 
+def scatter_cluster_variants(
+        emb_df: pd.DataFrame,
+        ks: Sequence[int],
+        output_dir: Path,
+        prefix: str,
+) -> None:
+    """Generate KMeans scatter plots for each ``k`` in ``ks``."""
+    from sklearn.cluster import KMeans
+
+    uniq = sorted({int(k) for k in ks if k >= 2})
+    if not uniq:
+        return
+
+    for k in uniq:
+        labels = KMeans(n_clusters=k, random_state=0).fit_predict(emb_df.values)
+        palette = sns.color_palette("tab10", k)
+        plt.figure(figsize=(12, 6), dpi=200)
+        sc = plt.scatter(
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            c=labels,
+            cmap=ListedColormap(palette),
+            s=10,
+            alpha=0.7,
+        )
+        plt.xlabel(emb_df.columns[0])
+        plt.ylabel(emb_df.columns[1])
+        plt.title(f"{prefix} – k={k}")
+        plt.colorbar(sc, label="cluster")
+        plt.tight_layout()
+        fname = f"{prefix.lower()}_k{k}.png"
+        plt.savefig(output_dir / fname)
+        plt.close()
+
+
 def run_mfa(
         df_active: pd.DataFrame,
         quant_vars: List[str],
@@ -1457,6 +1492,18 @@ def export_phate_results(
             df_active,
             output_dir,
             "phate_scatter",
+        )
+
+        k_values = [
+            df_active[c].nunique()
+            for c in candidate_vars
+            if c in df_active.columns and df_active[c].nunique() >= 2
+        ]
+        scatter_cluster_variants(
+            phate_df[["PHATE1", "PHATE2"]],
+            k_values,
+            output_dir,
+            "phate_clusters",
         )
 
     if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
