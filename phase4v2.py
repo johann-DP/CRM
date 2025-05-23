@@ -29,6 +29,7 @@ import os
 import numpy as np
 import umap
 import time
+import seaborn as sns
 
 try:  # PHATE is optional
     import phate
@@ -50,6 +51,25 @@ CONFIG = {
     },
     'baseline_cfg': {'weighting': 'balanced'}
 }
+
+
+def plot_correlation_circle(ax, coords: pd.DataFrame, title: str) -> None:
+    """Plot a correlation circle with slight label offset to reduce overlap."""
+    circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+    ax.add_patch(circle)
+    ax.axhline(0, color="grey", lw=0.5)
+    ax.axvline(0, color="grey", lw=0.5)
+    for var in coords.index:
+        x, y = coords.loc[var, ["F1", "F2"]]
+        ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+        ax.text(x * 1.1, y * 1.1, var, fontsize=8, ha="center", va="center")
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
+    ax.set_xlabel("F1")
+    ax.set_ylabel("F2")
+    ax.set_title(title)
+    ax.set_aspect("equal")
+
 
 
 def sanity_check(
@@ -1315,20 +1335,40 @@ def export_phate_results(
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Automatic clustering on PHATE embedding
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+
+    best_k = None
+    best_score = -1
+    best_labels = None
+    for k in range(2, min(7, len(phate_df))):
+        labels = KMeans(n_clusters=k, random_state=0).fit_predict(phate_df)
+        score = silhouette_score(phate_df, labels)
+        if score > best_score:
+            best_score = score
+            best_k = k
+            best_labels = labels
+    if best_labels is None:
+        best_labels = np.zeros(len(phate_df), dtype=int)
+        best_k = 1
+    phate_df["cluster"] = best_labels
+
     if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        palette = sns.color_palette("tab10", best_k)
         sc = plt.scatter(
             phate_df["PHATE1"],
             phate_df["PHATE2"],
-            c=codes,
+            c=[palette[i] for i in best_labels],
             s=10,
             alpha=0.7,
         )
         plt.xlabel("PHATE1")
         plt.ylabel("PHATE2")
         plt.title("PHATE – individus (dim 1–2)")
-        plt.colorbar(sc, label="Statut commercial")
+        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}") for i in range(best_k)]
+        plt.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter.png")
         plt.close()
@@ -1337,12 +1377,12 @@ def export_phate_results(
     if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+        palette = sns.color_palette("tab10", best_k)
         sc3 = ax.scatter(
             phate_df["PHATE1"],
             phate_df["PHATE2"],
             phate_df["PHATE3"],
-            c=codes,
+            c=[palette[i] for i in best_labels],
             s=10,
             alpha=0.7,
         )
@@ -1350,7 +1390,8 @@ def export_phate_results(
         ax.set_ylabel("PHATE2")
         ax.set_zlabel("PHATE3")
         ax.set_title("PHATE – individus (3D)")
-        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}") for i in range(best_k)]
+        ax.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter_3D.png")
         plt.close()
@@ -1709,21 +1750,8 @@ def export_famd_results(
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[quant_vars].dropna(how="any")
         plt.figure(figsize=(12, 6), dpi=200)
-        circle = plt.Circle((0, 0), 1, color="grey", fill=False)
         ax = plt.gca()
-        ax.add_patch(circle)
-        ax.axhline(0, color="grey", lw=0.5)
-        ax.axvline(0, color="grey", lw=0.5)
-        for var in qcoords.index:
-            x, y = qcoords.loc[var, ["F1", "F2"]]
-            ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-            ax.text(x, y, var, fontsize=8)
-        ax.set_xlim(-1.1, 1.1)
-        ax.set_ylim(-1.1, 1.1)
-        ax.set_xlabel("F1")
-        ax.set_ylabel("F2")
-        ax.set_title("FAMD – cercle des corrélations (F1–F2)")
-        ax.set_aspect("equal")
+        plot_correlation_circle(ax, qcoords, "FAMD – cercle des corrélations (F1–F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "famd_correlation_circle.png")
         plt.close()
@@ -1759,6 +1787,8 @@ def export_famd_results(
             axes_plot[i].set_title(f"Contributions FAMD – Axe {axis[-1]}")
             axes_plot[i].set_ylabel("% contribution")
             axes_plot[i].tick_params(axis="x", rotation=45)
+            for tick in axes_plot[i].get_xticklabels():
+                tick.set_horizontalalignment("right")
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
@@ -1875,21 +1905,8 @@ def export_mfa_results(
         qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
         if not qcoords.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            circle = plt.Circle((0, 0), 1, color="grey", fill=False)
             ax = plt.gca()
-            ax.add_patch(circle)
-            ax.axhline(0, color="grey", lw=0.5)
-            ax.axvline(0, color="grey", lw=0.5)
-            for var in qcoords.index:
-                x, y = qcoords.loc[var, ["F1", "F2"]]
-                ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-                ax.text(x, y, var, fontsize=8)
-            ax.set_xlim(-1.1, 1.1)
-            ax.set_ylim(-1.1, 1.1)
-            ax.set_xlabel("F1")
-            ax.set_ylabel("F2")
-            ax.set_title("MFA – cercle des corrélations")
-            ax.set_aspect("equal")
+            plot_correlation_circle(ax, qcoords, "MFA – cercle des corrélations")
             plt.tight_layout()
             plt.savefig(output_dir / "mfa_correlation_circle.png")
             plt.close()
@@ -1900,13 +1917,24 @@ def export_mfa_results(
         modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
         if not modalities.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
-            for mod in modalities.index:
-                label = mod
-                if "_" in mod:
-                    var, val = mod.split("_", 1)
-                    label = f"{var}={val}"
-                plt.text(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], label, fontsize=8)
+            var_names = [m.split("_", 1)[0] if "_" in m else m for m in modalities.index]
+            palette = sns.color_palette("tab10", len(set(var_names)))
+            color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
+            for mod, var in zip(modalities.index, var_names):
+                plt.scatter(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+
+            radius = np.sqrt(modalities["F1"] ** 2 + modalities["F2"] ** 2)
+            thresh = radius.quantile(0.7)
+            for mod, r in radius.items():
+                if r >= thresh:
+                    label = mod
+                    if "_" in mod:
+                        var, val = mod.split("_", 1)
+                        label = f"{var}={val}"
+                    plt.text(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], label, fontsize=8)
+
+            handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=color_map[v], label=v) for v in sorted(set(var_names))]
+            plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.xlabel("F1")
             plt.ylabel("F2")
             plt.title("MFA – modalités (F1–F2)")
@@ -1926,6 +1954,8 @@ def export_mfa_results(
                 axes_plot[i].set_title(f"Contributions MFA – Axe {axis[-1]}")
                 axes_plot[i].set_ylabel("% contribution")
                 axes_plot[i].tick_params(axis="x", rotation=45)
+                for tick in axes_plot[i].get_xticklabels():
+                    tick.set_horizontalalignment("right")
             else:
                 axes_plot[i].axis("off")
         plt.tight_layout()
@@ -2029,17 +2059,8 @@ def export_pca_results(
     # Correlation circle
     if {"F1", "F2"}.issubset(col_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        circle = plt.Circle((0, 0), 1, color="grey", fill=False)
-        ax = plt.gca(); ax.add_patch(circle)
-        ax.axhline(0, color="grey", lw=0.5); ax.axvline(0, color="grey", lw=0.5)
-        for var in col_coords.index:
-            x, y = col_coords.loc[var, ["F1", "F2"]]
-            ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-            ax.text(x, y, var, fontsize=8)
-        ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1)
-        ax.set_xlabel("F1"); ax.set_ylabel("F2")
-        ax.set_title("PCA – cercle des corrélations (F1–F2)")
-        ax.set_aspect("equal")
+        ax = plt.gca()
+        plot_correlation_circle(ax, col_coords, "PCA – cercle des corrélations (F1–F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "pca_correlation_circle.png")
         plt.close()
@@ -2137,13 +2158,24 @@ def export_mca_results(
     # Modalities
     if {"F1", "F2"}.issubset(col_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        plt.scatter(col_coords["F1"], col_coords["F2"], alpha=0.7)
-        for mod in col_coords.index:
-            label = mod
-            if "_" in mod:
-                var, val = mod.split("_", 1)
-                label = f"{var}={val}"
-            plt.text(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], label, fontsize=8)
+        var_names = [m.split("_", 1)[0] if "_" in m else m for m in col_coords.index]
+        palette = sns.color_palette("tab10", len(set(var_names)))
+        color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
+        for mod, var in zip(col_coords.index, var_names):
+            plt.scatter(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+
+        radius = np.sqrt(col_coords["F1"] ** 2 + col_coords["F2"] ** 2)
+        thresh = radius.quantile(0.7)
+        for mod, r in radius.items():
+            if r >= thresh:
+                label = mod
+                if "_" in mod:
+                    var, val = mod.split("_", 1)
+                    label = f"{var}={val}"
+                plt.text(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], label, fontsize=8)
+
+        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=color_map[v], label=v) for v in sorted(set(var_names))]
+        plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – modalités (F1–F2)")
         plt.tight_layout()
@@ -2255,21 +2287,8 @@ def export_pcamix_results(
         qcoords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
         if not qcoords.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            circle = plt.Circle((0, 0), 1, color="grey", fill=False)
             ax = plt.gca()
-            ax.add_patch(circle)
-            ax.axhline(0, color="grey", lw=0.5)
-            ax.axvline(0, color="grey", lw=0.5)
-            for var in qcoords.index:
-                x, y = qcoords.loc[var, ["F1", "F2"]]
-                ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-                ax.text(x, y, var, fontsize=8)
-            ax.set_xlim(-1.1, 1.1)
-            ax.set_ylim(-1.1, 1.1)
-            ax.set_xlabel("F1")
-            ax.set_ylabel("F2")
-            ax.set_title("PCAmix – cercle des corrélations")
-            ax.set_aspect("equal")
+            plot_correlation_circle(ax, qcoords, "PCAmix – cercle des corrélations")
             plt.tight_layout()
             plt.savefig(output_dir / "pcamix_correlation_circle.png")
             plt.close()
@@ -2304,6 +2323,8 @@ def export_pcamix_results(
             axes_plot[i].set_title(f"Contributions PCAmix – Axe {axis[-1]}")
             axes_plot[i].set_ylabel("% contribution")
             axes_plot[i].tick_params(axis="x", rotation=45)
+            for tick in axes_plot[i].get_xticklabels():
+                tick.set_horizontalalignment("right")
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
@@ -2440,7 +2461,7 @@ def evaluate_methods(
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(df_norm, annot=True, cmap="viridis")
+    sns.heatmap(df_norm, annot=True, cmap=sns.color_palette("deep", as_cmap=True))
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_dir / "methods_heatmap.png")
