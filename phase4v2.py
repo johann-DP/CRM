@@ -1487,12 +1487,58 @@ def export_phate_results(
         df_active: pd.DataFrame,
         output_dir: Path,
 ) -> None:
-    """Génère les visualisations et CSV pour PHATE."""
+    """Génère les visualisations et CSV pour PHATE.
+
+    Cette version détermine d'abord un nombre de clusters ``k`` en appliquant
+    plusieurs algorithmes de regroupement sur les coordonnées PHATE. Le nombre
+    de groupes ainsi obtenu est ensuite comparé au nombre de modalités des
+    principales variables de segmentation du CRM afin de choisir
+    automatiquement la variable la plus pertinente pour colorer le scatter.
+    """
 
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    codes = df_active.loc[phate_df.index, "Statut commercial"].astype("category").cat.codes
+    # 1) Choix automatique de la variable de coloration en fonction du nombre
+    #    de clusters détectés dans l'espace PHATE.
+    labels, _, _ = best_clustering_labels(phate_df.values)
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        unique_labels.remove(-1)
+    k = len(unique_labels) if unique_labels else 1
+
+    candidate_vars = [
+        "Catégorie",
+        "Entité opérationnelle",
+        "Pilier",
+        "Sous-catégorie",
+        "Statut commercial",
+        "Statut production",
+        "Type opportunité",
+    ]
+
+    var_counts = {
+        var: df_active[var].nunique()
+        for var in candidate_vars
+        if var in df_active.columns
+    }
+
+    if var_counts:
+        color_var = min(var_counts.items(), key=lambda t: abs(t[1] - k))[0]
+    else:
+        color_var = "Statut commercial"
+
+    logger.info(
+        "PHATE clustering -> k=%d, variable coloration choisie: %s",
+        k,
+        color_var,
+    )
+
+    codes = (
+        df_active.loc[phate_df.index, color_var]
+        .astype("category")
+        .cat.codes
+    )
 
     if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
@@ -1506,7 +1552,7 @@ def export_phate_results(
         plt.xlabel("PHATE1")
         plt.ylabel("PHATE2")
         plt.title("Projection PHATE des individus")
-        plt.colorbar(sc, label="Statut commercial")
+        plt.colorbar(sc, label=color_var)
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter.png")
         plt.close()
@@ -1527,7 +1573,7 @@ def export_phate_results(
         ax.set_ylabel("PHATE2")
         ax.set_zlabel("PHATE3")
         ax.set_title("Projection PHATE des individus (3D)")
-        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        fig.colorbar(sc3, ax=ax, label=color_var)
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter_3D.png")
         plt.close()
