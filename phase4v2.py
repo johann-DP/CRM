@@ -201,14 +201,15 @@ def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
 
 
 def load_data(file_path: str) -> pd.DataFrame:
-    """
-    Charge les données CRM brutes depuis un fichier Excel
-    et réalise quelques contrôles de base.
+    """Charge les données CRM brutes depuis un fichier.
+
+    Le fichier peut être au format Excel (``.xls`` ou ``.xlsx``) ou CSV.
+    Quelques contrôles de base sont effectués après la lecture.
 
     Parameters
     ----------
     file_path : str
-        Chemin vers le fichier Excel d’export Everwin (ex. "export_everwin (19).xlsx").
+        Chemin vers le fichier d'export Everwin.
 
     Returns
     -------
@@ -223,16 +224,23 @@ def load_data(file_path: str) -> pd.DataFrame:
         Si la lecture échoue pour une autre raison.
     """
     logger = logging.getLogger(__name__)
-    # Lecture du fichier Excel
+    path = Path(file_path)
     try:
-        df = pd.read_excel(file_path)
-        logger.info(f"Données chargées : {df.shape[0]} lignes × {df.shape[1]} colonnes")
-    except FileNotFoundError as fnf_err:
-        logger.error(f"Fichier introuvable : {file_path}")
+        if path.suffix.lower() == ".csv":
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path, engine="openpyxl")
+        logger.info(
+            "Données chargées : %s lignes × %s colonnes",
+            df.shape[0],
+            df.shape[1],
+        )
+    except FileNotFoundError:
+        logger.error("Fichier introuvable : %s", file_path)
         raise
     except Exception as e:
-        logger.error(f"Erreur lors du chargement de '{file_path}' : {e}")
-        raise ValueError(f"Impossible de charger le fichier Excel : {e}")
+        logger.error("Erreur lors du chargement de '%s' : %s", file_path, e)
+        raise ValueError(f"Impossible de charger le fichier : {e}") from e
 
     # Vérification rapide des colonnes
     logger.debug(f"Noms de colonnes avant nettoyage : {list(df.columns)}")

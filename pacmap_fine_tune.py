@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import time
 from pathlib import Path
@@ -20,8 +21,12 @@ import pacmap
 from phase4v2 import select_variables, handle_missing_values
 
 
-INPUT_FILE = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_multivariate.csv")
-OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output\fine_tuning_pacmap")
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PaCMAP")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
 
 
 def prepare_dataset(path: Path) -> tuple[pd.DataFrame, list[str], list[str], pd.Series]:
@@ -63,11 +68,15 @@ def preprocess(df: pd.DataFrame, quant_vars: list[str], qual_vars: list[str]):
 
 
 def main() -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    fig_dir = OUTPUT_DIR / "figures"
+    args = parse_args()
+    input_file = Path(args.input)
+    out_dir = Path(args.output)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = out_dir / "figures"
     fig_dir.mkdir(exist_ok=True)
 
-    df_active, quant_vars, qual_vars, y = prepare_dataset(INPUT_FILE)
+    df_active, quant_vars, qual_vars, y = prepare_dataset(input_file)
     X = preprocess(df_active, quant_vars, qual_vars)
 
     results = []
@@ -123,7 +132,7 @@ def main() -> None:
         )
 
     metrics_df = pd.DataFrame(results)
-    metrics_path = OUTPUT_DIR / "pacmap_tuning_metrics.csv"
+    metrics_path = out_dir / "pacmap_tuning_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
     generated_files.append(metrics_path)
 
@@ -152,12 +161,12 @@ def main() -> None:
             index=df_active.index,
             columns=[f"PACMAP{i+1}" for i in range(nc)],
         )
-        coords_path = OUTPUT_DIR / f"pacmap_coords_{nn}_{mn}_{nc}D.csv"
+        coords_path = out_dir / f"pacmap_coords_{nn}_{mn}_{nc}D.csv"
         coord_df.to_csv(coords_path, index=True)
         generated_files.append(coords_path)
 
         # Save model
-        model_path = OUTPUT_DIR / f"pacmap_model_{nn}_{mn}_{nc}D.joblib"
+        model_path = out_dir / f"pacmap_model_{nn}_{mn}_{nc}D.joblib"
         joblib.dump(model, model_path)
         generated_files.append(model_path)
 
@@ -219,7 +228,7 @@ def main() -> None:
             generated_files.append(fig_path)
 
     # Write index file
-    index_path = OUTPUT_DIR / "index_pacmap.txt"
+    index_path = out_dir / "index_pacmap.txt"
     with open(index_path, "w", encoding="utf-8") as f:
         for p in generated_files:
             f.write(str(Path(p).resolve()) + "\n")
