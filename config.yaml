@@ -27,4 +27,7 @@ umap:
   n_jobs: 1
   metric: euclidean
 tsne: {}
-phate: {}
+phate:
+  knn: 5       # nombre de voisins ("auto" pour laisser PHATE décider)
+  t: auto      # étapes de diffusion
+  n_components: 2
