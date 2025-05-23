@@ -1051,6 +1051,7 @@ def run_umap(
         n_components: int = 2,
         random_state: int | None = 42,
         n_jobs: int | None = None,
+        metric: str = "euclidean",
         optimize: bool = False,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
     """
@@ -1070,6 +1071,8 @@ def run_umap(
         n_jobs: Nombre de threads UMAP. Si ``random_state`` est défini et
             ``n_jobs`` n'est pas ``1``, la valeur sera forcée à ``1`` pour
             éviter le warning de ``umap-learn``.
+        metric: Fonction de distance à utiliser ("euclidean", "manhattan",
+            "cosine", ...).
         optimize: si ``True`` et que ``n_neighbors``/``min_dist`` ne sont pas
             fournis, recherche la meilleure combinaison (trustworthiness).
 
@@ -1118,6 +1121,7 @@ def run_umap(
             n_components=n_components,
             random_state=random_state,
             n_jobs=nj,
+            metric=metric,
         )
 
     if optimize and (n_neighbors is None or min_dist is None):
@@ -3042,6 +3046,7 @@ def main() -> None:
             "n_components": umap_model.n_components,
             "n_neighbors": getattr(umap_model, "n_neighbors", None),
             "min_dist": getattr(umap_model, "min_dist", None),
+            "metric": getattr(umap_model, "metric", None),
         })
 
     # 8. PaCMAP
