@@ -1822,11 +1822,11 @@ def plot_multimethod_results(
         scatter_methods = list(results_dict.keys())
 
     # ─── Scree-plots ────────────────────────────────────────────
-    methods_inertia = {
-        m: results_dict[m]["inertia"]
-        for m in scree_methods
-        if m in results_dict and results_dict[m]["inertia"]
-    }
+    methods_inertia = {}
+    for m in scree_methods:
+        inertia = results_dict.get(m, {}).get("inertia")
+        if inertia is not None and len(inertia) > 0:
+            methods_inertia[m] = inertia
     if methods_inertia:
         n = len(methods_inertia)
         fig, axes = plt.subplots(1, n, figsize=(4 * n, 4), dpi=200)
