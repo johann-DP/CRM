@@ -715,7 +715,8 @@ def run_pca(
 
     row_coords = pca.row_coordinates(df_scaled)
     if hasattr(pca, "column_correlations"):
-        col_coords = pca.column_correlations(df_scaled)
+        attr = pca.column_correlations
+        col_coords = attr(df_scaled) if callable(attr) else attr
     elif hasattr(pca, "column_correlations_"):
         col_coords = pca.column_correlations_
     else:
