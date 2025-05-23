@@ -15,6 +15,9 @@ except ValueError as err:
     raise
 from PIL import Image
 import io
+import matplotlib
+# Use a non-interactive backend to avoid Tkinter cleanup errors in CLI usage
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from typing import List, Optional, Tuple, Sequence, Dict, Any
