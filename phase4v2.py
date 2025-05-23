@@ -1804,57 +1804,81 @@ def run_famd(
 
 
 def plot_multimethod_results(
-        results_dict: Dict[str, Dict[str, Any]],
-        df_active: pd.DataFrame,
-        comp_df: pd.DataFrame,
-        output_dir: Path,
+    results_dict: Dict[str, Dict[str, Any]],
+    df_active: pd.DataFrame,
+    comp_df: pd.DataFrame,
+    output_dir: Path,
+    *,
+    scree_methods: Optional[Sequence[str]] = None,
+    scatter_methods: Optional[Sequence[str]] = None,
 ) -> None:
     """Visualisations comparatives pour plusieurs méthodes factorielles."""
 
-    # ─── Scree-plots ─────────────────────────────────────────────
+    if scree_methods is None:
+        scree_methods = list(results_dict.keys())
+    if scatter_methods is None:
+        scatter_methods = list(results_dict.keys())
+
+    # ─── Scree-plots ────────────────────────────────────────────
     methods_inertia = {
-        m: info["inertia"] for m, info in results_dict.items() if info["inertia"]
+        m: results_dict[m]["inertia"]
+        for m in scree_methods
+        if m in results_dict and results_dict[m]["inertia"]
     }
-    n = len(methods_inertia)
-    fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
-    for ax, (m, inertia) in zip(np.atleast_1d(axes), methods_inertia.items()):
-        axes_idx = list(range(1, len(inertia) + 1))
-        ax.bar(axes_idx, [i * 100 for i in inertia], edgecolor="black")
-        ax.set_title(f"Éboulis {m}")
-        ax.set_xlabel("Composante")
-        ax.set_ylabel("% inertie")
-        ax.set_xticks(axes_idx)
-    plt.tight_layout()
-    plt.savefig(output_dir / "multi_scree.png")
-    plt.close()
+    if methods_inertia:
+        n = len(methods_inertia)
+        fig, axes = plt.subplots(1, n, figsize=(4 * n, 4), dpi=200)
+        for ax, (m, inertia) in zip(np.atleast_1d(axes), methods_inertia.items()):
+            axes_idx = list(range(1, len(inertia) + 1))
+            ax.bar(axes_idx, [i * 100 for i in inertia], edgecolor="black")
+            ax.set_title(f"Éboulis {m}")
+            ax.set_xlabel("Composante")
+            ax.set_ylabel("% inertie")
+            ax.set_xticks(axes_idx)
+        plt.tight_layout()
+        plt.savefig(output_dir / "multi_scree.png")
+        plt.close()
 
-    # ─── Scatter F1–F2 comparés ───────────────────────────────────
-    methods_emb = results_dict.keys()
-    fig, axes = plt.subplots(1, len(methods_emb), figsize=(4 * len(methods_emb), 4))
-    for ax, m in zip(np.atleast_1d(axes), methods_emb):
-        emb = results_dict[m]["embeddings"]
-        x, y = emb.iloc[:, 0], emb.iloc[:, 1]
-        codes = df_active["Statut commercial"].astype("category").cat.codes
-        ax.scatter(x, y, c=codes, s=15, alpha=0.6)
-        ax.set_title(f"{m} (1-2)")
-        ax.set_xlabel(emb.columns[0])
-        ax.set_ylabel(emb.columns[1])
-    plt.tight_layout()
-    plt.savefig(output_dir / "multi_scatter.png")
-    plt.close()
+    # ─── Scatter F1–F2 comparés ─────────────────────────────────
+    emb_methods = [m for m in scatter_methods if m in results_dict]
+    if emb_methods:
+        n = len(emb_methods)
+        ncols = 3
+        nrows = int(np.ceil(n / ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), dpi=200)
+        axes = np.atleast_1d(axes).reshape(-1)
+        for ax, m in zip(axes, emb_methods):
+            emb = results_dict[m]["embeddings"]
+            if emb.shape[1] < 2:
+                ax.axis("off")
+                continue
+            x, y = emb.iloc[:, 0], emb.iloc[:, 1]
+            codes = (
+                df_active.loc[emb.index, "Statut commercial"].astype("category").cat.codes
+            )
+            ax.scatter(x, y, c=codes, s=15, alpha=0.6)
+            ax.set_title(m)
+            ax.set_xlabel(emb.columns[0])
+            ax.set_ylabel(emb.columns[1])
+        for j in range(len(emb_methods), len(axes)):
+            axes[j].axis("off")
+        plt.tight_layout()
+        plt.savefig(output_dir / "multi_scatter.png")
+        plt.close()
 
-    # ─── Heatmap d'évaluation ────────────────────────────────────
-    fig, ax = plt.subplots(figsize=(6, 4))
-    im = ax.imshow(comp_df.values, aspect="auto", cmap="viridis")
-    ax.set_xticks(np.arange(comp_df.shape[1]))
-    ax.set_yticks(np.arange(comp_df.shape[0]))
-    ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
-    ax.set_yticklabels(comp_df.index)
-    ax.set_title("Comparaison méthodes")
-    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    plt.tight_layout()
-    plt.savefig(output_dir / "multi_heatmap.png")
-    plt.close()
+    # ─── Heatmap d'évaluation ──────────────────────────────────
+    if not comp_df.empty:
+        fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+        im = ax.imshow(comp_df.values, aspect="auto", cmap="viridis")
+        ax.set_xticks(np.arange(comp_df.shape[1]))
+        ax.set_yticks(np.arange(comp_df.shape[0]))
+        ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
+        ax.set_yticklabels(comp_df.index)
+        ax.set_title("Comparaison méthodes")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        plt.tight_layout()
+        plt.savefig(output_dir / "multi_heatmap.png")
+        plt.close()
 
 
 def export_famd_results(
@@ -2904,6 +2928,50 @@ def evaluate_methods(
     return df_comp
 
 
+def compare_method_clusters(
+    results_dict: Dict[str, Dict[str, Any]],
+    output_dir: Path,
+    *,
+    n_clusters: int = 3,
+) -> pd.DataFrame:
+    """Compute clustering consistency between methods using ARI."""
+
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import adjusted_rand_score
+
+    if not results_dict:
+        return pd.DataFrame()
+
+    index = next(iter(results_dict.values()))["embeddings"].index
+    labels_df = pd.DataFrame(index=index)
+    for method, info in results_dict.items():
+        emb = info["embeddings"]
+        labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(emb.values)
+        labels_df[method] = labels
+
+    labels_df.to_csv(output_dir / "cluster_labels.csv")
+
+    methods = labels_df.columns.tolist()
+    ari = pd.DataFrame(np.eye(len(methods)), index=methods, columns=methods)
+    for i, m1 in enumerate(methods):
+        for j in range(i + 1, len(methods)):
+            m2 = methods[j]
+            score = adjusted_rand_score(labels_df[m1], labels_df[m2])
+            ari.loc[m1, m2] = score
+            ari.loc[m2, m1] = score
+
+    ari.to_csv(output_dir / "methods_similarity.csv")
+
+    plt.figure(figsize=(6, 5), dpi=200)
+    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="viridis")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.savefig(output_dir / "methods_similarity_heatmap.png")
+    plt.close()
+
+    return ari
+
+
 ### MAIN ###
 
 def main() -> None:
@@ -3277,6 +3345,24 @@ def main() -> None:
         quant_vars=quant_vars,
         qual_vars=qual_vars,
     )
+
+    # 8b. Comparaisons multi-méthodes
+    scree_methods = [m for m in ("FAMD", "MFA", "PCAmix") if m in results]
+    scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP") if m in results]
+    method_order = []
+    for m in scree_methods + scatter_methods:
+        if m not in method_order:
+            method_order.append(m)
+    plot_multimethod_results(
+        {m: results[m] for m in method_order},
+        df_active,
+        comp_df.loc[comp_df.index.intersection(method_order)],
+        output_dir,
+        scree_methods=scree_methods,
+        scatter_methods=scatter_methods,
+    )
+
+    compare_method_clusters(results, output_dir, n_clusters=3)
 
     # 9. PDF comparatif
     pdf_path = generate_pdf(output_dir)
