@@ -843,7 +843,7 @@ def run_tsne(
         n_components: int = 2,
         optimize: bool = False,
         perplexity_grid: Sequence[int] | None = None,
-) -> Tuple[TSNE, pd.DataFrame]:
+) -> Tuple[TSNE, pd.DataFrame, Dict[str, float]]:
     """
     Applique t-SNE sur des coordonnées factorielles existantes et renvoie les
     embeddings calculés. Les figures et CSV sont enregistrés via
@@ -910,16 +910,31 @@ def run_tsne(
         grid = perplexity_grid or [5, 30, 50]
         best = None
         for p in grid:
-            t, emb = _fit_tsne(p)
-            score = trustworthiness(embeddings.values, emb)
+            if p >= embeddings.shape[0] / 3:
+                logger.warning(
+                    "Perplexity %d ignor\u00e9e (trop grande pour %d points)",
+                    p,
+                    embeddings.shape[0],
+                )
+                continue
+            try:
+                t, emb = _fit_tsne(p)
+                score = trustworthiness(embeddings.values, emb)
+            except Exception as exc:  # pragma: no cover - t-SNE may fail
+                logger.warning("t-SNE \u00e9chec avec perplexity=%d: %s", p, exc)
+                continue
             if best is None or score > best[0]:
                 best = (score, p, t, emb)
-        best_score, perpl, tsne, tsne_results = best
-        logger.info(
-            "t-SNE optimal: perplexity=%d (trustworthiness=%.3f)",
-            perpl,
-            best_score,
-        )
+        if best is None:  # fallback on default perplexity
+            tsne, tsne_results = _fit_tsne(perpl)
+            best_score = None
+        else:
+            best_score, perpl, tsne, tsne_results = best
+            logger.info(
+                "t-SNE optimal: perplexity=%d (trustworthiness=%.3f)",
+                perpl,
+                best_score,
+            )
     else:
         tsne, tsne_results = _fit_tsne(perpl)
 
@@ -927,10 +942,32 @@ def run_tsne(
     cols = [f"TSNE{i + 1}" for i in range(n_components)]
     tsne_df = pd.DataFrame(tsne_results, columns=cols, index=embeddings.index)
 
-    return tsne, tsne_df
+    metrics = {
+        "perplexity": float(perpl),
+        "learning_rate": float(learning_rate),
+        "n_iter": int(n_iter),
+        "n_components": int(n_components),
+        "kl_divergence": float(getattr(tsne, "kl_divergence_", float("nan"))),
+    }
+
+    try:
+        from sklearn.manifold import trustworthiness
+
+        metrics["trustworthiness"] = float(
+            trustworthiness(embeddings.values, tsne_results)
+        )
+    except Exception:  # pragma: no cover - trustworthiness may fail
+        metrics["trustworthiness"] = float("nan")
+
+    return tsne, tsne_df, metrics
 
 
-def export_tsne_results(tsne_df: pd.DataFrame, df_active: pd.DataFrame, output_dir: Path) -> None:
+def export_tsne_results(
+        tsne_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+        metrics: Dict[str, float] | None = None,
+) -> None:
     """Save scatter plot(s) and embeddings for t-SNE."""
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -975,6 +1012,13 @@ def export_tsne_results(tsne_df: pd.DataFrame, df_active: pd.DataFrame, output_d
     csv_path = output_dir / "tsne_embeddings.csv"
     tsne_df.to_csv(csv_path, index=True)
     logger.info(f"Export t-SNE -> {csv_path}")
+
+    if metrics is not None:
+        metrics_path = output_dir / "tsne_metrics.txt"
+        with open(metrics_path, "w", encoding="utf-8") as fh:
+            for k, v in metrics.items():
+                fh.write(f"{k}: {v}\n")
+        logger.info(f"Export t-SNE -> {metrics_path}")
 
 
 
@@ -2940,29 +2984,30 @@ def main() -> None:
     # 10. t-SNE
     if "tsne" in config.get("methods", []):
         if "FAMD" not in results:
-            raise RuntimeError("t-SNE requires FAMD embeddings")
-        t0 = time.time()
-        output_dir_tsne = output_dir / "TSNE"
-        tsne_model, tsne_df = run_tsne(
-            results["FAMD"]["embeddings"],
-            df_active,
-            output_dir_tsne,
-            optimize=optimize_params,
-            **config.get("tsne", {})
-        )
-        export_tsne_results(tsne_df, df_active, output_dir_tsne)
-        rt = time.time() - t0
-        results["TSNE"] = {
-            "embeddings": tsne_df,
-            "inertia": None,
-            "runtime": rt,
-        }
-        logger.info(
-            "t-SNE : perplexity=%s, %.1fs",
-            getattr(tsne_model, "perplexity", "?"),
-            rt,
-        )
-        effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
+            logger.warning("t-SNE ignor\u00e9 : embeddings FAMD indisponibles")
+        else:
+            t0 = time.time()
+            output_dir_tsne = output_dir / "TSNE"
+            tsne_model, tsne_df, tsne_metrics = run_tsne(
+                results["FAMD"]["embeddings"],
+                df_active,
+                output_dir_tsne,
+                optimize=optimize_params,
+                **config.get("tsne", {})
+            )
+            export_tsne_results(tsne_df, df_active, output_dir_tsne, tsne_metrics)
+            rt = time.time() - t0
+            results["TSNE"] = {
+                "embeddings": tsne_df,
+                "inertia": None,
+                "runtime": rt,
+            }
+            logger.info(
+                "t-SNE : perplexity=%s, %.1fs",
+                getattr(tsne_model, "perplexity", "?"),
+                rt,
+            )
+            effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
 
     # 8. Évaluation croisée
     comp_df = evaluate_methods(
