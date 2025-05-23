@@ -94,3 +94,32 @@ python phase4_fine_tune_phate.py --multi /path/to/phase3_cleaned_multivariate.cs
 
 The script handles basic preprocessing (dropping identifiers, imputing values, scaling numerical variables and one-hot encoding categories) before running PHATE. Coordinates and a scatter plot coloured by `Statut commercial` are written inside the output directory.
 
+## Fine tuning MFA
+
+The script `fine_tune_mfa.py` automates a small grid search over the number of
+components and optional group weights for a Multiple Factor Analysis. Provide a
+YAML configuration describing the groups and ranges:
+
+```yaml
+input_file: path/to/data.xlsx
+output_dir: phase4_output/fine_tuning_mfa
+group_defs:
+  Financier: ["Total recette actualisé", "Budget client estimé"]
+  Temporalité: ["duree_projet_jours", "taux_realisation"]
+mfa_params:
+  min_components: 2
+  max_components: 6
+  weights:
+    - null
+    - {Financier: 1.5, Temporalité: 1.0}
+```
+
+Run it with:
+
+```bash
+python fine_tune_mfa.py --config config_mfa.yaml
+```
+
+The script exports metrics for each configuration and saves the best model (by
+silhouette and Calinski–Harabasz indices) in the configured output directory.
+
