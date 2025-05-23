@@ -15,9 +15,9 @@ famd:
   variance_threshold: 0.9
 mfa:
   segment_col: "Statut commercial"
-  groups:
-    Demographie: [Age, Sexe]
-    Finances: ["Total recette actualisé", "Budget client estimé"]
+  # Specify groups only if you want to restrict variables.
+  # By default (groups: null), all variables are included automatically.
+  groups: null
 pca: {}
 mca: {}
 pcamix: {}
