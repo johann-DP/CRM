@@ -3691,8 +3691,32 @@ def main() -> None:
     )
 
     # 8b. Comparaisons multi-méthodes
-    scree_methods = [m for m in ("FAMD", "MFA", "PCAmix") if m in results]
-    scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP") if m in results]
+    scree_methods = [
+        m
+        for m in (
+            "FAMD",
+            "PCA",
+            "MCA",
+            "MFA",
+            "PCAmix",
+        )
+        if m in results
+    ]
+    scatter_methods = [
+        m
+        for m in (
+            "FAMD",
+            "PCA",
+            "MCA",
+            "MFA",
+            "PCAmix",
+            "UMAP",
+            "TSNE",
+            "PaCMAP",
+            "PHATE",
+        )
+        if m in results
+    ]
     method_order = []
     for m in scree_methods + scatter_methods:
         if m not in method_order:
@@ -3726,17 +3750,23 @@ def generate_report_pdf(output_dir: Path) -> Path:
     """Assemble un PDF de synthèse à partir des figures générées.
 
     The PDF will include the following images if present in ``output_dir``:
-    ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
-    ``UMAP/umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``PCA/pca_scree_plot.png``, ``MCA/mca_scree_plot.png``,
+    ``MFA/mfa_scree_plot.png``, ``PCAmix/pcamix_scree_plot.png``,
+    ``UMAP/umap_scatter.png``, ``TSNE/tsne_scatter.png``,
+    ``PHATE/phate_scatter.png``, ``PaCMAP/pacmap_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
     pdf_path = output_dir / "phase4_report.pdf"
     figures = [
+        str(Path("PCA") / "pca_scree_plot.png"),
+        str(Path("MCA") / "mca_scree_plot.png"),
         str(Path("MFA") / "mfa_scree_plot.png"),
-        "phase4_pcamix_scree_plot.png",
+        str(Path("PCAmix") / "pcamix_scree_plot.png"),
         str(Path("UMAP") / "umap_scatter.png"),
-        "phase4_tsne_scatter.png",
+        str(Path("TSNE") / "tsne_scatter.png"),
+        str(Path("PHATE") / "phate_scatter.png"),
+        str(Path("PaCMAP") / "pacmap_scatter.png"),
         "methods_heatmap.png",
     ]
     with PdfPages(pdf_path) as pdf:
@@ -3760,6 +3790,8 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
 
     methods = [
         "FAMD",
+        "PCA",
+        "MCA",
         "MFA",
         "PCAmix",
         "UMAP",
