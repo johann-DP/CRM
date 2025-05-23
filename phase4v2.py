@@ -62,7 +62,9 @@ def plot_correlation_circle(ax, coords: pd.DataFrame, title: str) -> None:
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
         ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
-        ax.text(x * 1.1, y * 1.1, var, fontsize=8, ha="center", va="center")
+        offset_x = x * 1.15 + 0.03 * np.sign(x)
+        offset_y = y * 1.15 + 0.03 * np.sign(y)
+        ax.text(offset_x, offset_y, var, fontsize=8, ha="center", va="center")
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
     ax.set_xlabel("F1")
@@ -1335,23 +1337,11 @@ def export_phate_results(
     logger = logging.getLogger(__name__)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Automatic clustering on PHATE embedding
-    from sklearn.cluster import KMeans
-    from sklearn.metrics import silhouette_score
-
-    best_k = None
-    best_score = -1
-    best_labels = None
-    for k in range(2, min(7, len(phate_df))):
-        labels = KMeans(n_clusters=k, random_state=0).fit_predict(phate_df)
-        score = silhouette_score(phate_df, labels)
-        if score > best_score:
-            best_score = score
-            best_k = k
-            best_labels = labels
-    if best_labels is None:
-        best_labels = np.zeros(len(phate_df), dtype=int)
-        best_k = 1
+    # Automatic clustering on PHATE embedding using several algorithms
+    labels, method_name, param = best_clustering_labels(phate_df.values)
+    best_labels = labels
+    best_k = len(np.unique(best_labels))
+    phate_df["cluster_method"] = method_name
     phate_df["cluster"] = best_labels
 
     if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
@@ -1849,23 +1839,43 @@ def export_mfa_results(
     if not col_contrib.empty:
         col_contrib.columns = axes_names[:col_contrib.shape[1]]
 
+    # Determine clusters for individuals
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+    X_clust = row_coords.values
+    best_k = 2
+    best_score = -1
+    best_labels = None
+    for k in range(2, min(7, len(row_coords))):
+        labels = KMeans(n_clusters=k, random_state=0).fit_predict(X_clust)
+        score = silhouette_score(X_clust, labels)
+        if score > best_score:
+            best_score = score
+            best_k = k
+            best_labels = labels
+    if best_labels is None:
+        best_labels = np.zeros(len(row_coords), dtype=int)
+        best_k = 1
+
     # ─── Projection individus 2D ──────────────────────────────────────
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
-        else:
-            codes = None
+        palette = sns.color_palette("tab10", best_k)
         sc = plt.scatter(
-            row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7
+            row_coords["F1"],
+            row_coords["F2"],
+            c=[palette[i] for i in best_labels],
+            s=10,
+            alpha=0.7,
         )
+        handles = [
+            plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}")
+            for i in range(best_k)
+        ]
+        plt.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.xlabel("F1")
         plt.ylabel("F2")
         plt.title("MFA – individus (F1–F2)")
-        if codes is not None:
-            plt.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "mfa_indiv_plot.png")
         plt.close()
@@ -1875,17 +1885,12 @@ def export_mfa_results(
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
-        else:
-            codes = None
+        palette = sns.color_palette("tab10", best_k)
         sc = ax.scatter(
             row_coords["F1"],
             row_coords["F2"],
             row_coords["F3"],
-            c=codes,
+            c=[palette[i] for i in best_labels],
             s=10,
             alpha=0.7,
         )
@@ -1893,8 +1898,11 @@ def export_mfa_results(
         ax.set_ylabel("F2")
         ax.set_zlabel("F3")
         ax.set_title("MFA – individus (3D)")
-        if codes is not None:
-            fig.colorbar(sc, label="Statut commercial")
+        handles3 = [
+            plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}")
+            for i in range(best_k)
+        ]
+        ax.legend(handles=handles3, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         plt.savefig(output_dir / "mfa_indiv_plot_3D.png")
         plt.close()
@@ -1933,7 +1941,17 @@ def export_mfa_results(
                         label = f"{var}={val}"
                     plt.text(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], label, fontsize=8)
 
-            handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=color_map[v], label=v) for v in sorted(set(var_names))]
+            handles = [
+                plt.Line2D(
+                    [0],
+                    [0],
+                    marker=marker_map[v],
+                    linestyle='',
+                    color=color_map[v],
+                    label=v,
+                )
+                for v in sorted(set(var_names))
+            ]
             plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.xlabel("F1")
             plt.ylabel("F2")
@@ -1942,6 +1960,33 @@ def export_mfa_results(
             plt.savefig(output_dir / "mfa_modalities_plot.png")
             plt.close()
             logger.info("Modalités MFA enregistrées")
+
+            # Zoom on near-origin modalities with annotations
+            near = modalities[radius < thresh]
+            if not near.empty:
+                plt.figure(figsize=(12, 6), dpi=200)
+                for mod, var in zip(near.index, [m.split("_", 1)[0] if "_" in m else m for m in near.index]):
+                    plt.scatter(
+                        near.loc[mod, "F1"],
+                        near.loc[mod, "F2"],
+                        color=color_map[var],
+                        marker=marker_map[var],
+                        s=20,
+                        alpha=0.7,
+                    )
+                    label = mod
+                    if "_" in mod:
+                        var, val = mod.split("_", 1)
+                        label = f"{var}={val}"
+                    plt.text(near.loc[mod, "F1"], near.loc[mod, "F2"], label, fontsize=8)
+
+                plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.xlabel("F1")
+                plt.ylabel("F2")
+                plt.title("MFA – modalités proches (zoom)")
+                plt.tight_layout()
+                plt.savefig(output_dir / "mfa_modalities_zoom.png")
+                plt.close()
 
     # ─── Contributions ───────────────────────────────────────────────
     contrib = col_contrib * 100
@@ -2160,9 +2205,18 @@ def export_mca_results(
         plt.figure(figsize=(12, 6), dpi=200)
         var_names = [m.split("_", 1)[0] if "_" in m else m for m in col_coords.index]
         palette = sns.color_palette("tab10", len(set(var_names)))
+        markers = ['o', 's', '^', 'D', 'v', 'P', 'X', '*', '+', 'x']
         color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
+        marker_map = {v: markers[i % len(markers)] for i, v in enumerate(sorted(set(var_names)))}
         for mod, var in zip(col_coords.index, var_names):
-            plt.scatter(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+            plt.scatter(
+                col_coords.loc[mod, "F1"],
+                col_coords.loc[mod, "F2"],
+                color=color_map[var],
+                marker=marker_map[var],
+                s=20,
+                alpha=0.7,
+            )
 
         radius = np.sqrt(col_coords["F1"] ** 2 + col_coords["F2"] ** 2)
         thresh = radius.quantile(0.7)
@@ -2174,13 +2228,50 @@ def export_mca_results(
                     label = f"{var}={val}"
                 plt.text(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], label, fontsize=8)
 
-        handles = [plt.Line2D([0], [0], marker='o', linestyle='', color=color_map[v], label=v) for v in sorted(set(var_names))]
+        handles = [
+            plt.Line2D(
+                [0],
+                [0],
+                marker=marker_map[v],
+                linestyle='',
+                color=color_map[v],
+                label=v,
+            )
+            for v in sorted(set(var_names))
+        ]
         plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – modalités (F1–F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "mca_modalities_plot.png")
         plt.close()
+
+        # Zoom on modalities near the origin
+        near = col_coords[radius < thresh]
+        if not near.empty:
+            plt.figure(figsize=(12, 6), dpi=200)
+            for mod, var in zip(near.index, [m.split("_",1)[0] if "_" in m else m for m in near.index]):
+                plt.scatter(
+                    near.loc[mod, "F1"],
+                    near.loc[mod, "F2"],
+                    color=color_map[var],
+                    marker=marker_map[var],
+                    s=20,
+                    alpha=0.7,
+                )
+                label = mod
+                if "_" in mod:
+                    var, val = mod.split("_", 1)
+                    label = f"{var}={val}"
+                plt.text(near.loc[mod, "F1"], near.loc[mod, "F2"], label, fontsize=8)
+
+            plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.xlabel("F1")
+            plt.ylabel("F2")
+            plt.title("MCA – modalités proches (zoom)")
+            plt.tight_layout()
+            plt.savefig(output_dir / "mca_modalities_zoom.png")
+            plt.close()
 
     # Contributions
     fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
@@ -2191,9 +2282,12 @@ def export_mca_results(
             axes_plot[i].set_title(f"Contributions MCA – Axe {axis[-1]}")
             axes_plot[i].set_ylabel("% contribution")
             axes_plot[i].tick_params(axis="x", rotation=45)
+            for tick in axes_plot[i].get_xticklabels():
+                tick.set_horizontalalignment("right")
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.25)
     plt.savefig(output_dir / "mca_contributions.png")
     plt.close()
 
@@ -2391,6 +2485,42 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
     return float(min_inter / max_intra)
 
 
+def best_clustering_labels(X: np.ndarray) -> tuple[np.ndarray, str, Any]:
+    """Compare several clustering approaches and return the best labels.
+
+    Evaluates KMeans, AgglomerativeClustering and DBSCAN using the silhouette
+    score. The configuration chosen is the one yielding the highest score.
+    """
+    from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+    from sklearn.metrics import silhouette_score
+
+    candidates: list[tuple[np.ndarray, str, Any, float]] = []
+
+    for k in range(2, min(10, len(X))):
+        labels = KMeans(n_clusters=k, random_state=0).fit_predict(X)
+        score = silhouette_score(X, labels)
+        candidates.append((labels, f"kmeans_{k}", k, score))
+
+    for k in range(2, min(10, len(X))):
+        labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
+        score = silhouette_score(X, labels)
+        candidates.append((labels, f"agg_{k}", k, score))
+
+    for eps in (0.3, 0.5, 0.7, 1.0):
+        db = DBSCAN(eps=eps, min_samples=5).fit(X)
+        labels = db.labels_
+        if len(set(labels)) > 1 and (labels != -1).sum() > 1:
+            mask = labels != -1
+            score = silhouette_score(X[mask], labels[mask])
+            candidates.append((labels, f"dbscan_{eps}", eps, score))
+
+    if not candidates:
+        return np.zeros(len(X), dtype=int), "none", None
+
+    best = max(candidates, key=lambda c: c[3])
+    return best[0], best[1], best[2]
+
+
 def evaluate_methods(
         results_dict: Dict[str, Dict[str, Any]],
         output_dir: Path,
@@ -2414,8 +2544,16 @@ def evaluate_methods(
             inertias = []
         if isinstance(inertias, pd.Series):
             inertias = inertias.tolist()
-        kaiser = sum(1 for eig in inertias if eig > 1)
-        cum_inertia = sum(inertias) if len(inertias) > 0 else None
+        n_features = None
+        if df_active is not None and quant_vars is not None and qual_vars is not None:
+            n_features = len(quant_vars) + len(qual_vars)
+        elif isinstance(info["embeddings"], pd.DataFrame):
+            n_features = info["embeddings"].shape[1]
+        if n_features is not None:
+            kaiser = sum(1 for eig in np.array(inertias) * n_features if eig > 1)
+        else:
+            kaiser = sum(1 for eig in inertias if eig > 1)
+        cum_inertia = sum(inertias) * 100 if len(inertias) > 0 else None
 
         X = info["embeddings"].values
         labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X)
@@ -2462,6 +2600,7 @@ def evaluate_methods(
 
     plt.figure(figsize=(12, 6), dpi=200)
     sns.heatmap(df_norm, annot=True, cmap=sns.color_palette("deep", as_cmap=True))
+    plt.yticks(rotation=0)
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_dir / "methods_heatmap.png")
