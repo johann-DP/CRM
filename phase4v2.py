@@ -47,6 +47,17 @@ CONFIG = {
     'baseline_cfg': {'weighting': 'balanced'}
 }
 
+# Principal CRM segmentation columns used to generate variant scatters
+SEGMENT_COLUMNS = [
+    "Catégories",
+    "Entité opérationnelle",
+    "Pilier",
+    "Sous-catégorie",
+    "Statut commercial",
+    "Statut production",
+    "Type opportunité",
+]
+
 
 def plot_correlation_circle(
         ax,
@@ -524,8 +535,11 @@ def segment_data(
 
 
 def get_segment_columns(df: pd.DataFrame) -> List[str]:
-    """Return columns containing the word 'segment'."""
-    return [c for c in df.columns if "segment" in c.lower()]
+    """Return configured segmentation columns present in ``df``."""
+    cols = [c for c in SEGMENT_COLUMNS if c in df.columns]
+    # Backward compatibility: also include columns containing 'segment'
+    cols += [c for c in df.columns if "segment" in c.lower() and c not in cols]
+    return cols
 
 
 def scatter_all_segments(
@@ -534,7 +548,15 @@ def scatter_all_segments(
         output_dir: Path,
         prefix: str,
 ) -> None:
-    """Generate scatter plots colored by each segment column."""
+    """Generate scatter plots colored by each segment column.
+
+    For each segmentation variable present in ``df_active`` the function
+    creates two figures:
+        - ``{prefix}_{segment}.png`` colored by the segment categories.
+        - ``{prefix}_{segment}_clusters.png`` where colors correspond to
+          ``k`` clusters, with ``k`` equal to the number of modalities of the
+          segment.
+    """
     seg_cols = get_segment_columns(df_active)
     if not seg_cols:
         return
@@ -561,6 +583,33 @@ def scatter_all_segments(
         fname = f"{prefix.lower()}_{col}.png"
         plt.savefig(output_dir / fname)
         plt.close()
+
+        # Version clustered with k equal to number of modalities
+        from sklearn.cluster import KMeans
+
+        k = len(categories.cat.categories)
+        if k >= 2:
+            labels = KMeans(n_clusters=k, random_state=0).fit_predict(
+                emb_df.values
+            )
+            palette = sns.color_palette("tab10", k)
+            plt.figure(figsize=(12, 6), dpi=200)
+            sc = plt.scatter(
+                emb_df.iloc[:, 0],
+                emb_df.iloc[:, 1],
+                c=labels,
+                cmap=ListedColormap(palette),
+                s=10,
+                alpha=0.7,
+            )
+            plt.xlabel(emb_df.columns[0])
+            plt.ylabel(emb_df.columns[1])
+            plt.title(f"{prefix} – {col} clusters")
+            plt.colorbar(sc, label="cluster")
+            plt.tight_layout()
+            fname = f"{prefix.lower()}_{col}_clusters.png"
+            plt.savefig(output_dir / fname)
+            plt.close()
 
 
 def scatter_cluster_variants(
@@ -3637,8 +3686,32 @@ def main() -> None:
     )
 
     # 8b. Comparaisons multi-méthodes
-    scree_methods = [m for m in ("FAMD", "MFA", "PCAmix") if m in results]
-    scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP") if m in results]
+    scree_methods = [
+        m
+        for m in (
+            "FAMD",
+            "PCA",
+            "MCA",
+            "MFA",
+            "PCAmix",
+        )
+        if m in results
+    ]
+    scatter_methods = [
+        m
+        for m in (
+            "FAMD",
+            "PCA",
+            "MCA",
+            "MFA",
+            "PCAmix",
+            "UMAP",
+            "TSNE",
+            "PaCMAP",
+            "PHATE",
+        )
+        if m in results
+    ]
     method_order = []
     for m in scree_methods + scatter_methods:
         if m not in method_order:
@@ -3672,17 +3745,23 @@ def generate_report_pdf(output_dir: Path) -> Path:
     """Assemble un PDF de synthèse à partir des figures générées.
 
     The PDF will include the following images if present in ``output_dir``:
-    ``MFA/mfa_scree_plot.png``, ``phase4_pcamix_scree_plot.png``,
-    ``UMAP/umap_scatter.png``, ``phase4_tsne_scatter.png`` and
+    ``PCA/pca_scree_plot.png``, ``MCA/mca_scree_plot.png``,
+    ``MFA/mfa_scree_plot.png``, ``PCAmix/pcamix_scree_plot.png``,
+    ``UMAP/umap_scatter.png``, ``TSNE/tsne_scatter.png``,
+    ``PHATE/phate_scatter.png``, ``PaCMAP/pacmap_scatter.png`` and
     ``methods_heatmap.png``.
     """
     logger = logging.getLogger(__name__)
     pdf_path = output_dir / "phase4_report.pdf"
     figures = [
+        str(Path("PCA") / "pca_scree_plot.png"),
+        str(Path("MCA") / "mca_scree_plot.png"),
         str(Path("MFA") / "mfa_scree_plot.png"),
-        "phase4_pcamix_scree_plot.png",
+        str(Path("PCAmix") / "pcamix_scree_plot.png"),
         str(Path("UMAP") / "umap_scatter.png"),
-        "phase4_tsne_scatter.png",
+        str(Path("TSNE") / "tsne_scatter.png"),
+        str(Path("PHATE") / "phate_scatter.png"),
+        str(Path("PaCMAP") / "pacmap_scatter.png"),
         "methods_heatmap.png",
     ]
     with PdfPages(pdf_path) as pdf:
@@ -3706,6 +3785,8 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
 
     methods = [
         "FAMD",
+        "PCA",
+        "MCA",
         "MFA",
         "PCAmix",
         "UMAP",
