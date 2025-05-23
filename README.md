@@ -15,6 +15,7 @@ Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components
 for FAMD/MFA/PCAmix, neighbors and distance for UMAP, perplexity for t-SNE).
 When disabled, the script uses the provided values or sensible defaults.
+You can control parallel execution with the `n_jobs` option in `config.yaml`. Set it to the number of worker threads to run independent methods concurrently.
 
 Make sure the dependencies listed in `requirements.txt` are installed. The
 file pins specific versions of NumPy, pandas and other libraries to avoid

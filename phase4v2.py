@@ -30,6 +30,7 @@ import os
 import numpy as np
 import umap
 import time
+from concurrent.futures import ThreadPoolExecutor
 import seaborn as sns
 import datetime
 
@@ -3037,306 +3038,307 @@ def main() -> None:
     else:
         logger.info("DataFrame actif sans NA prêt pour FAMD")
 
+
     segment_data(df_active, qual_vars, output_dir)
 
     optimize_params = config.get("optimize_params", False)
+    n_jobs = int(config.get("n_jobs", 2))
+    logger.info("Parallel executor using %d workers", n_jobs)
+    methods = config.get("methods", [])
     results: Dict[str, Dict[str, Any]] = {}
 
-    # 2. FAMD
-    if "famd" in config.get("methods", []):
-        t0 = time.time()
-        famd_model, famd_inertia, famd_rows, famd_cols, famd_contrib = run_famd(
-            df_active,
-            quant_vars,
-            qual_vars,
-            optimize=optimize_params,
-            **config.get("famd", {})
-        )
-        rt = time.time() - t0
-        results["FAMD"] = {
-            "embeddings": famd_rows,
-            "inertia": famd_inertia,
-            "runtime": rt,
-        }
-        logger.info(
-            "FAMD : %d composantes, %.1f%% variance cumulée, %.1fs",
-            famd_model.n_components,
-            sum(famd_inertia) * 100 if famd_inertia is not None else 0,
-            rt,
-        )
-        effective_config.setdefault("famd", {})["n_components"] = famd_model.n_components
-        output_dir_famd = output_dir / "FAMD"
-        export_famd_results(
-            famd_model,
-            famd_inertia,
-            famd_rows,
-            famd_cols,
-            famd_contrib,
-            quant_vars,
-            qual_vars,
-            output_dir_famd,
-            df_active=df_active,
-        )
-
-    # 3. PCA (quantitatives seulement)
-    if "pca" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_pca = output_dir / "PCA"
-        pca_model, pca_inertia, pca_rows, pca_cols, pca_contrib = run_pca(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_pca,
-            optimize=optimize_params,
-            **config.get("pca", {})
-        )
-        rt = time.time() - t0
-        results["PCA"] = {
-            "embeddings": pca_rows,
-            "inertia": list(pca_inertia),
-            "runtime": rt,
-        }
-        logger.info(
-            "PCA : %d composantes, %.1f%% variance cumulée, %.1fs",
-            pca_model.n_components,
-            sum(pca_inertia) * 100,
-            rt,
-        )
-        effective_config.setdefault("pca", {})["n_components"] = pca_model.n_components
-        export_pca_results(
-            pca_model,
-            pca_inertia,
-            pca_rows,
-            pca_cols,
-            output_dir_pca,
-            quant_vars,
-            df_active=df_active,
-        )
-
-    # 4. MCA (qualitatives seulement)
-    if "mca" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_mca = output_dir / "MCA"
-        mca_model, mca_inertia, mca_rows, mca_cols, mca_contrib = run_mca(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_mca,
-            optimize=optimize_params,
-            **config.get("mca", {})
-        )
-        rt = time.time() - t0
-        results["MCA"] = {
-            "embeddings": mca_rows,
-            "inertia": list(mca_inertia),
-            "runtime": rt,
-        }
-        logger.info(
-            "MCA : %d dimensions, %.1f%% inertie cumulée, %.1fs",
-            mca_model.n_components,
-            sum(mca_inertia) * 100,
-            rt,
-        )
-        effective_config.setdefault("mca", {})["n_components"] = mca_model.n_components
-        export_mca_results(
-            mca_model,
-            mca_inertia,
-            mca_rows,
-            mca_cols,
-            output_dir_mca,
-            qual_vars,
-            df_active=df_active,
-        )
-
-    # 5. MFA
-    if "mfa" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_mfa = output_dir / "MFA"
-        mfa_model, mfa_rows = run_mfa(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_mfa,
-            optimize=optimize_params,
-            **config.get("mfa", {})
-        )
-        rt = time.time() - t0
-        results["MFA"] = {
-            "embeddings": mfa_rows,
-            "inertia": list(mfa_model.explained_inertia_),
-            "runtime": rt,
-        }
-        logger.info(
-            "MFA : %d composantes, %.1f%% variance cumulée, %.1fs",
-            mfa_model.n_components,
-            mfa_model.explained_inertia_.sum() * 100,
-            rt,
-        )
-        effective_config.setdefault("mfa", {})["n_components"] = mfa_model.n_components
-        export_mfa_results(
-            mfa_model,
-            mfa_rows,
-            output_dir_mfa,
-            quant_vars,
-            qual_vars,
-            df_active=df_active,
-            segment_col=config.get("mfa", {}).get("segment_col", "Statut commercial"),
-        )
-
-    # 6. PCAmix
-    if "pcamix" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_pcamix = output_dir / "PCAmix"
-        mdpca_model, mdpca_inertia, mdpca_rows, mdpca_cols = run_pcamix(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_pcamix,
-            optimize=optimize_params,
-            **config.get("pcamix", {})
-        )
-        rt = time.time() - t0
-        results["PCAmix"] = {
-            "embeddings": mdpca_rows,
-            "inertia": mdpca_inertia,
-            "runtime": rt,
-        }
-        logger.info(
-            "PCAmix : %d composantes, %.1f%% variance cumulée, %.1fs",
-            mdpca_model.n_components,
-            sum(mdpca_inertia) * 100,
-            rt,
-        )
-        effective_config.setdefault("pcamix", {})["n_components"] = mdpca_model.n_components
-        export_pcamix_results(
-            mdpca_model,
-            mdpca_inertia,
-            mdpca_rows,
-            mdpca_cols,
-            output_dir_pcamix,
-            quant_vars,
-            qual_vars,
-            df_active=df_active,
-        )
-
-    # 7. UMAP
-    if "umap" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_umap = output_dir / "UMAP"
-        umap_model, umap_df = run_umap(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_umap,
-            optimize=optimize_params,
-            **config.get("umap", {}),
-        )
-        export_umap_results(umap_df, df_active, output_dir_umap)
-        rt = time.time() - t0
-        results["UMAP"] = {
-            "embeddings": umap_df,
-            "inertia": None,
-            "runtime": rt,
-        }
-        logger.info(
-            "UMAP : %d composantes, n_neighbors=%d, min_dist=%.2f, %.1fs",
-            umap_model.n_components,
-            getattr(umap_model, "n_neighbors", -1),
-            getattr(umap_model, "min_dist", 0.0),
-            rt,
-        )
-        effective_config.setdefault("umap", {}).update({
-            "n_components": umap_model.n_components,
-            "n_neighbors": getattr(umap_model, "n_neighbors", None),
-            "min_dist": getattr(umap_model, "min_dist", None),
-            "metric": getattr(umap_model, "metric", None),
-        })
-
-    # 8. PaCMAP
-    if "pacmap" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_pacmap = output_dir / "PaCMAP"
-        pacmap_model, pacmap_df = run_pacmap(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_pacmap,
-            optimize=optimize_params,
-            **config.get("pacmap", {}),
-        )
-        if pacmap_model is not None:
-            export_pacmap_results(pacmap_df, df_active, output_dir_pacmap)
-            rt = time.time() - t0
-            results["PaCMAP"] = {
-                "embeddings": pacmap_df,
-                "inertia": None,
-                "runtime": rt,
-            }
-            logger.info(
-                f"PaCMAP : r\u00e9alis\u00e9 en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
+    start: Dict[str, float] = {}
+    futures: Dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+        if "famd" in methods:
+            start["FAMD"] = time.time()
+            futures["FAMD"] = executor.submit(
+                run_famd,
+                df_active,
+                quant_vars,
+                qual_vars,
+                optimize=optimize_params,
+                **config.get("famd", {})
             )
-            effective_config.setdefault("pacmap", {}).update({
-                "n_components": pacmap_model.n_components,
-                "n_neighbors": pacmap_model.n_neighbors,
-                "MN_ratio": pacmap_model.MN_ratio,
-                "FP_ratio": pacmap_model.FP_ratio,
-            })
+        if "pca" in methods:
+            start["PCA"] = time.time()
+            futures["PCA"] = executor.submit(
+                run_pca,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "PCA",
+                optimize=optimize_params,
+                **config.get("pca", {})
+            )
+        if "mca" in methods:
+            start["MCA"] = time.time()
+            futures["MCA"] = executor.submit(
+                run_mca,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "MCA",
+                optimize=optimize_params,
+                **config.get("mca", {})
+            )
+        if "mfa" in methods:
+            start["MFA"] = time.time()
+            futures["MFA"] = executor.submit(
+                run_mfa,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "MFA",
+                optimize=optimize_params,
+                **config.get("mfa", {})
+            )
+        if "pcamix" in methods:
+            start["PCAmix"] = time.time()
+            futures["PCAmix"] = executor.submit(
+                run_pcamix,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "PCAmix",
+                optimize=optimize_params,
+                **config.get("pcamix", {})
+            )
 
-    # 9. PHATE
-    if "phate" in config.get("methods", []):
-        t0 = time.time()
-        output_dir_phate = output_dir / "PHATE"
-        phate_op, phate_df = run_phate(
-            df_active,
-            quant_vars,
-            qual_vars,
-            output_dir_phate,
-            optimize=optimize_params,
-            **config.get("phate", {}),
-        )
-        if phate_op is not None:
-            export_phate_results(phate_df, df_active, output_dir_phate)
-            rt = time.time() - t0
-            results["PHATE"] = {
-                "embeddings": phate_df,
-                "inertia": None,
-                "runtime": rt,
-            }
-            logger.info(f"PHATE : r\u00e9alis\u00e9 en {rt:.1f}s")
-            effective_config.setdefault("phate", {}).update({
-                "n_components": phate_op.n_components,
-                "knn": getattr(phate_op, "knn", None),
-                "t": getattr(phate_op, "t", None),
-            })
+        for name, fut in futures.items():
+            res = fut.result()
+            rt = time.time() - start[name]
+            if name == "FAMD":
+                famd_model, famd_inertia, famd_rows, famd_cols, famd_contrib = res
+                results["FAMD"] = {
+                    "embeddings": famd_rows,
+                    "inertia": famd_inertia,
+                    "runtime": rt,
+                }
+                logger.info(
+                    "FAMD : %d composantes, %.1f%% variance cumulée, %.1fs",
+                    famd_model.n_components,
+                    sum(famd_inertia) * 100 if famd_inertia is not None else 0,
+                    rt,
+                )
+                effective_config.setdefault("famd", {})["n_components"] = famd_model.n_components
+                export_famd_results(
+                    famd_model,
+                    famd_inertia,
+                    famd_rows,
+                    famd_cols,
+                    famd_contrib,
+                    quant_vars,
+                    qual_vars,
+                    output_dir / "FAMD",
+                    df_active=df_active,
+                )
+                del famd_model, famd_rows, famd_cols, famd_contrib
+            elif name == "PCA":
+                pca_model, pca_inertia, pca_rows, pca_cols, pca_contrib = res
+                results["PCA"] = {
+                    "embeddings": pca_rows,
+                    "inertia": list(pca_inertia),
+                    "runtime": rt,
+                }
+                logger.info(
+                    "PCA : %d composantes, %.1f%% variance cumulée, %.1fs",
+                    pca_model.n_components,
+                    sum(pca_inertia) * 100,
+                    rt,
+                )
+                effective_config.setdefault("pca", {})["n_components"] = pca_model.n_components
+                export_pca_results(
+                    pca_model,
+                    pca_inertia,
+                    pca_rows,
+                    pca_cols,
+                    output_dir / "PCA",
+                    quant_vars,
+                    df_active=df_active,
+                )
+                del pca_model, pca_rows, pca_cols
+            elif name == "MCA":
+                mca_model, mca_inertia, mca_rows, mca_cols, mca_contrib = res
+                results["MCA"] = {
+                    "embeddings": mca_rows,
+                    "inertia": list(mca_inertia),
+                    "runtime": rt,
+                }
+                logger.info(
+                    "MCA : %d dimensions, %.1f%% inertie cumulée, %.1fs",
+                    mca_model.n_components,
+                    sum(mca_inertia) * 100,
+                    rt,
+                )
+                effective_config.setdefault("mca", {})["n_components"] = mca_model.n_components
+                export_mca_results(
+                    mca_model,
+                    mca_inertia,
+                    mca_rows,
+                    mca_cols,
+                    output_dir / "MCA",
+                    qual_vars,
+                    df_active=df_active,
+                )
+                del mca_model, mca_rows, mca_cols
+            elif name == "MFA":
+                mfa_model, mfa_rows = res
+                results["MFA"] = {
+                    "embeddings": mfa_rows,
+                    "inertia": list(mfa_model.explained_inertia_),
+                    "runtime": rt,
+                }
+                logger.info(
+                    "MFA : %d composantes, %.1f%% variance cumulée, %.1fs",
+                    mfa_model.n_components,
+                    mfa_model.explained_inertia_.sum() * 100,
+                    rt,
+                )
+                effective_config.setdefault("mfa", {})["n_components"] = mfa_model.n_components
+                export_mfa_results(
+                    mfa_model,
+                    mfa_rows,
+                    output_dir / "MFA",
+                    quant_vars,
+                    qual_vars,
+                    df_active=df_active,
+                    segment_col=config.get("mfa", {}).get("segment_col", "Statut commercial"),
+                )
+                del mfa_model, mfa_rows
+            elif name == "PCAmix":
+                mdpca_model, mdpca_inertia, mdpca_rows, mdpca_cols = res
+                results["PCAmix"] = {
+                    "embeddings": mdpca_rows,
+                    "inertia": mdpca_inertia,
+                    "runtime": rt,
+                }
+                logger.info(
+                    "PCAmix : %d composantes, %.1f%% variance cumulée, %.1fs",
+                    mdpca_model.n_components,
+                    sum(mdpca_inertia) * 100,
+                    rt,
+                )
+                effective_config.setdefault("pcamix", {})["n_components"] = mdpca_model.n_components
+                export_pcamix_results(
+                    mdpca_model,
+                    mdpca_inertia,
+                    mdpca_rows,
+                    mdpca_cols,
+                    output_dir / "PCAmix",
+                    quant_vars,
+                    qual_vars,
+                    df_active=df_active,
+                )
+                del mdpca_model, mdpca_rows, mdpca_cols
 
-    # 10. t-SNE
-    if "tsne" in config.get("methods", []):
-        if "FAMD" not in results:
-            logger.warning("t-SNE ignor\u00e9 : embeddings FAMD indisponibles")
-        else:
-            t0 = time.time()
-            output_dir_tsne = output_dir / "TSNE"
-            tsne_model, tsne_df, tsne_metrics = run_tsne(
+    futures.clear(); start.clear()
+    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+        if "umap" in methods:
+            start["UMAP"] = time.time()
+            futures["UMAP"] = executor.submit(
+                run_umap,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "UMAP",
+                optimize=optimize_params,
+                **config.get("umap", {}),
+            )
+        if "pacmap" in methods:
+            start["PaCMAP"] = time.time()
+            futures["PaCMAP"] = executor.submit(
+                run_pacmap,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "PaCMAP",
+                optimize=optimize_params,
+                **config.get("pacmap", {}),
+            )
+        if "phate" in methods:
+            start["PHATE"] = time.time()
+            futures["PHATE"] = executor.submit(
+                run_phate,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir / "PHATE",
+                optimize=optimize_params,
+                **config.get("phate", {}),
+            )
+        if "tsne" in methods and "FAMD" in results:
+            start["TSNE"] = time.time()
+            futures["TSNE"] = executor.submit(
+                run_tsne,
                 results["FAMD"]["embeddings"],
                 df_active,
-                output_dir_tsne,
+                output_dir / "TSNE",
                 optimize=optimize_params,
-                **config.get("tsne", {})
+                **config.get("tsne", {}),
             )
-            export_tsne_results(tsne_df, df_active, output_dir_tsne, tsne_metrics)
-            rt = time.time() - t0
-            results["TSNE"] = {
-                "embeddings": tsne_df,
-                "inertia": None,
-                "runtime": rt,
-            }
-            logger.info(
-                "t-SNE : perplexity=%s, %.1fs",
-                getattr(tsne_model, "perplexity", "?"),
-                rt,
-            )
-            effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
+        elif "tsne" in methods:
+            logger.warning("t-SNE ignoré : embeddings FAMD indisponibles")
 
+        for name, fut in futures.items():
+            res = fut.result()
+            rt = time.time() - start[name]
+            if name == "UMAP":
+                umap_model, umap_df = res
+                export_umap_results(umap_df, df_active, output_dir / "UMAP")
+                results["UMAP"] = {"embeddings": umap_df, "inertia": None, "runtime": rt}
+                logger.info(
+                    "UMAP : %d composantes, n_neighbors=%d, min_dist=%.2f, %.1fs",
+                    umap_model.n_components,
+                    getattr(umap_model, "n_neighbors", -1),
+                    getattr(umap_model, "min_dist", 0.0),
+                    rt,
+                )
+                effective_config.setdefault("umap", {}).update({
+                    "n_components": umap_model.n_components,
+                    "n_neighbors": getattr(umap_model, "n_neighbors", None),
+                    "min_dist": getattr(umap_model, "min_dist", None),
+                    "metric": getattr(umap_model, "metric", None),
+                })
+                del umap_model, umap_df
+            elif name == "PaCMAP":
+                pacmap_model, pacmap_df = res
+                if pacmap_model is not None:
+                    export_pacmap_results(pacmap_df, df_active, output_dir / "PaCMAP")
+                    results["PaCMAP"] = {"embeddings": pacmap_df, "inertia": None, "runtime": rt}
+                    logger.info(
+                        f"PaCMAP : réalisé en {rt:.1f}s (n_neighbors={pacmap_model.n_neighbors})"
+                    )
+                    effective_config.setdefault("pacmap", {}).update({
+                        "n_components": pacmap_model.n_components,
+                        "n_neighbors": pacmap_model.n_neighbors,
+                        "MN_ratio": pacmap_model.MN_ratio,
+                        "FP_ratio": pacmap_model.FP_ratio,
+                    })
+                del pacmap_model, pacmap_df
+            elif name == "PHATE":
+                phate_op, phate_df = res
+                if phate_op is not None:
+                    export_phate_results(phate_df, df_active, output_dir / "PHATE")
+                    results["PHATE"] = {"embeddings": phate_df, "inertia": None, "runtime": rt}
+                    logger.info(f"PHATE : réalisé en {rt:.1f}s")
+                    effective_config.setdefault("phate", {}).update({
+                        "n_components": phate_op.n_components,
+                        "knn": getattr(phate_op, "knn", None),
+                        "t": getattr(phate_op, "t", None),
+                    })
+                del phate_op, phate_df
+            elif name == "TSNE":
+                tsne_model, tsne_df, tsne_metrics = res
+                export_tsne_results(tsne_df, df_active, output_dir / "TSNE", tsne_metrics)
+                results["TSNE"] = {"embeddings": tsne_df, "inertia": None, "runtime": rt}
+                logger.info(
+                    "t-SNE : perplexity=%s, %.1fs",
+                    getattr(tsne_model, "perplexity", "?"),
+                    rt,
+                )
+                effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
+                del tsne_model, tsne_df
     # 8. Évaluation croisée
     comp_df = evaluate_methods(
         results,
