@@ -8,8 +8,15 @@ optimize_params: false
 methods: [famd, pca, mca, mfa, pcamix, umap, pacmap, phate, tsne]
 
 # Method specific options (can be left empty)
-famd: {}
-mfa: {}
+famd:
+  weighting: balanced
+  n_components_rule: variance  # 'variance', 'kaiser' or 'elbow'
+  variance_threshold: 0.9
+mfa:
+  segment_col: "Statut commercial"
+  groups:
+    Demographie: [Age, Sexe]
+    Finances: ["Total recette actualisé", "Budget client estimé"]
 pca: {}
 mca: {}
 pcamix: {}
