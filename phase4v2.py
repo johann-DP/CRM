@@ -20,6 +20,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.colors import ListedColormap
 from typing import List, Optional, Tuple, Sequence, Dict, Any
 import prince
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -53,7 +54,12 @@ CONFIG = {
 }
 
 
-def plot_correlation_circle(ax, coords: pd.DataFrame, title: str) -> None:
+def plot_correlation_circle(
+        ax,
+        coords: pd.DataFrame,
+        title: str,
+        colors: Optional[Dict[str, Any]] = None,
+) -> None:
     """Plot a correlation circle with slight label offset to reduce overlap."""
     circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
@@ -61,10 +67,11 @@ def plot_correlation_circle(ax, coords: pd.DataFrame, title: str) -> None:
     ax.axvline(0, color="grey", lw=0.5)
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
-        ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True)
+        color = colors.get(var) if colors else None
+        ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True, color=color)
         offset_x = x * 1.15 + 0.03 * np.sign(x)
         offset_y = y * 1.15 + 0.03 * np.sign(y)
-        ax.text(offset_x, offset_y, var, fontsize=8, ha="center", va="center")
+        ax.text(offset_x, offset_y, var, fontsize=8, ha="center", va="center", color=color)
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
     ax.set_xlabel("F1")
@@ -529,7 +536,10 @@ def run_mfa(
         qual_vars: List[str],
         output_dir: Path,
         n_components: Optional[int] = None,
+        *,
+        groups: Optional[Dict[str, Sequence[str]]] = None,
         optimize: bool = False,
+        normalize: bool = True,
 ) -> Tuple[prince.MFA, pd.DataFrame]:
     """Exécute une MFA sur le jeu de données mixte.
 
@@ -539,8 +549,13 @@ def run_mfa(
         qual_vars: Liste des noms de colonnes qualitatives.
         output_dir: Répertoire où sauver les graphiques.
         n_components: Nombre de composantes factorielles à extraire.
+        groups: Dictionnaire ``{nom_groupe: [variables]}`` définissant les
+            groupes MFA. Les variables qualitatives sont automatiquement
+            "one-hot" encodées.
         optimize: Si ``True`` et ``n_components`` est ``None``, choisit
             automatiquement le nombre d'axes (90 % de variance cumulée).
+        normalize: Active la normalisation par groupe pour équilibrer leur
+            contribution.
 
     Returns:
         - L’objet prince.MFA entraîné.
@@ -552,15 +567,34 @@ def run_mfa(
     # One-hot encode qualitative variables
     df_dummies = pd.get_dummies(df_active[qual_vars].astype(str))
 
-    # Build groups dictionary compatible with prince >= 0.16
-    groups = {"Quantitatives": quant_vars}
-    for var in qual_vars:
-        cols = [c for c in df_dummies.columns if c.startswith(f"{var}_")]
-        if cols:
-            groups[var] = cols
-
+    # Build groups dictionary
+    if groups is None:
+        groups = {"Quantitatives": quant_vars}
+        for var in qual_vars:
+            cols = [c for c in df_dummies.columns if c.startswith(f"{var}_")]
+            if cols:
+                groups[var] = cols
+        used_cols = quant_vars + list(df_dummies.columns)
+    else:
+        new_groups = {}
+        used_cols = []
+        for gname, vars_list in groups.items():
+            cols = []
+            for v in vars_list:
+                if v in quant_vars:
+                    cols.append(v)
+                elif v in qual_vars:
+                    cols.extend([c for c in df_dummies.columns if c.startswith(f"{v}_")])
+                elif v in df_dummies.columns:
+                    cols.append(v)
+                elif v in df_active.columns:
+                    cols.append(v)
+            if cols:
+                new_groups[gname] = cols
+                used_cols.extend(cols)
+        groups = new_groups
     # Combine numeric columns with the dummy-encoded qualitative variables
-    df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)
+    df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)[used_cols]
 
     logger = logging.getLogger(__name__)
 
@@ -579,8 +613,10 @@ def run_mfa(
 
     n_comp = n_comp or 5
 
-    mfa = prince.MFA(n_components=n_comp)
+    mfa = prince.MFA(n_components=n_comp, n_iter=3)
     mfa = mfa.fit(df_mfa, groups=groups)
+    mfa.df_encoded_ = df_mfa
+    mfa.groups_input_ = groups
     row_coords = mfa.row_coordinates(df_mfa)
 
     # Ensure compatibility with earlier code expecting explained_inertia_
@@ -1884,6 +1920,8 @@ def export_mfa_results(
         quant_vars: List[str],
         qual_vars: List[str],
         df_active: Optional[pd.DataFrame] = None,
+        *,
+        segment_col: str = "Statut commercial",
 ):
     """Exports figures and CSV results for MFA."""
     logger = logging.getLogger(__name__)
@@ -1904,40 +1942,34 @@ def export_mfa_results(
     if not col_contrib.empty:
         col_contrib.columns = axes_names[:col_contrib.shape[1]]
 
-    # Determine clusters for individuals
-    from sklearn.cluster import KMeans
-    from sklearn.metrics import silhouette_score
-    X_clust = row_coords.values
-    best_k = 2
-    best_score = -1
-    best_labels = None
-    for k in range(2, min(7, len(row_coords))):
-        labels = KMeans(n_clusters=k, random_state=0).fit_predict(X_clust)
-        score = silhouette_score(X_clust, labels)
-        if score > best_score:
-            best_score = score
-            best_k = k
-            best_labels = labels
-    if best_labels is None:
-        best_labels = np.zeros(len(row_coords), dtype=int)
-        best_k = 1
+    groups_dict = getattr(mfa_model, "groups_input_", getattr(mfa_model, "groups_", {}))
+    group_map = {col: g for g, cols in groups_dict.items() for col in cols}
+    palette_groups = sns.color_palette("tab20", len(groups_dict))
+    group_colors = {g: palette_groups[i] for i, g in enumerate(groups_dict)}
+
+    # Coloration selon la segmentation CRM si disponible
+    codes = None
+    if df_active is not None and segment_col in df_active.columns:
+        codes = df_active.loc[row_coords.index, segment_col].astype("category").cat.codes
+        palette = sns.color_palette("tab10", len(pd.unique(codes)))
+    else:
+        palette = sns.color_palette("tab10", 1)
 
     # ─── Projection individus 2D ──────────────────────────────────────
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        palette = sns.color_palette("tab10", best_k)
-        sc = plt.scatter(
-            row_coords["F1"],
-            row_coords["F2"],
-            c=[palette[i] for i in best_labels],
-            s=10,
-            alpha=0.7,
-        )
-        handles = [
-            plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}")
-            for i in range(best_k)
-        ]
-        plt.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left')
+        if codes is not None:
+            sc = plt.scatter(
+                row_coords["F1"],
+                row_coords["F2"],
+                c=codes,
+                cmap=ListedColormap(palette),
+                s=10,
+                alpha=0.7,
+            )
+            plt.colorbar(sc, label=segment_col)
+        else:
+            plt.scatter(row_coords["F1"], row_coords["F2"], color=palette[0], s=10, alpha=0.7)
         plt.xlabel("F1")
         plt.ylabel("F2")
         plt.title("MFA – individus (F1–F2)")
@@ -1950,24 +1982,23 @@ def export_mfa_results(
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        palette = sns.color_palette("tab10", best_k)
-        sc = ax.scatter(
-            row_coords["F1"],
-            row_coords["F2"],
-            row_coords["F3"],
-            c=[palette[i] for i in best_labels],
-            s=10,
-            alpha=0.7,
-        )
+        if codes is not None:
+            sc = ax.scatter(
+                row_coords["F1"],
+                row_coords["F2"],
+                row_coords["F3"],
+                c=codes,
+                cmap=ListedColormap(palette),
+                s=10,
+                alpha=0.7,
+            )
+            fig.colorbar(sc, label=segment_col)
+        else:
+            ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], color=palette[0], s=10, alpha=0.7)
         ax.set_xlabel("F1")
         ax.set_ylabel("F2")
         ax.set_zlabel("F3")
         ax.set_title("MFA – individus (3D)")
-        handles3 = [
-            plt.Line2D([0], [0], marker='o', linestyle='', color=palette[i], label=f"Cluster {i}")
-            for i in range(best_k)
-        ]
-        ax.legend(handles=handles3, bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.tight_layout()
         plt.savefig(output_dir / "mfa_indiv_plot_3D.png")
         plt.close()
@@ -1979,7 +2010,8 @@ def export_mfa_results(
         if not qcoords.empty:
             plt.figure(figsize=(12, 6), dpi=200)
             ax = plt.gca()
-            plot_correlation_circle(ax, qcoords, "MFA – cercle des corrélations")
+            colors = {v: group_colors.get(group_map.get(v, "")) for v in qcoords.index}
+            plot_correlation_circle(ax, qcoords, "MFA – cercle des corrélations", colors)
             plt.tight_layout()
             plt.savefig(output_dir / "mfa_correlation_circle.png")
             plt.close()
@@ -1990,11 +2022,19 @@ def export_mfa_results(
         modalities = col_coords.drop(index=[v for v in quant_vars if v in col_coords.index], errors="ignore")
         if not modalities.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            var_names = [m.split("_", 1)[0] if "_" in m else m for m in modalities.index]
-            palette = sns.color_palette("tab10", len(set(var_names)))
-            color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
-            for mod, var in zip(modalities.index, var_names):
-                plt.scatter(modalities.loc[mod, "F1"], modalities.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+            var_groups = [group_map.get(m, "") for m in modalities.index]
+            color_map = {g: group_colors.get(g, "grey") for g in groups_dict}
+            markers = ['o', 's', '^', 'D', 'v', 'P', 'X', '*', '+', 'x']
+            marker_map = {g: markers[i % len(markers)] for i, g in enumerate(groups_dict)}
+            for mod, grp in zip(modalities.index, var_groups):
+                plt.scatter(
+                    modalities.loc[mod, "F1"],
+                    modalities.loc[mod, "F2"],
+                    color=color_map.get(grp, "grey"),
+                    marker=marker_map.get(grp, 'o'),
+                    s=20,
+                    alpha=0.7,
+                )
 
             radius = np.sqrt(modalities["F1"] ** 2 + modalities["F2"] ** 2)
             thresh = radius.quantile(0.7)
@@ -2010,12 +2050,12 @@ def export_mfa_results(
                 plt.Line2D(
                     [0],
                     [0],
-                    marker=marker_map[v],
+                    marker=marker_map[g],
                     linestyle='',
-                    color=color_map[v],
-                    label=v,
+                    color=color_map[g],
+                    label=g,
                 )
-                for v in sorted(set(var_names))
+                for g in groups_dict
             ]
             plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.xlabel("F1")
@@ -2030,12 +2070,13 @@ def export_mfa_results(
             near = modalities[radius < thresh]
             if not near.empty:
                 plt.figure(figsize=(12, 6), dpi=200)
-                for mod, var in zip(near.index, [m.split("_", 1)[0] if "_" in m else m for m in near.index]):
+                for mod in near.index:
+                    grp = group_map.get(mod, "")
                     plt.scatter(
                         near.loc[mod, "F1"],
                         near.loc[mod, "F2"],
-                        color=color_map[var],
-                        marker=marker_map[var],
+                        color=color_map.get(grp, "grey"),
+                        marker=marker_map.get(grp, 'o'),
                         s=20,
                         alpha=0.7,
                     )
@@ -2073,6 +2114,22 @@ def export_mfa_results(
         plt.close()
         logger.info("Contributions MFA enregistrées")
 
+        group_contrib = {
+            g: contrib.loc[[c for c in cols if c in contrib.index]].sum()
+            for g, cols in groups_dict.items()
+        }
+        if group_contrib:
+            df_gc = pd.DataFrame(group_contrib).T
+            df_gc = df_gc[contrib.columns]
+            df_gc.plot(kind="bar", stacked=True, figsize=(8, 6), colormap="tab20")
+            plt.ylabel("% contribution")
+            plt.title("Contribution par groupe")
+            plt.tight_layout()
+            plt.savefig(output_dir / "mfa_group_contributions.png")
+            plt.close()
+            df_gc.to_csv(output_dir / "mfa_group_contributions.csv", index=True)
+            logger.info("CSV contributions groupes MFA enregistré")
+
     # ─── Exports CSV ─────────────────────────────────────────────────
     var_df = pd.DataFrame({
         "axe": axes_names,
@@ -2084,6 +2141,14 @@ def export_mfa_results(
 
     row_coords.to_csv(output_dir / "mfa_indiv_coords.csv", index=True)
     logger.info("CSV coordonnées individus MFA enregistré")
+
+    if hasattr(mfa_model, "df_encoded_"):
+        part = mfa_model.partial_row_coordinates(mfa_model.df_encoded_)
+        part.columns = [
+            (grp, f"F{i+1}") for grp, i in part.columns
+        ]
+        part.to_csv(output_dir / "mfa_individus_partial_coords.csv", index=True)
+        logger.info("CSV coordonnées partielles individus MFA enregistré")
 
     if not col_coords.empty:
         vars_coords = col_coords.loc[[v for v in quant_vars if v in col_coords.index]]
@@ -2881,6 +2946,7 @@ def main() -> None:
             quant_vars,
             qual_vars,
             df_active=df_active,
+            segment_col=config.get("mfa", {}).get("segment_col", "Statut commercial"),
         )
 
     # 6. PCAmix

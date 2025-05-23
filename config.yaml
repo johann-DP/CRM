@@ -12,7 +12,11 @@ famd:
   weighting: balanced
   n_components_rule: variance  # 'variance', 'kaiser' or 'elbow'
   variance_threshold: 0.9
-mfa: {}
+mfa:
+  segment_col: "Statut commercial"
+  groups:
+    Demographie: [Age, Sexe]
+    Finances: ["Total recette actualisé", "Budget client estimé"]
 pca: {}
 mca: {}
 pcamix: {}
