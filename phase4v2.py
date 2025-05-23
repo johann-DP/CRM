@@ -657,6 +657,8 @@ def run_mfa(
         groups: Optional[Dict[str, Sequence[str]]] = None,
         optimize: bool = False,
         normalize: bool = True,
+        weights: Optional[Dict[str, float]] = None,
+        n_iter: int = 3,
 ) -> Tuple[prince.MFA, pd.DataFrame]:
     """Exécute une MFA sur le jeu de données mixte.
 
@@ -673,6 +675,10 @@ def run_mfa(
             automatiquement le nombre d'axes (90 % de variance cumulée).
         normalize: Active la normalisation par groupe pour équilibrer leur
             contribution.
+        weights: Pondération facultative ``{groupe: poids}`` appliquée après la
+            normalisation.
+        n_iter: Nombre d'itérations pour l'algorithme de l'implémentation
+            prince.
 
     Returns:
         - L’objet prince.MFA entraîné.
@@ -721,6 +727,19 @@ def run_mfa(
     # Combine numeric columns with the dummy-encoded qualitative variables
     df_mfa = pd.concat([df_active[quant_vars], df_dummies], axis=1)[used_cols]
 
+    if normalize:
+        from sklearn.preprocessing import StandardScaler
+        for g, cols in groups.items():
+            if not cols:
+                continue
+            scaler = StandardScaler()
+            df_mfa[cols] = scaler.fit_transform(df_mfa[cols])
+
+    if weights:
+        for g, w in weights.items():
+            if g in groups:
+                df_mfa[groups[g]] = df_mfa[groups[g]] * float(w)
+
     logger = logging.getLogger(__name__)
 
     n_comp = n_components
@@ -735,7 +754,7 @@ def run_mfa(
 
     n_comp = n_comp or 5
 
-    mfa = prince.MFA(n_components=n_comp, n_iter=3)
+    mfa = prince.MFA(n_components=n_comp, n_iter=n_iter)
     mfa = mfa.fit(df_mfa, groups=groups)
     mfa.df_encoded_ = df_mfa
     mfa.groups_input_ = groups
