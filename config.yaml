@@ -8,7 +8,10 @@ optimize_params: false
 methods: [famd, pca, mca, mfa, pcamix, umap, pacmap, phate, tsne]
 
 # Method specific options (can be left empty)
-famd: {}
+famd:
+  weighting: balanced
+  n_components_rule: variance  # 'variance', 'kaiser' or 'elbow'
+  variance_threshold: 0.9
 mfa: {}
 pca: {}
 mca: {}
