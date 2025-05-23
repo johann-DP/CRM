@@ -1164,13 +1164,30 @@ def run_pacmap(
         FP_ratio,
     )
 
-    pacmap_model = pacmap.PaCMAP(
+    # PaCMAP has changed the name of the initialization parameter across
+    # versions (``init`` -> ``initialization``).  We inspect the signature at
+    # runtime to remain compatible with both.
+    pacmap_params = dict(
         n_components=n_components,
         n_neighbors=n_neighbors,
         MN_ratio=MN_ratio,
         FP_ratio=FP_ratio,
-        init="pca",
     )
+    try:
+        from inspect import signature
+
+        init_param = None
+        sig = signature(pacmap.PaCMAP.__init__)
+        if "init" in sig.parameters:
+            init_param = "init"
+        elif "initialization" in sig.parameters:
+            init_param = "initialization"
+        if init_param:
+            pacmap_params[init_param] = "pca"
+    except Exception:  # pragma: no cover - very old versions
+        pacmap_params["init"] = "pca"
+
+    pacmap_model = pacmap.PaCMAP(**pacmap_params)
 
     embedding = pacmap_model.fit_transform(X)
 
