@@ -602,14 +602,11 @@ def run_mfa(
     if optimize and n_components is None:
         n_init = df_mfa.shape[1]
         tmp = prince.MFA(n_components=n_init).fit(df_mfa, groups=groups)
-        inertia_tmp = tmp.percentage_of_variance_ / 100
-        cum = np.cumsum(inertia_tmp)
-        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
-        logger.info(
-            "MFA auto: %d composantes retenues (%.1f%% variance cumulée)",
-            n_comp,
-            cum[n_comp - 1] * 100,
-        )
+        eigenvalues = getattr(tmp, "eigenvalues_", None)
+        if eigenvalues is None:
+            eigenvalues = (tmp.percentage_of_variance_ / 100) * n_init
+        n_comp = select_axes(eigenvalues, threshold=0.9)
+        logger.info("MFA auto: %d composantes retenues", n_comp)
 
     n_comp = n_comp or 5
 
@@ -695,19 +692,12 @@ def run_pcamix(
             check_input=True,
             engine="sklearn",
         ).fit(df_mix)
-        inertia_tmp = get_explained_inertia(tmp)
-        cum = np.cumsum(inertia_tmp)
         eigenvalues = getattr(tmp, "eigenvalues_", None)
-        if eigenvalues is not None:
-            n_kaiser = int(np.sum(np.array(eigenvalues) > 1))
-        else:
-            n_kaiser = 0
-        n_inertia = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
-        n_comp = max(n_kaiser, n_inertia)
+        if eigenvalues is None:
+            eigenvalues = np.array(get_explained_inertia(tmp)) * n_init
+        n_comp = select_axes(eigenvalues, threshold=0.9)
         logger.info(
-            "PCAmix auto: %d composantes retenues (%.1f%% variance cumulée)",
-            n_comp,
-            cum[n_comp - 1] * 100,
+            "PCAmix auto: %d composantes retenues", n_comp
         )
 
     n_comp = n_comp or 5
@@ -783,14 +773,11 @@ def run_pca(
     if optimize and n_components is None:
         n_init = df_scaled.shape[1]
         tmp = prince.PCA(n_components=n_init).fit(df_scaled)
-        inertia_tmp = get_explained_inertia(tmp)
-        cum = np.cumsum(inertia_tmp)
-        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), n_init)
-        logger.info(
-            "PCA auto: %d composantes retenues (%.1f%% variance cumulée)",
-            n_comp,
-            cum[n_comp - 1] * 100,
-        )
+        eigenvalues = getattr(tmp, "eigenvalues_", None)
+        if eigenvalues is None:
+            eigenvalues = np.array(get_explained_inertia(tmp)) * n_init
+        n_comp = select_axes(eigenvalues, threshold=0.9)
+        logger.info("PCA auto: %d composantes retenues", n_comp)
 
     n_comp = n_comp or min(df_scaled.shape)
 
@@ -851,14 +838,11 @@ def run_mca(
     if optimize and n_components is None:
         max_dim = sum(df_cat[c].nunique() for c in df_cat.columns) - len(df_cat.columns)
         tmp = prince.MCA(n_components=max_dim).fit(df_cat)
-        inertia_tmp = getattr(tmp, "explained_inertia_", tmp.eigenvalues_ / tmp.eigenvalues_.sum())
-        cum = np.cumsum(inertia_tmp)
-        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= 0.9), max_dim)
-        logger.info(
-            "MCA auto: %d dimensions retenues (%.1f%% inertie cumulée)",
-            n_comp,
-            cum[n_comp - 1] * 100,
-        )
+        eigenvalues = getattr(tmp, "eigenvalues_", None)
+        if eigenvalues is None:
+            eigenvalues = np.array(get_explained_inertia(tmp)) * max_dim
+        n_comp = select_axes(eigenvalues, threshold=0.9)
+        logger.info("MCA auto: %d dimensions retenues", n_comp)
 
     n_comp = n_comp or 5
 
@@ -1604,6 +1588,58 @@ def select_n_components(
     return len(ev)
 
 
+def select_axes(
+        explained_variance: Sequence[float],
+        *,
+        threshold: float = 0.8,
+) -> int:
+    """Return the recommended number of axes to keep.
+
+    Parameters
+    ----------
+    explained_variance : Sequence[float]
+        Eigenvalues or fractions of explained inertia for each axis.
+    threshold : float, optional
+        Cumulative inertia threshold for the variance rule (default 0.8).
+
+    Notes
+    -----
+    The function computes three classical criteria: Kaiser (eigenvalues > 1),
+    cumulative inertia and elbow (change of slope). The returned value is the
+    maximum of the Kaiser and inertia thresholds to avoid discarding
+    potentially important axes. All intermediate values are logged.
+    """
+    logger = logging.getLogger(__name__)
+    ev = np.asarray(explained_variance, dtype=float)
+
+    if ev.sum() <= 1.0:
+        eigenvalues = ev * len(ev)
+    else:
+        eigenvalues = ev
+
+    n_kaiser = max(1, int((eigenvalues >= 1).sum()))
+
+    ratio = eigenvalues / eigenvalues.sum()
+    cum = np.cumsum(ratio)
+    n_inertia = next((i + 1 for i, v in enumerate(cum) if v >= threshold), len(ev))
+
+    if len(eigenvalues) <= 2:
+        n_elbow = len(eigenvalues)
+    else:
+        diff2 = np.diff(np.diff(eigenvalues))
+        n_elbow = int(np.argmin(diff2) + 2)
+
+    logger.info(
+        "Axes recommandés : Kaiser=%d ; %.0f%% inertie=%d ; Coude=%d",
+        n_kaiser,
+        threshold * 100,
+        n_inertia,
+        n_elbow,
+    )
+
+    return max(n_kaiser, n_inertia)
+
+
 def run_famd(
         df_active: pd.DataFrame,
         quant_vars: List[str],
@@ -1690,13 +1726,18 @@ def run_famd(
         eigenvalues = getattr(tmp, 'eigenvalues_', None)
         if eigenvalues is None:
             eigenvalues = np.array(get_explained_inertia(tmp)) * n_init
-        method = rule or 'variance'
-        n_comp = select_n_components(eigenvalues, method=method, threshold=thresh)
-        logger.info(
-            "FAMD auto: %d composantes retenues via %s",
-            n_comp,
-            method
-        )
+        if rule in {"variance", "kaiser", "elbow"}:
+            n_comp = select_n_components(eigenvalues, method=rule, threshold=thresh)
+            logger.info(
+                "FAMD auto: %d composantes retenues via %s",
+                n_comp,
+                rule,
+            )
+        else:
+            n_comp = select_axes(eigenvalues, threshold=thresh)
+            logger.info(
+                "FAMD auto: %d composantes retenues (mix de critères)", n_comp
+            )
 
     n_comp = n_comp or df_for_famd.shape[1]
 
