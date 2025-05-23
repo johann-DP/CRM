@@ -31,6 +31,7 @@ import numpy as np
 import umap
 import time
 import seaborn as sns
+import datetime
 
 try:  # PHATE is optional
     import phate
@@ -3410,14 +3411,45 @@ def generate_report_pdf(output_dir: Path) -> Path:
     return pdf_path
 
 
-def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path:
+def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf") -> Path:
     logger = logging.getLogger(__name__)
     """Assemble toutes les figures PNG en un PDF multi-pages classé par méthode."""
 
-    methods = ["FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"]
+    methods = [
+        "FAMD",
+        "MFA",
+        "PCAmix",
+        "UMAP",
+        "TSNE",
+        "PHATE",
+        "PaCMAP",
+    ]
     pdf_path = output_dir / pdf_name
 
     with PdfPages(pdf_path) as pdf:
+        # Page de garde
+        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        ax.text(
+            0.5,
+            0.6,
+            "Analyse Factorielle – Rapport Phase 4",
+            fontsize=20,
+            ha="center",
+            va="center",
+        )
+        ax.text(
+            0.5,
+            0.4,
+            f"Généré le {today}",
+            fontsize=12,
+            ha="center",
+            va="center",
+        )
+        ax.axis("off")
+        pdf.savefig(fig, dpi=300)
+        plt.close(fig)
+
         for method in methods:
             m_dir = output_dir / method
             if not m_dir.exists():
@@ -3432,9 +3464,11 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
 
             for img_path in sorted(m_dir.glob("*.png")):
                 img = plt.imread(img_path)
-                fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+                fig_w, fig_h = 12, 6
+                fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=200)
                 ax.imshow(img)
                 ax.axis("off")
+                fig.tight_layout()
                 pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
@@ -3442,6 +3476,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
         global_imgs = [
             "multi_scree.png",
             "multi_scatter.png",
+            "methods_similarity_heatmap.png",
             "multi_heatmap.png",
             "methods_heatmap.png",
         ]
@@ -3465,6 +3500,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_figures.pdf") -> Path
                 fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
                 ax.imshow(img)
                 ax.axis("off")
+                fig.tight_layout()
                 pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
