@@ -194,7 +194,7 @@ def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
     plt.xlabel('% Missing')
     plt.title("Top 30 variables par taux de NA (Phases 1–3)")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
+    plt.savefig(output_path, dpi=200)
     plt.close()
 
 
@@ -526,7 +526,7 @@ def segment_data(
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
         png_path = seg_dir / f"segment_{col}.png"
-        plt.savefig(png_path, dpi=150)
+        plt.savefig(png_path, dpi=200)
         plt.close()
 
         logger.info(f"Rapport segmentation '{col}' → {csv_path.name}, {png_path.name}")
@@ -1829,7 +1829,7 @@ def plot_multimethod_results(
             methods_inertia[m] = inertia
     if methods_inertia:
         n = len(methods_inertia)
-        fig, axes = plt.subplots(1, n, figsize=(4 * n, 4), dpi=200)
+        fig, axes = plt.subplots(1, n, figsize=(12, 6), dpi=200)
         for ax, (m, inertia) in zip(np.atleast_1d(axes), methods_inertia.items()):
             axes_idx = list(range(1, len(inertia) + 1))
             ax.bar(axes_idx, [i * 100 for i in inertia], edgecolor="black")
@@ -1847,7 +1847,7 @@ def plot_multimethod_results(
         n = len(emb_methods)
         ncols = 3
         nrows = int(np.ceil(n / ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), dpi=200)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(12, 6), dpi=200)
         axes = np.atleast_1d(axes).reshape(-1)
         for ax, m in zip(axes, emb_methods):
             emb = results_dict[m]["embeddings"]
@@ -1870,14 +1870,11 @@ def plot_multimethod_results(
 
     # ─── Heatmap d'évaluation ──────────────────────────────────
     if not comp_df.empty:
-        fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
-        im = ax.imshow(comp_df.values, aspect="auto", cmap="viridis")
-        ax.set_xticks(np.arange(comp_df.shape[1]))
-        ax.set_yticks(np.arange(comp_df.shape[0]))
+        fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+        sns.heatmap(comp_df, ax=ax, annot=True, cmap="coolwarm")
         ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
         ax.set_yticklabels(comp_df.index)
         ax.set_title("Comparaison méthodes")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         plt.tight_layout()
         plt.savefig(output_dir / "multi_heatmap.png")
         plt.close()
@@ -1935,7 +1932,7 @@ def export_famd_results(
 
     # ─── Éboulis ──────────────────────────────────────────────────────
     ax_idx = list(range(1, len(inertia) + 1))
-    plt.figure(figsize=(12, 6), dpi=300)
+    plt.figure(figsize=(12, 6), dpi=200)
     plt.bar(ax_idx, [v * 100 for v in inertia], edgecolor="black")
     plt.plot(ax_idx, np.cumsum(inertia) * 100, "-o", color="red", label="Cumul")
     plt.xlabel("Composante")
@@ -1950,7 +1947,7 @@ def export_famd_results(
 
     # ─── Projection individus 2D ──────────────────────────────────────
     if {"F1", "F2"}.issubset(row_coords.columns):
-        plt.figure(figsize=(12, 6), dpi=300)
+        plt.figure(figsize=(12, 6), dpi=200)
         if df_active is not None and "Statut commercial" in df_active.columns:
             cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
             categories = cats.cat.categories
@@ -1978,7 +1975,7 @@ def export_famd_results(
 
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
-        fig = plt.figure(figsize=(12, 6), dpi=300)
+        fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
             cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
@@ -2010,7 +2007,7 @@ def export_famd_results(
     # ─── Cercle des corrélations ─────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[quant_vars].dropna(how="any")
-        plt.figure(figsize=(12, 6), dpi=300)
+        plt.figure(figsize=(12, 6), dpi=200)
         ax = plt.gca()
         plot_correlation_circle(ax, qcoords, "FAMD – cercle des corrélations (F1–F2)")
         plt.tight_layout()
@@ -2021,7 +2018,7 @@ def export_famd_results(
     # ─── Modalités qualitatives ──────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         modalities = col_coords.drop(index=quant_vars, errors="ignore")
-        plt.figure(figsize=(12, 6), dpi=300)
+        plt.figure(figsize=(12, 6), dpi=200)
         var_names = [m.split("=")[0] for m in modalities.index]
         palette = sns.color_palette("tab10", len(set(var_names)))
         color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
@@ -2055,7 +2052,7 @@ def export_famd_results(
 
     # ─── Contributions ───────────────────────────────────────────────
     contrib = col_contrib * 100
-    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
     for i, axis in enumerate(["F1", "F2"]):
         if axis in contrib.columns:
             top = contrib[axis].sort_values(ascending=False).head(10)
@@ -2920,7 +2917,7 @@ def evaluate_methods(
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(df_norm, annot=True, cmap=sns.color_palette("deep", as_cmap=True))
+    sns.heatmap(df_norm, annot=True, cmap="coolwarm")
     plt.yticks(rotation=0)
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
@@ -2964,8 +2961,8 @@ def compare_method_clusters(
 
     ari.to_csv(output_dir / "methods_similarity.csv")
 
-    plt.figure(figsize=(6, 5), dpi=200)
-    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="viridis")
+    plt.figure(figsize=(12, 6), dpi=200)
+    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm")
     plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(output_dir / "methods_similarity_heatmap.png")
@@ -3473,6 +3470,25 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
                 img = plt.imread(img_path)
                 fig_w, fig_h = 12, 6
                 fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=200)
+                ax.imshow(img)
+                ax.axis("off")
+                fig.tight_layout()
+                pdf.savefig(fig, dpi=300)
+                plt.close(fig)
+
+        # Figures segmentation
+        seg_dir = output_dir / "segments"
+        seg_imgs = sorted(seg_dir.glob("segment_*.png")) if seg_dir.exists() else []
+        if seg_imgs:
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.text(0.5, 0.5, "Segments", fontsize=24, ha="center", va="center")
+            ax.axis("off")
+            pdf.savefig(fig, dpi=300)
+            plt.close(fig)
+
+            for img_path in seg_imgs:
+                img = plt.imread(img_path)
+                fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
                 ax.imshow(img)
                 ax.axis("off")
                 fig.tight_layout()
