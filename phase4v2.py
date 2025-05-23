@@ -3285,7 +3285,7 @@ def main() -> None:
 
     futures.clear();
     start.clear()
-    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         if "umap" in methods:
             start["UMAP"] = time.time()
             futures["UMAP"] = executor.submit(
