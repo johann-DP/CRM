@@ -951,7 +951,7 @@ def run_tsne(
     if optimize and perplexity is None:
         from sklearn.manifold import trustworthiness
 
-        grid = perplexity_grid or [20, 30, 40]
+        grid = perplexity_grid or [25, 30, 35]
         best = None
         for p in grid:
             if p >= embeddings.shape[0] / 3:
@@ -1138,7 +1138,7 @@ def run_umap(
                     random_state,
                     nj,
                 )
-            nj = 1
+            nj = -1
         return umap.UMAP(
             n_neighbors=nn,
             min_dist=md,
@@ -3045,7 +3045,7 @@ def main() -> None:
     segment_data(df_active, qual_vars, output_dir)
 
     optimize_params = config.get("optimize_params", False)
-    n_jobs = int(config.get("n_jobs", 8))
+    n_jobs = -1 # int(config.get("n_jobs", 2))
     logger.info("Parallel executor using %d workers", n_jobs)
     methods = config.get("methods", [])
     results: Dict[str, Dict[str, Any]] = {}
