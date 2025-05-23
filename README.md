@@ -67,3 +67,16 @@ python phase4_famd.py --input "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\e
 
 This mirrors the paths used when the original script was created and will
 generate figures and CSV results inside the specified output folder.
+
+## Fine-tuning FAMD
+
+Use `phase4_fine_tune_famd.py` to run an optimised FAMD analysis. The script relies on the helper used by `phase4_famd_simple.py` and can automatically select the number of axes when `--optimize` is provided.
+
+```bash
+python phase4_fine_tune_famd.py --input /path/to/export_everwin.xlsx \
+                                --output /path/to/output_dir \
+                                --optimize
+```
+
+The coordinates, contributions and scree plot are saved in the chosen output directory.
+
