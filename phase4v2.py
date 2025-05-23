@@ -3,7 +3,6 @@
 
 import sys
 from pathlib import Path
-
 try:
     import pandas as pd
 except ValueError as err:
@@ -17,7 +16,6 @@ except ValueError as err:
 from PIL import Image
 import io
 import matplotlib
-
 # Use a non-interactive backend to avoid Tkinter cleanup errors in CLI usage
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -26,7 +24,7 @@ from matplotlib.colors import ListedColormap
 from typing import List, Optional, Tuple, Sequence, Dict, Any
 import prince
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-# from sklearn.manifold import TSNE  # t-SNE disabled
+from sklearn.manifold import TSNE
 import logging
 import os
 import numpy as np
@@ -543,22 +541,59 @@ def scatter_all_segments(
 
     for col in seg_cols:
         categories = df_active.loc[emb_df.index, col].astype("category")
-        codes = categories.cat.codes
         palette = sns.color_palette("tab10", len(categories.cat.categories))
         plt.figure(figsize=(12, 6), dpi=200)
+        for cat, color in zip(categories.cat.categories, palette):
+            mask = categories == cat
+            plt.scatter(
+                emb_df.loc[mask, emb_df.columns[0]],
+                emb_df.loc[mask, emb_df.columns[1]],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
+        plt.xlabel(emb_df.columns[0])
+        plt.ylabel(emb_df.columns[1])
+        plt.title(f"{prefix} – {col}")
+        plt.legend(title=col, bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.tight_layout()
+        fname = f"{prefix.lower()}_{col}.png"
+        plt.savefig(output_dir / fname)
+        plt.close()
+
+
+def scatter_cluster_variants(
+        emb_df: pd.DataFrame,
+        ks: Sequence[int],
+        output_dir: Path,
+        prefix: str,
+) -> None:
+    """Generate KMeans scatter plots for each ``k`` in ``ks``."""
+    from sklearn.cluster import KMeans
+
+    uniq = sorted({int(k) for k in ks if k >= 2})
+    if not uniq:
+        return
+
+    for k in uniq:
+        labels = KMeans(n_clusters=k, random_state=0).fit_predict(emb_df.values)
+        palette = sns.color_palette("tab10", k)
+        plt.figure(figsize=(12, 6), dpi=200)
         sc = plt.scatter(
-            emb_df.iloc[:, 0], emb_df.iloc[:, 1],
-            c=codes,
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            c=labels,
             cmap=ListedColormap(palette),
             s=10,
             alpha=0.7,
         )
         plt.xlabel(emb_df.columns[0])
         plt.ylabel(emb_df.columns[1])
-        plt.title(f"{prefix} – {col}")
-        plt.colorbar(sc, label=col)
+        plt.title(f"{prefix} – k={k}")
+        plt.colorbar(sc, label="cluster")
         plt.tight_layout()
-        fname = f"{prefix.lower()}_{col}.png"
+        fname = f"{prefix.lower()}_k{k}.png"
         plt.savefig(output_dir / fname)
         plt.close()
 
@@ -912,193 +947,174 @@ def run_mca(
     return mca, inertia, row_coords, col_coords, contrib
 
 
-# def run_tsne(
-#         embeddings: pd.DataFrame,
-#         df_active: pd.DataFrame,
-#         output_dir: Path,
-#         perplexity: Optional[int] = None,
-#         learning_rate: float = 200.0,
-#         n_iter: int = 1_000,
-#         random_state: int = 42,
-#         n_components: int = 2,
-#         optimize: bool = False,
-#         perplexity_grid: Sequence[int] | None = None,
-# ) -> Tuple[TSNE, pd.DataFrame, Dict[str, float]]:
-#     """
-#     Applique t-SNE sur des coordonnées factorielles existantes et renvoie les
-#     embeddings calculés. Les figures et CSV sont enregistrés via
-#     :func:`export_tsne_results`.
-#
-#     Parameters
-#     ----------
-#     embeddings : pd.DataFrame
-#         Coordonnées factorielles (lignes = individus).
-#     df_active : pd.DataFrame
-#         DataFrame complet pour récupérer la variable ``Statut commercial``.
-#     output_dir : Path
-#         Répertoire des résultats (créé dans ``main``).
-#     perplexity : int, optional
-#         Paramètre "voisinage" du t-SNE. S'il est omis et ``optimize`` vaut
-#         ``True``, une recherche simple est effectuée.
-#     learning_rate : float
-#         Taux d'apprentissage du t-SNE.
-#     n_iter : int
-#         Nombre d'itérations d'entraînement.
-#     random_state : int
-#         Graine pour la reproductibilité.
-#     n_components : int
-#         Dimension de la projection t-SNE (2 ou 3).
-#     optimize : bool
-#         Active l'optimisation automatique de ``perplexity``.
-#     perplexity_grid : Sequence[int], optional
-#         Valeurs testées si ``perplexity`` n'est pas fourni.
-#
-#     Returns:
-#     -------
-#     tuple
-#         L'instance :class:`TSNE` ajustée et le ``DataFrame`` des embeddings
-#         (colonnes ``TSNE1``, ``TSNE2`` (, ``TSNE3``)).
-#     """
-#     logger = logging.getLogger(__name__)
-#     perpl = perplexity if perplexity is not None else 30
-#
-#     def _fit_tsne(p):
-#         try:
-#             t = TSNE(
-#                 n_components=n_components,
-#                 perplexity=p,
-#                 learning_rate=learning_rate,
-#                 max_iter=n_iter,
-#                 random_state=random_state,
-#                 init="pca",
-#             )
-#         except TypeError:  # pragma: no cover - older scikit-learn
-#             t = TSNE(
-#                 n_components=n_components,
-#                 perplexity=p,
-#                 learning_rate=learning_rate,
-#                 n_iter=n_iter,
-#                 random_state=random_state,
-#                 init="pca",
-#             )
-#         emb = t.fit_transform(embeddings.values)
-#         return t, emb
-#
-#     if optimize and perplexity is None:
-#         from sklearn.manifold import trustworthiness
-#
-#         grid = perplexity_grid or [5, 30, 50]
-#         best = None
-#         for p in grid:
-#             if p >= embeddings.shape[0] / 3:
-#                 logger.warning(
-#                     "Perplexity %d ignor\u00e9e (trop grande pour %d points)",
-#                     p,
-#                     embeddings.shape[0],
-#                 )
-#                 continue
-#             try:
-#                 t, emb = _fit_tsne(p)
-#                 score = trustworthiness(embeddings.values, emb)
-#             except Exception as exc:  # pragma: no cover - t-SNE may fail
-#                 logger.warning("t-SNE \u00e9chec avec perplexity=%d: %s", p, exc)
-#                 continue
-#             if best is None or score > best[0]:
-#                 best = (score, p, t, emb)
-#         if best is None:  # fallback on default perplexity
-#             tsne, tsne_results = _fit_tsne(perpl)
-#             best_score = None
-#         else:
-#             best_score, perpl, tsne, tsne_results = best
-#             logger.info(
-#                 "t-SNE optimal: perplexity=%d (trustworthiness=%.3f)",
-#                 perpl,
-#                 best_score,
-#             )
-#     else:
-#         tsne, tsne_results = _fit_tsne(perpl)
-#
-#     # 2.3 DataFrame t-SNE
-#     cols = [f"TSNE{i + 1}" for i in range(n_components)]
-#     tsne_df = pd.DataFrame(tsne_results, columns=cols, index=embeddings.index)
-#
-#     metrics = {
-#         "perplexity": float(perpl),
-#         "learning_rate": float(learning_rate),
-#         "n_iter": int(n_iter),
-#         "n_components": int(n_components),
-#         "kl_divergence": float(getattr(tsne, "kl_divergence_", float("nan"))),
-#     }
-#
-#     try:
-#         from sklearn.manifold import trustworthiness
-#
-#         metrics["trustworthiness"] = float(
-#             trustworthiness(embeddings.values, tsne_results)
-#         )
-#     except Exception:  # pragma: no cover - trustworthiness may fail
-#         metrics["trustworthiness"] = float("nan")
-#
-#     return tsne, tsne_df, metrics
-#
-#
-# def export_tsne_results(
-#         tsne_df: pd.DataFrame,
-#         df_active: pd.DataFrame,
-#         output_dir: Path,
-#         metrics: Dict[str, float] | None = None,
-# ) -> None:
-#     """Save scatter plot(s) and embeddings for t-SNE."""
-#     logger = logging.getLogger(__name__)
-#     output_dir.mkdir(parents=True, exist_ok=True)
-#
-#     # Scatter 2D
-#     if {"TSNE1", "TSNE2"}.issubset(tsne_df.columns):
-#         plt.figure(figsize=(12, 6), dpi=200)
-#         codes = df_active.loc[tsne_df.index, "Statut commercial"].astype("category").cat.codes
-#         sc = plt.scatter(
-#             tsne_df["TSNE1"], tsne_df["TSNE2"], c=codes, s=15, alpha=0.7
-#         )
-#         plt.xlabel("TSNE1")
-#         plt.ylabel("TSNE2")
-#         plt.title("t-SNE sur axes factoriels (FAMD)")
-#         plt.colorbar(sc, label="Statut commercial")
-#         plt.tight_layout()
-#         fig_path = output_dir / "tsne_scatter.png"
-#         plt.savefig(fig_path)
-#         plt.close()
-#         logger.info(f"Export t-SNE -> {fig_path}")
-#
-#     # Scatter 3D
-#     if {"TSNE1", "TSNE2", "TSNE3"}.issubset(tsne_df.columns):
-#         fig = plt.figure(figsize=(12, 6), dpi=200)
-#         ax = fig.add_subplot(111, projection="3d")
-#         codes = df_active.loc[tsne_df.index, "Statut commercial"].astype("category").cat.codes
-#         sc = ax.scatter(
-#             tsne_df["TSNE1"], tsne_df["TSNE2"], tsne_df["TSNE3"],
-#             c=codes, s=15, alpha=0.7
-#         )
-#         ax.set_xlabel("TSNE1")
-#         ax.set_ylabel("TSNE2")
-#         ax.set_zlabel("TSNE3")
-#         ax.set_title("t-SNE 3D (axes factoriels)")
-#         fig.colorbar(sc, label="Statut commercial")
-#         plt.tight_layout()
-#         fig3d_path = output_dir / "tsne_scatter_3D.png"
-#         plt.savefig(fig3d_path)
-#         plt.close()
-#         logger.info(f"Export t-SNE -> {fig3d_path}")
-#
-#     csv_path = output_dir / "tsne_embeddings.csv"
-#     tsne_df.to_csv(csv_path, index=True)
-#     logger.info(f"Export t-SNE -> {csv_path}")
-#
-#     if metrics is not None:
-#         metrics_path = output_dir / "tsne_metrics.txt"
-#         with open(metrics_path, "w", encoding="utf-8") as fh:
-#             for k, v in metrics.items():
-#                 fh.write(f"{k}: {v}\n")
-#         logger.info(f"Export t-SNE -> {metrics_path}")
+def run_tsne(
+        embeddings: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+        perplexity: Optional[int] = None,
+        learning_rate: float = 200.0,
+        n_iter: int = 1_000,
+        random_state: int = 42,
+        n_components: int = 2,
+        optimize: bool = False,
+        perplexity_grid: Sequence[int] | None = None,
+) -> Tuple[TSNE, pd.DataFrame, Dict[str, float]]:
+    """Applique t-SNE sur des coordonnées factorielles existantes."""
+
+    logger = logging.getLogger(__name__)
+    perpl = perplexity if perplexity is not None else 30
+
+    def _fit_tsne(p: int) -> Tuple[TSNE, np.ndarray]:
+        try:
+            t = TSNE(
+                n_components=n_components,
+                perplexity=p,
+                learning_rate=learning_rate,
+                max_iter=n_iter,
+                random_state=random_state,
+                init="pca",
+            )
+        except TypeError:  # pragma: no cover - older scikit-learn
+            t = TSNE(
+                n_components=n_components,
+                perplexity=p,
+                learning_rate=learning_rate,
+                n_iter=n_iter,
+                random_state=random_state,
+                init="pca",
+            )
+        emb = t.fit_transform(embeddings.values)
+        return t, emb
+
+    if optimize and perplexity is None:
+        from sklearn.manifold import trustworthiness
+
+        grid = perplexity_grid or [5, 30, 50]
+        best = None
+        for p in grid:
+            if p >= embeddings.shape[0] / 3:
+                logger.warning(
+                    "Perplexity %d ignorée (trop grande pour %d points)",
+                    p,
+                    embeddings.shape[0],
+                )
+                continue
+            try:
+                t, emb = _fit_tsne(p)
+                score = trustworthiness(embeddings.values, emb)
+            except Exception as exc:  # pragma: no cover - t-SNE may fail
+                logger.warning("t-SNE échec avec perplexity=%d: %s", p, exc)
+                continue
+            if best is None or score > best[0]:
+                best = (score, p, t, emb)
+        if best is None:  # fallback on default perplexity
+            tsne, tsne_results = _fit_tsne(perpl)
+            best_score = None
+        else:
+            best_score, perpl, tsne, tsne_results = best
+            logger.info(
+                "t-SNE optimal: perplexity=%d (trustworthiness=%.3f)",
+                perpl,
+                best_score,
+            )
+    else:
+        tsne, tsne_results = _fit_tsne(perpl)
+
+    cols = [f"TSNE{i + 1}" for i in range(n_components)]
+    tsne_df = pd.DataFrame(tsne_results, columns=cols, index=embeddings.index)
+
+    metrics = {
+        "perplexity": float(perpl),
+        "learning_rate": float(learning_rate),
+        "n_iter": int(n_iter),
+        "n_components": int(n_components),
+        "kl_divergence": float(getattr(tsne, "kl_divergence_", float("nan"))),
+    }
+
+    try:
+        from sklearn.manifold import trustworthiness
+
+        metrics["trustworthiness"] = float(
+            trustworthiness(embeddings.values, tsne_results)
+        )
+    except Exception:  # pragma: no cover - trustworthiness may fail
+        metrics["trustworthiness"] = float("nan")
+
+    return tsne, tsne_df, metrics
+
+
+def export_tsne_results(
+        tsne_df: pd.DataFrame,
+        df_active: pd.DataFrame,
+        output_dir: Path,
+        metrics: Dict[str, float] | None = None,
+) -> None:
+    """Save scatter plot(s) and embeddings for t-SNE."""
+    logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if {"TSNE1", "TSNE2"}.issubset(tsne_df.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        cats = df_active.loc[tsne_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            plt.scatter(
+                tsne_df.loc[mask, "TSNE1"],
+                tsne_df.loc[mask, "TSNE2"],
+                s=15,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
+        plt.xlabel("TSNE1")
+        plt.ylabel("TSNE2")
+        plt.title("t-SNE sur axes factoriels (FAMD)")
+        plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.tight_layout()
+        fig_path = output_dir / "tsne_scatter.png"
+        plt.savefig(fig_path)
+        plt.close()
+        logger.info(f"Export t-SNE -> {fig_path}")
+
+    if {"TSNE1", "TSNE2", "TSNE3"}.issubset(tsne_df.columns):
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        cats = df_active.loc[tsne_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            ax.scatter(
+                tsne_df.loc[mask, "TSNE1"],
+                tsne_df.loc[mask, "TSNE2"],
+                tsne_df.loc[mask, "TSNE3"],
+                s=15,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
+        ax.set_xlabel("TSNE1")
+        ax.set_ylabel("TSNE2")
+        ax.set_zlabel("TSNE3")
+        ax.set_title("t-SNE 3D (axes factoriels)")
+        ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.tight_layout()
+        fig3d_path = output_dir / "tsne_scatter_3D.png"
+        plt.savefig(fig3d_path)
+        plt.close()
+        logger.info(f"Export t-SNE -> {fig3d_path}")
+
+    csv_path = output_dir / "tsne_embeddings.csv"
+    tsne_df.to_csv(csv_path, index=True)
+    logger.info(f"Export t-SNE -> {csv_path}")
+
+    if metrics is not None:
+        metrics_path = output_dir / "tsne_metrics.txt"
+        with open(metrics_path, "w", encoding="utf-8") as fh:
+            for k, v in metrics.items():
+                fh.write(f"{k}: {v}\n")
+        logger.info(f"Export t-SNE -> {metrics_path}")
+
 
 
 def run_umap(
@@ -1188,8 +1204,8 @@ def run_umap(
         from joblib import Parallel, delayed
         from sklearn.manifold import trustworthiness
 
-        neigh_grid = [5, 15, 30, 50] if n_neighbors is None else [n_neighbors]
-        dist_grid = [0.1, 0.5] if min_dist is None else [min_dist]
+        neigh_grid = [15, 35] if n_neighbors is None else [n_neighbors]
+        dist_grid = [0.05, 0.1, 0.5, 0.8] if min_dist is None else [min_dist]
 
         def eval_combo(nn, md):
             reducer = _build_umap(nn, md)
@@ -1233,12 +1249,22 @@ def export_umap_results(
     # Scatter 2D
     if {"UMAP1", "UMAP2"}.issubset(umap_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        codes = df_active.loc[umap_df.index, "Statut commercial"].astype("category").cat.codes
-        sc = plt.scatter(umap_df["UMAP1"], umap_df["UMAP2"], c=codes, s=10, alpha=0.7)
+        cats = df_active.loc[umap_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            plt.scatter(
+                umap_df.loc[mask, "UMAP1"],
+                umap_df.loc[mask, "UMAP2"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         plt.xlabel("UMAP1")
         plt.ylabel("UMAP2")
         plt.title("Projection UMAP")
-        plt.colorbar(sc, label="Statut commercial")
+        plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig_path = output_dir / "umap_scatter.png"
         plt.savefig(fig_path)
@@ -1256,16 +1282,24 @@ def export_umap_results(
     if {"UMAP1", "UMAP2", "UMAP3"}.issubset(umap_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        codes = df_active.loc[umap_df.index, "Statut commercial"].astype("category").cat.codes
-        sc3d = ax.scatter(
-            umap_df["UMAP1"], umap_df["UMAP2"], umap_df["UMAP3"],
-            c=codes, s=10, alpha=0.7,
-        )
+        cats = df_active.loc[umap_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            ax.scatter(
+                umap_df.loc[mask, "UMAP1"],
+                umap_df.loc[mask, "UMAP2"],
+                umap_df.loc[mask, "UMAP3"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         ax.set_xlabel("UMAP1")
         ax.set_ylabel("UMAP2")
         ax.set_zlabel("UMAP3")
         ax.set_title("Projection UMAP 3D")
-        fig.colorbar(sc3d, ax=ax, label="Statut commercial")
+        ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig3d_path = output_dir / "umap_scatter_3D.png"
         plt.savefig(fig3d_path)
@@ -1387,20 +1421,22 @@ def export_pacmap_results(
 
     if {"PACMAP1", "PACMAP2"}.issubset(pacmap_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
-            "category"
-        ).cat.codes
-        sc = plt.scatter(
-            pacmap_df["PACMAP1"],
-            pacmap_df["PACMAP2"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+        cats = df_active.loc[pacmap_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            plt.scatter(
+                pacmap_df.loc[mask, "PACMAP1"],
+                pacmap_df.loc[mask, "PACMAP2"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         plt.xlabel("PACMAP1")
         plt.ylabel("PACMAP2")
         plt.title("PaCMAP \u2013 individus (dim 1 vs dim 2)")
-        plt.colorbar(sc, label="Statut commercial")
+        plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         plt.savefig(output_dir / "pacmap_scatter.png")
         plt.close()
@@ -1416,22 +1452,24 @@ def export_pacmap_results(
     if {"PACMAP1", "PACMAP2", "PACMAP3"}.issubset(pacmap_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        codes = df_active.loc[pacmap_df.index, "Statut commercial"].astype(
-            "category"
-        ).cat.codes
-        sc3 = ax.scatter(
-            pacmap_df["PACMAP1"],
-            pacmap_df["PACMAP2"],
-            pacmap_df["PACMAP3"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+        cats = df_active.loc[pacmap_df.index, "Statut commercial"].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            ax.scatter(
+                pacmap_df.loc[mask, "PACMAP1"],
+                pacmap_df.loc[mask, "PACMAP2"],
+                pacmap_df.loc[mask, "PACMAP3"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         ax.set_xlabel("PACMAP1")
         ax.set_ylabel("PACMAP2")
         ax.set_zlabel("PACMAP3")
         ax.set_title("PaCMAP \u2013 individus (3D)")
-        fig.colorbar(sc3, ax=ax, label="Statut commercial")
+        ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         plt.savefig(output_dir / "pacmap_scatter_3D.png")
         plt.close()
@@ -1459,7 +1497,9 @@ def run_phate(
     graphe de voisins et une diffusion pour préserver la structure globale. Les
     valeurs par défaut (``knn=5``, ``t='auto'``) conviennent généralement aux
     volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs et ``random_state=42``
-    assure la reproductibilité.
+    assure la reproductibilité. Lorsque ``optimize`` est activé et qu'aucun
+    ``knn`` n'est fourni, une recherche sur grille utilise le nombre de
+    modalités des variables de segmentation comme valeurs candidates.
     """
 
     logger = logging.getLogger(__name__)
@@ -1496,7 +1536,24 @@ def run_phate(
     if optimize and knn is None:
         from sklearn.manifold import trustworthiness
 
-        grid = [5, 10, 20]
+        candidate_vars = [
+            "Catégorie",
+            "Entité opérationnelle",
+            "Pilier",
+            "Sous-catégorie",
+            "Statut commercial",
+            "Statut production",
+            "Type opportunité",
+        ]
+
+        counts = [
+            df_active[v].nunique()
+            for v in candidate_vars
+            if v in df_active.columns
+        ]
+
+        grid = sorted(set(counts)) or [5, 10, 20]
+
         scores: list[tuple[float, int, Any, np.ndarray]] = []
         for nn in grid:
             op, emb = _fit_phate(nn)
@@ -1586,17 +1643,22 @@ def export_phate_results(
 
     if {"PHATE1", "PHATE2"}.issubset(phate_df.columns):
         plt.figure(figsize=(12, 6), dpi=200)
-        sc = plt.scatter(
-            phate_df["PHATE1"],
-            phate_df["PHATE2"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+        cats = df_active.loc[phate_df.index, color_var].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            plt.scatter(
+                phate_df.loc[mask, "PHATE1"],
+                phate_df.loc[mask, "PHATE2"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         plt.xlabel("PHATE1")
         plt.ylabel("PHATE2")
         plt.title("Projection PHATE des individus")
-        plt.colorbar(sc, label=color_var)
+        plt.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter.png")
         plt.close()
@@ -1609,22 +1671,37 @@ def export_phate_results(
             "phate_scatter",
         )
 
+        seg_cols = get_segment_columns(df_active)
+        if seg_cols:
+            k_values = [df_active[c].nunique() for c in seg_cols]
+            scatter_cluster_variants(
+                phate_df[["PHATE1", "PHATE2"]],
+                k_values,
+                output_dir,
+                "phate_clusters",
+            )
+
     if {"PHATE1", "PHATE2", "PHATE3"}.issubset(phate_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
-        sc3 = ax.scatter(
-            phate_df["PHATE1"],
-            phate_df["PHATE2"],
-            phate_df["PHATE3"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+        cats = df_active.loc[phate_df.index, color_var].astype("category")
+        palette = sns.color_palette("tab10", len(cats.cat.categories))
+        for cat, color in zip(cats.cat.categories, palette):
+            mask = cats == cat
+            ax.scatter(
+                phate_df.loc[mask, "PHATE1"],
+                phate_df.loc[mask, "PHATE2"],
+                phate_df.loc[mask, "PHATE3"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
         ax.set_xlabel("PHATE1")
         ax.set_ylabel("PHATE2")
         ax.set_zlabel("PHATE3")
         ax.set_title("Projection PHATE des individus (3D)")
-        fig.colorbar(sc3, ax=ax, label=color_var)
+        ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         plt.savefig(output_dir / "phate_scatter_3D.png")
         plt.close()
@@ -1903,13 +1980,13 @@ def run_famd(
 
 
 def plot_multimethod_results(
-        results_dict: Dict[str, Dict[str, Any]],
-        df_active: pd.DataFrame,
-        comp_df: pd.DataFrame,
-        output_dir: Path,
-        *,
-        scree_methods: Optional[Sequence[str]] = None,
-        scatter_methods: Optional[Sequence[str]] = None,
+    results_dict: Dict[str, Dict[str, Any]],
+    df_active: pd.DataFrame,
+    comp_df: pd.DataFrame,
+    output_dir: Path,
+    *,
+    scree_methods: Optional[Sequence[str]] = None,
+    scatter_methods: Optional[Sequence[str]] = None,
 ) -> None:
     """Visualisations comparatives pour plusieurs méthodes factorielles."""
 
@@ -1967,8 +2044,14 @@ def plot_multimethod_results(
 
     # ─── Heatmap d'évaluation ──────────────────────────────────
     if not comp_df.empty:
+        df_norm = comp_df.copy()
+        for col in df_norm.columns:
+            cmin, cmax = df_norm[col].min(), df_norm[col].max()
+            if cmax > cmin:
+                df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
+
         fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-        sns.heatmap(comp_df, ax=ax, annot=True, cmap="coolwarm")
+        sns.heatmap(df_norm, ax=ax, annot=comp_df, fmt=".2f", cmap="coolwarm")
         ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
         ax.set_yticklabels(comp_df.index)
         ax.set_title("Comparaison méthodes")
@@ -2062,8 +2145,8 @@ def export_famd_results(
             plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
-        plt.xlabel(f"F1 ({inertia[0] * 100:.1f}% inertie)")
-        plt.ylabel(f"F2 ({inertia[1] * 100:.1f}% inertie)")
+        plt.xlabel(f"F1 ({inertia[0]*100:.1f}% inertie)")
+        plt.ylabel(f"F2 ({inertia[1]*100:.1f}% inertie)")
         plt.title("FAMD – individus (F1 vs F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "famd_indiv_plot.png")
@@ -2251,15 +2334,19 @@ def export_mfa_results(
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
         if codes is not None:
-            sc = plt.scatter(
-                row_coords["F1"],
-                row_coords["F2"],
-                c=codes,
-                cmap=ListedColormap(palette),
-                s=10,
-                alpha=0.7,
-            )
-            plt.colorbar(sc, label=segment_col)
+            cats = df_active.loc[row_coords.index, segment_col].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.legend(title=segment_col, bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             plt.scatter(row_coords["F1"], row_coords["F2"], color=palette[0], s=10, alpha=0.7)
         plt.xlabel("F1")
@@ -2270,21 +2357,32 @@ def export_mfa_results(
         plt.close()
         logger.info("Projection MFA F1-F2 enregistrée")
 
+        scatter_all_segments(
+            row_coords[["F1", "F2"]],
+            df_active,
+            output_dir,
+            "mfa_indiv",
+        )
+
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if codes is not None:
-            sc = ax.scatter(
-                row_coords["F1"],
-                row_coords["F2"],
-                row_coords["F3"],
-                c=codes,
-                cmap=ListedColormap(palette),
-                s=10,
-                alpha=0.7,
-            )
-            fig.colorbar(sc, label=segment_col)
+            cats = df_active.loc[row_coords.index, segment_col].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    row_coords.loc[mask, "F3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title=segment_col, bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], color=palette[0], s=10, alpha=0.7)
         ax.set_xlabel("F1")
@@ -2437,7 +2535,7 @@ def export_mfa_results(
     if hasattr(mfa_model, "df_encoded_"):
         part = mfa_model.partial_row_coordinates(mfa_model.df_encoded_)
         part.columns = [
-            (grp, f"F{i + 1}") for grp, i in part.columns
+            (grp, f"F{i+1}") for grp, i in part.columns
         ]
         part.to_csv(output_dir / "mfa_individus_partial_coords.csv", index=True)
         logger.info("CSV coordonnées partielles individus MFA enregistré")
@@ -2496,15 +2594,23 @@ def export_pca_results(
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
-        plt.xlabel("F1");
-        plt.ylabel("F2")
+            plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
+        plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("PCA – individus (F1–F2)")
-        if codes is not None:
-            plt.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "pca_indiv_plot.png")
         plt.close()
@@ -2514,16 +2620,24 @@ def export_pca_results(
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    row_coords.loc[mask, "F3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
-        ax.set_xlabel("F1");
-        ax.set_ylabel("F2");
-        ax.set_zlabel("F3")
+            ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], s=10, alpha=0.7)
+        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
         ax.set_title("PCA – individus (3D)")
-        if codes is not None:
-            fig.colorbar(sc3, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "pca_indiv_plot_3D.png")
         plt.close()
@@ -2600,15 +2714,23 @@ def export_mca_results(
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
-        plt.xlabel("F1");
-        plt.ylabel("F2")
+            plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
+        plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – individus (F1–F2)")
-        if codes is not None:
-            plt.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "mca_indiv_plot.png")
         plt.close()
@@ -2618,16 +2740,24 @@ def export_mca_results(
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype("category").cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    row_coords.loc[mask, "F3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
-        ax.set_xlabel("F1");
-        ax.set_ylabel("F2");
-        ax.set_zlabel("F3")
+            ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], s=10, alpha=0.7)
+        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
         ax.set_title("MCA – individus (3D)")
-        if codes is not None:
-            fig.colorbar(sc3, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "mca_indiv_plot_3D.png")
         plt.close()
@@ -2672,8 +2802,7 @@ def export_mca_results(
             for v in sorted(set(var_names))
         ]
         plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.xlabel("F1");
-        plt.ylabel("F2")
+        plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – modalités (F1–F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "mca_modalities_plot.png")
@@ -2683,7 +2812,7 @@ def export_mca_results(
         near = col_coords[radius < thresh]
         if not near.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            for mod, var in zip(near.index, [m.split("_", 1)[0] if "_" in m else m for m in near.index]):
+            for mod, var in zip(near.index, [m.split("_",1)[0] if "_" in m else m for m in near.index]):
                 plt.scatter(
                     near.loc[mod, "F1"],
                     near.loc[mod, "F2"],
@@ -2761,19 +2890,24 @@ def export_pcamix_results(
     if {"F1", "F2"}.issubset(row_coords.columns):
         plt.figure(figsize=(12, 6), dpi=200)
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc = plt.scatter(
-            row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7
-        )
+            plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
         plt.xlabel("F1")
         plt.ylabel("F2")
         plt.title("PCAmix – individus (F1–F2)")
-        if codes is not None:
-            plt.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "pcamix_indiv_plot.png")
         plt.close()
@@ -2791,25 +2925,26 @@ def export_pcamix_results(
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    row_coords.loc[mask, "F3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc = ax.scatter(
-            row_coords["F1"],
-            row_coords["F2"],
-            row_coords["F3"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+            ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], s=10, alpha=0.7)
         ax.set_xlabel("F1")
         ax.set_ylabel("F2")
         ax.set_zlabel("F3")
         ax.set_title("PCAmix – individus (3D)")
-        if codes is not None:
-            fig.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "pcamix_indiv_plot_3D.png")
         plt.close()
@@ -3038,7 +3173,9 @@ def evaluate_methods(
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(df_norm, annot=True, cmap="coolwarm")
+    ax = plt.gca()
+    sns.heatmap(df_norm, annot=df_comp, fmt=".2f", cmap="coolwarm", ax=ax)
+    ax.set_title("Évaluation des méthodes")
     plt.yticks(rotation=0)
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
@@ -3049,10 +3186,10 @@ def evaluate_methods(
 
 
 def compare_method_clusters(
-        results_dict: Dict[str, Dict[str, Any]],
-        output_dir: Path,
-        *,
-        n_clusters: int = 3,
+    results_dict: Dict[str, Dict[str, Any]],
+    output_dir: Path,
+    *,
+    n_clusters: int = 3,
 ) -> pd.DataFrame:
     """Compute clustering consistency between methods using ARI."""
 
@@ -3083,7 +3220,9 @@ def compare_method_clusters(
     ari.to_csv(output_dir / "methods_similarity.csv")
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm")
+    ax = plt.gca()
+    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm", ax=ax)
+    ax.set_title("Corrélations entre méthodes")
     plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(output_dir / "methods_similarity_heatmap.png")
@@ -3390,18 +3529,18 @@ def main() -> None:
                 optimize=optimize_params,
                 **config.get("phate", {}),
             )
-        # if "tsne" in methods and "FAMD" in results:
-        #     start["TSNE"] = time.time()
-        #     futures["TSNE"] = executor.submit(
-        #         run_tsne,
-        #         results["FAMD"]["embeddings"],
-        #         df_active,
-        #         output_dir / "TSNE",
-        #         optimize=optimize_params,
-        #         **config.get("tsne", {}),
-        #     )
-        # elif "tsne" in methods:
-        #     logger.warning("t-SNE ignoré : embeddings FAMD indisponibles")
+        if "tsne" in methods and "FAMD" in results:
+            start["TSNE"] = time.time()
+            futures["TSNE"] = executor.submit(
+                run_tsne,
+                results["FAMD"]["embeddings"],
+                df_active,
+                output_dir / "TSNE",
+                optimize=optimize_params,
+                **config.get("tsne", {}),
+            )
+        elif "tsne" in methods:
+            logger.warning("t-SNE ignoré : embeddings FAMD indisponibles")
 
         for name, fut in futures.items():
             res = fut.result()
@@ -3451,17 +3590,17 @@ def main() -> None:
                         "t": getattr(phate_op, "t", None),
                     })
                 del phate_op, phate_df
-            # elif name == "TSNE":
-            #     tsne_model, tsne_df, tsne_metrics = res
-            #     export_tsne_results(tsne_df, df_active, output_dir / "TSNE", tsne_metrics)
-            #     results["TSNE"] = {"embeddings": tsne_df, "inertia": None, "runtime": rt}
-            #     logger.info(
-            #         "t-SNE : perplexity=%s, %.1fs",
-            #         getattr(tsne_model, "perplexity", "?"),
-            #         rt,
-            #     )
-            #     effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
-            #     del tsne_model, tsne_df
+            elif name == "TSNE":
+                tsne_model, tsne_df, tsne_metrics = res
+                export_tsne_results(tsne_df, df_active, output_dir / "TSNE", tsne_metrics)
+                results["TSNE"] = {"embeddings": tsne_df, "inertia": None, "runtime": rt}
+                logger.info(
+                    "t-SNE : perplexity=%s, %.1fs",
+                    getattr(tsne_model, "perplexity", "?"),
+                    rt,
+                )
+                effective_config.setdefault("tsne", {})["perplexity"] = getattr(tsne_model, "perplexity", None)
+                del tsne_model, tsne_df
     # 8. Évaluation croisée
     comp_df = evaluate_methods(
         results,
@@ -3474,8 +3613,7 @@ def main() -> None:
 
     # 8b. Comparaisons multi-méthodes
     scree_methods = [m for m in ("FAMD", "MFA", "PCAmix") if m in results]
-    # scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP") if m in results]
-    scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "PaCMAP") if m in results]
+    scatter_methods = [m for m in ("FAMD", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP") if m in results]
     method_order = []
     for m in scree_methods + scatter_methods:
         if m not in method_order:
@@ -3546,7 +3684,7 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
         "MFA",
         "PCAmix",
         "UMAP",
-        # "TSNE",
+        "TSNE",
         "PHATE",
         "PaCMAP",
     ]
@@ -3719,8 +3857,7 @@ def create_index_file(output_dir: Path) -> Path:
 
         rel = file_path.relative_to(output_dir)
         method = "Global"
-        # if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE", "TSNE"}:
-        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "PaCMAP", "PHATE"}:
+        if len(rel.parts) > 1 and rel.parts[0] in {"FAMD", "PCA", "MCA", "MFA", "PCAmix", "UMAP", "TSNE", "PaCMAP", "PHATE"}:
             method = rel.parts[0]
 
         file_type = {
