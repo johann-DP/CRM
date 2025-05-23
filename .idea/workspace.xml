@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="enhanced params">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="Troubleshoot fine-tune scripts exit code 1">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_all_fine_tunes.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_all_fine_tunes.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -225,7 +224,15 @@
       <option name="project" value="LOCAL" />
       <updated>1748004918854</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Troubleshoot fine-tune scripts exit code 1">
+      <option name="closed" value="true" />
+      <created>1748024486360</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1748024486360</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -273,6 +280,7 @@
     <MESSAGE value="enhanced params 4" />
     <MESSAGE value="enhanced params 5" />
     <MESSAGE value="enhanced params" />
-    <option name="LAST_COMMIT_MESSAGE" value="enhanced params" />
+    <MESSAGE value="Troubleshoot fine-tune scripts exit code 1" />
+    <option name="LAST_COMMIT_MESSAGE" value="Troubleshoot fine-tune scripts exit code 1" />
   </component>
 </project>

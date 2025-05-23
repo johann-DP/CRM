@@ -1,5 +1,5 @@
 numpy~=2.2.6
-pandas~=2.0.3
+pandas>=2.2.0
 matplotlib>=3.7
 seaborn~=0.13.2
 Pillow~=11.2.1
