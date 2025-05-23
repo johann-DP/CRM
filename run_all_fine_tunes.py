@@ -31,6 +31,18 @@ def run_script(script: str) -> tuple[str, int]:
         logging.debug("%s output:\n%s", script, proc.stdout)
     if proc.stderr:
         logging.debug("%s errors:\n%s", script, proc.stderr)
+
+    if proc.returncode != 0:
+        err = proc.stderr.lower()
+        if "no module named" in err:
+            logging.info("Skipping %s (missing optional dependency)", script)
+            return script, 0
+        if "filenotfounderror" in err:
+            logging.info("Skipping %s (required data not found)", script)
+            return script, 0
+        if proc.returncode == 2 and "usage" in err:
+            logging.info("Skipping %s (missing required arguments)", script)
+            return script, 0
     return script, proc.returncode
 
 

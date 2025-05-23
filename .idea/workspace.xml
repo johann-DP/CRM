@@ -4,9 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="enhanced params 5">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="enhanced params">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/phase4v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4v2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run_all_fine_tunes.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_all_fine_tunes.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -217,7 +217,15 @@
       <option name="project" value="LOCAL" />
       <updated>1748002161337</updated>
     </task>
-    <option name="localTasksCounter" value="21" />
+    <task id="LOCAL-00021" summary="enhanced params">
+      <option name="closed" value="true" />
+      <created>1748004918854</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1748004918854</updated>
+    </task>
+    <option name="localTasksCounter" value="22" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -260,11 +268,11 @@
     <MESSAGE value="phase4v2.py: update YAML with METRICS_DIR" />
     <MESSAGE value="phase4v2.py: update figures' sizes" />
     <MESSAGE value="implémenter-optimisation-automatique-des-hyperparamètres" />
-    <MESSAGE value="enhanced params" />
     <MESSAGE value="enhanced params 2" />
     <MESSAGE value="enhanced params 3" />
     <MESSAGE value="enhanced params 4" />
     <MESSAGE value="enhanced params 5" />
-    <option name="LAST_COMMIT_MESSAGE" value="enhanced params 5" />
+    <MESSAGE value="enhanced params" />
+    <option name="LAST_COMMIT_MESSAGE" value="enhanced params" />
   </component>
 </project>
