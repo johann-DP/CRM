@@ -1916,8 +1916,14 @@ def plot_multimethod_results(
 
     # ─── Heatmap d'évaluation ──────────────────────────────────
     if not comp_df.empty:
+        df_norm = comp_df.copy()
+        for col in df_norm.columns:
+            cmin, cmax = df_norm[col].min(), df_norm[col].max()
+            if cmax > cmin:
+                df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
+
         fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-        sns.heatmap(comp_df, ax=ax, annot=True, cmap="coolwarm")
+        sns.heatmap(df_norm, ax=ax, annot=comp_df, fmt=".2f", cmap="coolwarm")
         ax.set_xticklabels(comp_df.columns, rotation=45, ha="right")
         ax.set_yticklabels(comp_df.index)
         ax.set_title("Comparaison méthodes")
@@ -2963,7 +2969,9 @@ def evaluate_methods(
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(df_norm, annot=True, cmap="coolwarm")
+    ax = plt.gca()
+    sns.heatmap(df_norm, annot=df_comp, fmt=".2f", cmap="coolwarm", ax=ax)
+    ax.set_title("Évaluation des méthodes")
     plt.yticks(rotation=0)
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
@@ -3008,7 +3016,9 @@ def compare_method_clusters(
     ari.to_csv(output_dir / "methods_similarity.csv")
 
     plt.figure(figsize=(12, 6), dpi=200)
-    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm")
+    ax = plt.gca()
+    sns.heatmap(ari, annot=True, vmin=0, vmax=1, cmap="coolwarm", ax=ax)
+    ax.set_title("Corrélations entre méthodes")
     plt.yticks(rotation=0)
     plt.tight_layout()
     plt.savefig(output_dir / "methods_similarity_heatmap.png")
