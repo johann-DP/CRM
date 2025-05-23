@@ -9,7 +9,11 @@ methods: [famd, pca, mca, mfa, pcamix, umap, pacmap, phate, tsne]
 
 # Method specific options (can be left empty)
 famd: {}
-mfa: {}
+mfa:
+  segment_col: "Statut commercial"
+  groups:
+    Demographie: [Age, Sexe]
+    Finances: ["Total recette actualisé", "Budget client estimé"]
 pca: {}
 mca: {}
 pcamix: {}
