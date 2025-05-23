@@ -25,6 +25,23 @@ packages with:
 python -m pip install -r requirements.txt
 ```
 
+If you encounter an error similar to::
+
+    ValueError: numpy.dtype size changed, may indicate binary incompatibility
+
+or::
+
+    ImportError: Detected an incompatible combination of pandas and NumPy
+
+it means the currently installed versions of NumPy and pandas do not match the
+pinned versions. Reinstall the dependencies in a fresh virtual environment using
+the command above (``python -m pip install -r requirements.txt``) or force a
+reinstall with:
+
+```bash
+python -m pip install --force-reinstall -r requirements.txt
+```
+
 The package `umap-learn` is required for the UMAP functionality. `phate` and
 `pacmap` are optional; install them if you want to run the corresponding
 analyses.
