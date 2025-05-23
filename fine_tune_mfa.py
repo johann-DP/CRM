@@ -35,11 +35,23 @@ def evaluate_embedding(emb: pd.DataFrame, k_range=range(2, 7)) -> tuple[float, f
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Fine tune MFA")
-    p.add_argument("--config", required=True, help="YAML or JSON config file")
+    p.add_argument("--config", help="YAML or JSON config file")
+    p.add_argument("--input", help="Cleaned multivariate CSV")
+    p.add_argument("--output", help="Output directory")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    cfg = load_config(Path(args.config))
+    cfg = {}
+    if args.config:
+        cfg = load_config(Path(args.config))
+
+    if args.input:
+        cfg["input_file"] = args.input
+    if args.output:
+        cfg["output_dir"] = args.output
+
+    if "input_file" not in cfg or "output_dir" not in cfg:
+        p.error("Provide --input and --output or a config file with those fields")
 
     input_file = cfg["input_file"]
     out_dir = Path(cfg.get("output_dir", "phase4_output/fine_tuning_mfa"))

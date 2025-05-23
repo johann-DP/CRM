@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fine tune PCA on cleaned CRM data."""
 
+import argparse
 import logging
 from pathlib import Path
 import itertools
@@ -16,8 +17,11 @@ from sklearn.metrics import silhouette_score
 
 from phase4v2 import plot_correlation_circle
 
-INPUT_FILE = r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_multivariate.csv"
-OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output\fine_tuning_pca")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PCA")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
 
 CANDIDATE_QUANT = [
     "Total recette actualisé",
@@ -230,10 +234,14 @@ def write_index(out_dir: Path) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    args = parse_args()
+    data_path = args.input
+    out_dir = Path(args.output)
 
-    df_quant, quant_cols = load_quantitative_data(INPUT_FILE)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    df_quant, quant_cols = load_quantitative_data(data_path)
     logging.info("Variables quantitatives utilisées : %s", quant_cols)
 
     scaler = StandardScaler()
@@ -241,9 +249,9 @@ def main() -> None:
 
     results, exp_df, load_df, contrib_df, sil_df = run_pca_grid(X, quant_cols)
 
-    export_csvs(OUTPUT_DIR, exp_df, load_df, contrib_df, sil_df)
-    make_scree_plots(OUTPUT_DIR, exp_df)
-    plot_silhouette_curves(OUTPUT_DIR, sil_df)
+    export_csvs(out_dir, exp_df, load_df, contrib_df, sil_df)
+    make_scree_plots(out_dir, exp_df)
+    plot_silhouette_curves(out_dir, sil_df)
 
     # Identify best configurations
     exp_summary = exp_df.groupby("config_id")["cumulative_variance_ratio"].max()
@@ -256,11 +264,11 @@ def main() -> None:
     best_var_res = next(r for r in results if r["config_id"] == best_var_id)
     best_sil_res = next(r for r in results if r["config_id"] == best_sil_id)
 
-    plot_correlation_and_contrib(OUTPUT_DIR, best_var_res["loadings"], quant_cols, "best_variance")
-    plot_correlation_and_contrib(OUTPUT_DIR, best_sil_res["loadings"], quant_cols, "best_silhouette")
-    plot_best_clusters(OUTPUT_DIR, best_sil_res["scores"], int(best_k))
+    plot_correlation_and_contrib(out_dir, best_var_res["loadings"], quant_cols, "best_variance")
+    plot_correlation_and_contrib(out_dir, best_sil_res["loadings"], quant_cols, "best_silhouette")
+    plot_best_clusters(out_dir, best_sil_res["scores"], int(best_k))
 
-    write_index(OUTPUT_DIR)
+    write_index(out_dir)
 
     logging.info(
         "Meilleure config variance >=80%% : id=%d (solver=%s, whiten=%s, n_comp=%d, variance=%.2f%%)",

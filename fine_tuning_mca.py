@@ -1,3 +1,4 @@
+import argparse
 import os
 import time
 import logging
@@ -13,15 +14,18 @@ from phase4v2 import plot_correlation_circle
 
 # ----------------------------------------------------------------------
 # Configuration paths
-INPUT_FILES = [
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase1_output\\phase1_categorical_cleaned.csv",
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase2_output\\phase2_categorical_overview.csv",
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase3_output\\phase3_cleaned_multivariate.csv",
-]
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune MCA")
+    parser.add_argument("--phase1", required=True, help="Phase1 categorical CSV")
+    parser.add_argument("--phase2", required=True, help="Phase2 categorical CSV")
+    parser.add_argument("--phase3", required=True, help="Phase3 multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
 
-OUTPUT_ROOT = Path(r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase4_output\\fine_tuning_mca")
-FIG_DIR = OUTPUT_ROOT / "figures"
-CSV_DIR = OUTPUT_ROOT / "csv"
+INPUT_FILES = []
+OUTPUT_ROOT = Path()
+FIG_DIR = Path()
+CSV_DIR = Path()
 
 QUAL_COLS = [
     "Statut commercial",
@@ -62,6 +66,9 @@ def load_inputs(paths: list[str]) -> pd.DataFrame:
 
 # ----------------------------------------------------------------------
 def ensure_dirs() -> None:
+    global FIG_DIR, CSV_DIR
+    FIG_DIR = OUTPUT_ROOT / "figures"
+    CSV_DIR = OUTPUT_ROOT / "csv"
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     CSV_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -214,6 +221,11 @@ def assemble_pdf(figures: list[Path], pdf_path: Path) -> None:
 
 # ----------------------------------------------------------------------
 def main() -> None:
+    args = parse_args()
+    global INPUT_FILES, OUTPUT_ROOT
+    INPUT_FILES = [args.phase1, args.phase2, args.phase3]
+    OUTPUT_ROOT = Path(args.output)
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     ensure_dirs()
     df = load_inputs(INPUT_FILES)

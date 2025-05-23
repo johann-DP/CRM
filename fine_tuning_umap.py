@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import pickle
 from pathlib import Path
@@ -18,9 +19,14 @@ from sklearn.metrics import silhouette_score
 import umap
 
 
-DATA_PATH = Path("/mnt/data/phase3_cleaned_multivariate.csv")
-DICT_PATH = Path("/mnt/data/phase3_data_dictionary.xlsx")
-OUTPUT_DIR = Path("/mnt/data/phase4_output/fine_tuning_umap")
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune UMAP")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+DATA_PATH = Path()
+OUTPUT_DIR = Path()
 RANDOM_STATE = 42
 
 
@@ -128,6 +134,11 @@ def export_scatter(embedding: np.ndarray, df: pd.DataFrame, column: str):
 
 
 def main() -> None:
+    args = parse_args()
+    global DATA_PATH, OUTPUT_DIR
+    DATA_PATH = Path(args.input)
+    OUTPUT_DIR = Path(args.output)
+
     logger = setup_logger()
     if not DATA_PATH.exists():
         logger.error("File not found: %s", DATA_PATH)

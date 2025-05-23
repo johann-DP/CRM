@@ -3,32 +3,41 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 from pathlib import Path
 
 from phase4v2 import run_pcamix, export_pcamix_results
 from standalone_utils import prepare_active_dataset
 
-DATA_PATH = Path("/mnt/data/phase3_cleaned_multivariate.csv")
-OUTPUT_DIR = Path("/mnt/data/phase4_output/fine_tuning_pcamix")
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PCAmix")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
 
 
 def main() -> None:
+    args = parse_args()
+    data_path = Path(args.input)
+    out_dir = Path(args.output)
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    if not DATA_PATH.exists():
-        logging.error("File not found: %s", DATA_PATH)
+    if not data_path.exists():
+        logging.error("File not found: %s", data_path)
         return
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    df_active, quant_vars, qual_vars = prepare_active_dataset(str(DATA_PATH), OUTPUT_DIR)
+    df_active, quant_vars, qual_vars = prepare_active_dataset(str(data_path), out_dir)
 
     model, inertia, rows, cols = run_pcamix(
         df_active,
         quant_vars,
         qual_vars,
-        OUTPUT_DIR,
+        out_dir,
         optimize=True,
     )
 
@@ -37,7 +46,7 @@ def main() -> None:
         inertia,
         rows,
         cols,
-        OUTPUT_DIR,
+        out_dir,
         quant_vars,
         qual_vars,
         df_active=df_active,
