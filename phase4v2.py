@@ -634,9 +634,10 @@ def run_pcamix(
     )
     md_pca = md_pca.fit(df_mix)
 
+    inertia_values = get_explained_inertia(md_pca)
     inertia = pd.Series(
-        get_explained_inertia(md_pca),
-        index=[f"F{i + 1}" for i in range(n_components)],
+        inertia_values,
+        index=[f"F{i + 1}" for i in range(len(inertia_values))],
     )
 
     axes = list(range(1, len(inertia) + 1))
