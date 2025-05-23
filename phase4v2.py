@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+
 try:
     import pandas as pd
 except ValueError as err:
@@ -16,6 +17,7 @@ except ValueError as err:
 from PIL import Image
 import io
 import matplotlib
+
 # Use a non-interactive backend to avoid Tkinter cleanup errors in CLI usage
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -72,7 +74,6 @@ def plot_correlation_circle(
     ax.set_ylabel("F2")
     ax.set_title(title)
     ax.set_aspect("equal")
-
 
 
 def sanity_check(
@@ -1100,7 +1101,6 @@ def run_mca(
 #         logger.info(f"Export t-SNE -> {metrics_path}")
 
 
-
 def run_umap(
         df_active: pd.DataFrame,
         quant_vars: List[str],
@@ -1903,13 +1903,13 @@ def run_famd(
 
 
 def plot_multimethod_results(
-    results_dict: Dict[str, Dict[str, Any]],
-    df_active: pd.DataFrame,
-    comp_df: pd.DataFrame,
-    output_dir: Path,
-    *,
-    scree_methods: Optional[Sequence[str]] = None,
-    scatter_methods: Optional[Sequence[str]] = None,
+        results_dict: Dict[str, Dict[str, Any]],
+        df_active: pd.DataFrame,
+        comp_df: pd.DataFrame,
+        output_dir: Path,
+        *,
+        scree_methods: Optional[Sequence[str]] = None,
+        scatter_methods: Optional[Sequence[str]] = None,
 ) -> None:
     """Visualisations comparatives pour plusieurs méthodes factorielles."""
 
@@ -2062,8 +2062,8 @@ def export_famd_results(
             plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
             plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
-        plt.xlabel(f"F1 ({inertia[0]*100:.1f}% inertie)")
-        plt.ylabel(f"F2 ({inertia[1]*100:.1f}% inertie)")
+        plt.xlabel(f"F1 ({inertia[0] * 100:.1f}% inertie)")
+        plt.ylabel(f"F2 ({inertia[1] * 100:.1f}% inertie)")
         plt.title("FAMD – individus (F1 vs F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "famd_indiv_plot.png")
@@ -2437,7 +2437,7 @@ def export_mfa_results(
     if hasattr(mfa_model, "df_encoded_"):
         part = mfa_model.partial_row_coordinates(mfa_model.df_encoded_)
         part.columns = [
-            (grp, f"F{i+1}") for grp, i in part.columns
+            (grp, f"F{i + 1}") for grp, i in part.columns
         ]
         part.to_csv(output_dir / "mfa_individus_partial_coords.csv", index=True)
         logger.info("CSV coordonnées partielles individus MFA enregistré")
@@ -2472,8 +2472,10 @@ def export_pca_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
-    row_coords = row_coords.copy(); row_coords.columns = axes
-    col_coords = col_coords.copy(); col_coords.columns = axes[:col_coords.shape[1]]
+    row_coords = row_coords.copy();
+    row_coords.columns = axes
+    col_coords = col_coords.copy();
+    col_coords.columns = axes[:col_coords.shape[1]]
 
     contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
 
@@ -2498,7 +2500,8 @@ def export_pca_results(
         else:
             codes = None
         sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
-        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.xlabel("F1");
+        plt.ylabel("F2")
         plt.title("PCA – individus (F1–F2)")
         if codes is not None:
             plt.colorbar(sc, label="Statut commercial")
@@ -2515,7 +2518,9 @@ def export_pca_results(
         else:
             codes = None
         sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
-        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
+        ax.set_xlabel("F1");
+        ax.set_ylabel("F2");
+        ax.set_zlabel("F3")
         ax.set_title("PCA – individus (3D)")
         if codes is not None:
             fig.colorbar(sc3, label="Statut commercial")
@@ -2571,8 +2576,10 @@ def export_mca_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     axes = [f"F{i + 1}" for i in range(row_coords.shape[1])]
-    row_coords = row_coords.copy(); row_coords.columns = axes
-    col_coords = col_coords.copy(); col_coords.columns = axes[:col_coords.shape[1]]
+    row_coords = row_coords.copy();
+    row_coords.columns = axes
+    col_coords = col_coords.copy();
+    col_coords.columns = axes[:col_coords.shape[1]]
 
     contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
 
@@ -2597,7 +2604,8 @@ def export_mca_results(
         else:
             codes = None
         sc = plt.scatter(row_coords["F1"], row_coords["F2"], c=codes, s=10, alpha=0.7)
-        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.xlabel("F1");
+        plt.ylabel("F2")
         plt.title("MCA – individus (F1–F2)")
         if codes is not None:
             plt.colorbar(sc, label="Statut commercial")
@@ -2614,7 +2622,9 @@ def export_mca_results(
         else:
             codes = None
         sc3 = ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], c=codes, s=10, alpha=0.7)
-        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
+        ax.set_xlabel("F1");
+        ax.set_ylabel("F2");
+        ax.set_zlabel("F3")
         ax.set_title("MCA – individus (3D)")
         if codes is not None:
             fig.colorbar(sc3, label="Statut commercial")
@@ -2662,7 +2672,8 @@ def export_mca_results(
             for v in sorted(set(var_names))
         ]
         plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.xlabel("F1");
+        plt.ylabel("F2")
         plt.title("MCA – modalités (F1–F2)")
         plt.tight_layout()
         plt.savefig(output_dir / "mca_modalities_plot.png")
@@ -2672,7 +2683,7 @@ def export_mca_results(
         near = col_coords[radius < thresh]
         if not near.empty:
             plt.figure(figsize=(12, 6), dpi=200)
-            for mod, var in zip(near.index, [m.split("_",1)[0] if "_" in m else m for m in near.index]):
+            for mod, var in zip(near.index, [m.split("_", 1)[0] if "_" in m else m for m in near.index]):
                 plt.scatter(
                     near.loc[mod, "F1"],
                     near.loc[mod, "F2"],
@@ -2721,7 +2732,6 @@ def export_mca_results(
     col_coords.to_csv(output_dir / "mca_modalities_coords.csv", index=True)
     contrib.to_csv(output_dir / "mca_contributions.csv", index=True)
     logger.info("Export MCA terminé")
-
 
 
 def export_pcamix_results(
@@ -3039,10 +3049,10 @@ def evaluate_methods(
 
 
 def compare_method_clusters(
-    results_dict: Dict[str, Dict[str, Any]],
-    output_dir: Path,
-    *,
-    n_clusters: int = 3,
+        results_dict: Dict[str, Dict[str, Any]],
+        output_dir: Path,
+        *,
+        n_clusters: int = 3,
 ) -> pd.DataFrame:
     """Compute clustering consistency between methods using ARI."""
 
@@ -3146,7 +3156,6 @@ def main() -> None:
     else:
         logger.info("DataFrame actif sans NA prêt pour FAMD")
 
-
     segment_data(df_active, qual_vars, output_dir)
 
     optimize_params = config.get("optimize_params", False)
@@ -3157,7 +3166,7 @@ def main() -> None:
 
     start: Dict[str, float] = {}
     futures: Dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         if "famd" in methods:
             start["FAMD"] = time.time()
             famd_cfg = config.get("famd", {})
@@ -3345,8 +3354,9 @@ def main() -> None:
                 )
                 del mdpca_model, mdpca_rows, mdpca_cols
 
-    futures.clear(); start.clear()
-    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+    futures.clear();
+    start.clear()
+    with ThreadPoolExecutor(max_workers=16) as executor:
         if "umap" in methods:
             start["UMAP"] = time.time()
             futures["UMAP"] = executor.submit(

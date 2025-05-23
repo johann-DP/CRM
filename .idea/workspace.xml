@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="enhanced params 2">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="enhanced params 4">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/phase4v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4v2.py" afterDir="false" />
     </list>
@@ -193,7 +193,23 @@
       <option name="project" value="LOCAL" />
       <updated>1747999108294</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="enhanced params 3">
+      <option name="closed" value="true" />
+      <created>1748000051515</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1748000051515</updated>
+    </task>
+    <task id="LOCAL-00019" summary="enhanced params 4">
+      <option name="closed" value="true" />
+      <created>1748000168476</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1748000168476</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -238,6 +254,8 @@
     <MESSAGE value="implémenter-optimisation-automatique-des-hyperparamètres" />
     <MESSAGE value="enhanced params" />
     <MESSAGE value="enhanced params 2" />
-    <option name="LAST_COMMIT_MESSAGE" value="enhanced params 2" />
+    <MESSAGE value="enhanced params 3" />
+    <MESSAGE value="enhanced params 4" />
+    <option name="LAST_COMMIT_MESSAGE" value="enhanced params 4" />
   </component>
 </project>
