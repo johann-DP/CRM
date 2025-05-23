@@ -3098,7 +3098,7 @@ def main() -> None:
 
     start: Dict[str, float] = {}
     futures: Dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=n_jobs) as executor:
+    with ThreadPoolExecutor(max_workers=16) as executor:
         if "famd" in methods:
             start["FAMD"] = time.time()
             famd_cfg = config.get("famd", {})
