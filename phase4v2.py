@@ -3779,6 +3779,16 @@ def generate_report_pdf(output_dir: Path) -> Path:
             fig, ax = plt.subplots()
             ax.imshow(img)
             ax.axis("off")
+            fig.tight_layout()
+            fig.text(
+                0.99,
+                0.01,
+                f"{img_path.resolve().parent} | {img_path.name}",
+                ha="right",
+                va="bottom",
+                fontsize=6,
+                color="gray",
+            )
             pdf.savefig(fig)
             plt.close(fig)
     return pdf_path
@@ -3844,6 +3854,15 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
                 ax.imshow(img)
                 ax.axis("off")
                 fig.tight_layout()
+                fig.text(
+                    0.99,
+                    0.01,
+                    f"{img_path.resolve().parent} | {img_path.name}",
+                    ha="right",
+                    va="bottom",
+                    fontsize=6,
+                    color="gray",
+                )
                 pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
@@ -3863,6 +3882,15 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
                 ax.imshow(img)
                 ax.axis("off")
                 fig.tight_layout()
+                fig.text(
+                    0.99,
+                    0.01,
+                    f"{img_path.resolve().parent} | {img_path.name}",
+                    ha="right",
+                    va="bottom",
+                    fontsize=6,
+                    color="gray",
+                )
                 pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
@@ -3895,6 +3923,15 @@ def generate_pdf(output_dir: Path, pdf_name: str = "phase4_rapport_complet.pdf")
                 ax.imshow(img)
                 ax.axis("off")
                 fig.tight_layout()
+                fig.text(
+                    0.99,
+                    0.01,
+                    f"{img_path.resolve().parent} | {img_path.name}",
+                    ha="right",
+                    va="bottom",
+                    fontsize=6,
+                    color="gray",
+                )
                 pdf.savefig(fig, dpi=300)
                 plt.close(fig)
 
