@@ -11,15 +11,15 @@ import subprocess
 # List of fine tuning scripts to execute for each algorithm
 # Order follows the project's main Phase 4 scripts
 SCRIPTS = [
-    "phase4_famd.py",        # FAMD
-    "fine_tuning_mca.py",    # MCA
-    "fine_tuning_mfa.py",    # MFA
-    "pacmap_fine_tune.py",   # PaCMAP
-    "fine_tune_pca.py",      # PCA
-    "phase4_pcamix.py",      # PCAmix
-    "phase4_phate.py",       # PHATE
-    "fine_tune_tsne.py",     # TSNE
-    "fine_tuning_umap.py",   # UMAP
+    "fine_tune_famd.py",         # FAMD
+    "fine_tuning_mca.py",        # MCA
+    "fine_tune_mfa.py",          # MFA
+    "pacmap_fine_tune.py",       # PaCMAP
+    "fine_tune_pca.py",          # PCA
+    "fine_tune_pcamix.py",       # PCAmix
+    "phase4_fine_tune_phate.py", # PHATE
+    "fine_tune_tsne.py",         # TSNE
+    "fine_tuning_umap.py",       # UMAP
 ]
 
 
