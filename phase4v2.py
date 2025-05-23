@@ -981,6 +981,7 @@ def run_tsne(
                 max_iter=n_iter,
                 random_state=random_state,
                 init="pca",
+                n_jobs=-1
             )
         except TypeError:  # pragma: no cover - older scikit-learn
             t = TSNE(
@@ -990,6 +991,7 @@ def run_tsne(
                 n_iter=n_iter,
                 random_state=random_state,
                 init="pca",
+                n_jobs=-1
             )
         emb = t.fit_transform(embeddings.values)
         return t, emb
@@ -997,7 +999,7 @@ def run_tsne(
     if optimize and perplexity is None:
         from sklearn.manifold import trustworthiness
 
-        grid = perplexity_grid or [5, 30, 50]
+        grid = perplexity_grid or [25, 30, 35]
         best = None
         for p in grid:
             if p >= embeddings.shape[0] / 3:
