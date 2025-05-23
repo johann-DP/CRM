@@ -61,7 +61,7 @@ def plot_correlation_circle(
         colors: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Plot a correlation circle with slight label offset to reduce overlap."""
-    circle = plt.Circle((0, 0), 1, color="grey", fill=False)
+    circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
@@ -1445,6 +1445,41 @@ def get_explained_inertia(model) -> List[float]:
     return [v / total for v in eigenvalues]
 
 
+def select_n_components(
+        eigenvalues: Sequence[float],
+        method: str = "variance",
+        threshold: float = 0.9,
+) -> int:
+    """Select the number of components according to a rule.
+
+    Parameters
+    ----------
+    eigenvalues : Sequence[float]
+        Eigenvalues of the decomposition.
+    method : {"variance", "kaiser", "elbow"}
+        Selection rule. ``"variance"`` uses the cumulative explained inertia
+        threshold, ``"kaiser"`` keeps axes with eigenvalue >= 1 and
+        ``"elbow"`` uses the point of maximum curvature of the scree plot.
+    threshold : float, optional
+        Cumulative inertia threshold when ``method='variance'``.
+    """
+    ev = np.asarray(eigenvalues)
+    if method == "kaiser":
+        return max(1, int((ev >= 1).sum()))
+    if method == "elbow":
+        if len(ev) <= 2:
+            return len(ev)
+        diff2 = np.diff(np.diff(ev))
+        return int(np.argmin(diff2) + 2)
+    # default: variance threshold
+    ratio = ev / ev.sum()
+    cum = np.cumsum(ratio)
+    for i, v in enumerate(cum, start=1):
+        if v >= threshold:
+            return i
+    return len(ev)
+
+
 def run_famd(
         df_active: pd.DataFrame,
         quant_vars: List[str],
@@ -1516,8 +1551,10 @@ def run_famd(
 
     n_comp = n_components
 
-    if optimize and n_components is None:
-        # Exploration avec le nombre maximal de composantes pour estimer la variance
+    rule = cfg.get('n_components_rule')
+    thresh = float(cfg.get('variance_threshold', 0.9))
+
+    if (optimize or rule) and n_components is None:
         n_init = df_for_famd.shape[1]
         tmp = prince.FAMD(
             n_components=n_init,
@@ -1526,14 +1563,15 @@ def run_famd(
             check_input=True,
             engine='sklearn'
         ).fit(df_for_famd)
-        inertia_tmp = get_explained_inertia(tmp)
-        cum = np.cumsum(inertia_tmp)
-        thresh = 0.9
-        n_comp = next((i + 1 for i, v in enumerate(cum) if v >= thresh), n_init)
+        eigenvalues = getattr(tmp, 'eigenvalues_', None)
+        if eigenvalues is None:
+            eigenvalues = np.array(get_explained_inertia(tmp)) * n_init
+        method = rule or 'variance'
+        n_comp = select_n_components(eigenvalues, method=method, threshold=thresh)
         logger.info(
-            "FAMD auto: %d composantes retenues (%.1f%% variance cumulée)",
+            "FAMD auto: %d composantes retenues via %s",
             n_comp,
-            cum[n_comp - 1] * 100
+            method
         )
 
     n_comp = n_comp or df_for_famd.shape[1]
@@ -1706,12 +1744,14 @@ def export_famd_results(
 
     # ─── Éboulis ──────────────────────────────────────────────────────
     ax_idx = list(range(1, len(inertia) + 1))
-    plt.figure(figsize=(12, 6), dpi=200)
+    plt.figure(figsize=(12, 6), dpi=300)
     plt.bar(ax_idx, [v * 100 for v in inertia], edgecolor="black")
+    plt.plot(ax_idx, np.cumsum(inertia) * 100, "-o", color="red", label="Cumul")
     plt.xlabel("Composante")
     plt.ylabel("% Inertie expliquée")
     plt.title("Éboulis FAMD")
-    plt.xticks(ax_idx)
+    plt.xticks(ax_idx, [f"F{i}" for i in ax_idx])
+    plt.legend()
     plt.tight_layout()
     plt.savefig(output_dir / "famd_scree_plot.png")
     plt.close()
@@ -1719,25 +1759,27 @@ def export_famd_results(
 
     # ─── Projection individus 2D ──────────────────────────────────────
     if {"F1", "F2"}.issubset(row_coords.columns):
-        plt.figure(figsize=(12, 6), dpi=200)
+        plt.figure(figsize=(12, 6), dpi=300)
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            categories = cats.cat.categories
+            palette = sns.color_palette("tab10", len(categories))
+            for cat, color in zip(categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        scatter = plt.scatter(
-            row_coords["F1"],
-            row_coords["F2"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
-        plt.xlabel("F1")
-        plt.ylabel("F2")
+            plt.scatter(row_coords["F1"], row_coords["F2"], s=10, alpha=0.7)
+        plt.xlabel(f"F1 ({inertia[0]*100:.1f}% inertie)")
+        plt.ylabel(f"F2 ({inertia[1]*100:.1f}% inertie)")
         plt.title("FAMD – individus (F1 vs F2)")
-        if codes is not None:
-            plt.colorbar(scatter, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "famd_indiv_plot.png")
         plt.close()
@@ -1745,28 +1787,30 @@ def export_famd_results(
 
     # ─── Projection individus 3D ──────────────────────────────────────
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
-        fig = plt.figure(figsize=(12, 6), dpi=200)
+        fig = plt.figure(figsize=(12, 6), dpi=300)
         ax = fig.add_subplot(111, projection="3d")
         if df_active is not None and "Statut commercial" in df_active.columns:
-            codes = df_active.loc[row_coords.index, "Statut commercial"].astype(
-                "category"
-            ).cat.codes
+            cats = df_active.loc[row_coords.index, "Statut commercial"].astype("category")
+            categories = cats.cat.categories
+            palette = sns.color_palette("tab10", len(categories))
+            for cat, color in zip(categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    row_coords.loc[mask, "F1"],
+                    row_coords.loc[mask, "F2"],
+                    row_coords.loc[mask, "F3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         else:
-            codes = None
-        sc = ax.scatter(
-            row_coords["F1"],
-            row_coords["F2"],
-            row_coords["F3"],
-            c=codes,
-            s=10,
-            alpha=0.7,
-        )
+            ax.scatter(row_coords["F1"], row_coords["F2"], row_coords["F3"], s=10, alpha=0.7)
         ax.set_xlabel("F1")
         ax.set_ylabel("F2")
         ax.set_zlabel("F3")
         ax.set_title("FAMD – individus (3D)")
-        if codes is not None:
-            fig.colorbar(sc, label="Statut commercial")
         plt.tight_layout()
         plt.savefig(output_dir / "famd_indiv_plot_3D.png")
         plt.close()
@@ -1775,7 +1819,7 @@ def export_famd_results(
     # ─── Cercle des corrélations ─────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         qcoords = col_coords.loc[quant_vars].dropna(how="any")
-        plt.figure(figsize=(12, 6), dpi=200)
+        plt.figure(figsize=(12, 6), dpi=300)
         ax = plt.gca()
         plot_correlation_circle(ax, qcoords, "FAMD – cercle des corrélations (F1–F2)")
         plt.tight_layout()
@@ -1786,15 +1830,30 @@ def export_famd_results(
     # ─── Modalités qualitatives ──────────────────────────────────────
     if {"F1", "F2"}.issubset(col_coords.columns):
         modalities = col_coords.drop(index=quant_vars, errors="ignore")
-        plt.figure(figsize=(12, 6), dpi=200)
-        plt.scatter(modalities["F1"], modalities["F2"], marker="o", alpha=0.7)
-        for mod in modalities.index:
-            plt.text(
+        plt.figure(figsize=(12, 6), dpi=300)
+        var_names = [m.split("=")[0] for m in modalities.index]
+        palette = sns.color_palette("tab10", len(set(var_names)))
+        color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
+        for mod, var in zip(modalities.index, var_names):
+            plt.scatter(
                 modalities.loc[mod, "F1"],
                 modalities.loc[mod, "F2"],
-                str(mod),
+                marker="D",
+                s=20,
+                alpha=0.7,
+                color=color_map[var],
+            )
+            plt.text(
+                modalities.loc[mod, "F1"] * 1.02,
+                modalities.loc[mod, "F2"] * 1.02,
+                mod,
                 fontsize=8,
             )
+        handles = [
+            plt.Line2D([0], [0], marker='D', linestyle='', color=color_map[v], label=v)
+            for v in sorted(set(var_names))
+        ]
+        plt.legend(handles=handles, title="Variable", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.xlabel("F1")
         plt.ylabel("F2")
         plt.title("FAMD – modalités (F1–F2)")
@@ -1805,7 +1864,7 @@ def export_famd_results(
 
     # ─── Contributions ───────────────────────────────────────────────
     contrib = col_contrib * 100
-    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=200)
+    fig, axes_plot = plt.subplots(1, 2, figsize=(12, 6), dpi=300)
     for i, axis in enumerate(["F1", "F2"]):
         if axis in contrib.columns:
             top = contrib[axis].sort_values(ascending=False).head(10)
@@ -1844,6 +1903,12 @@ def export_famd_results(
 
     contrib.to_csv(output_dir / "famd_contributions.csv", index=True)
     logger.info("CSV contributions enregistré")
+
+    row_cos2 = (row_coords ** 2).div((row_coords ** 2).sum(axis=1), axis=0)
+    row_cos2.to_csv(output_dir / "famd_row_cos2.csv")
+    col_cos2 = (col_coords ** 2).div((col_coords ** 2).sum(axis=1), axis=0)
+    col_cos2.to_csv(output_dir / "famd_col_cos2.csv")
+    logger.info("CSV cos2 enregistré")
 
     logger.info("Export des résultats FAMD terminé")
 
