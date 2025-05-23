@@ -3052,13 +3052,15 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=n_jobs) as executor:
         if "famd" in methods:
             start["FAMD"] = time.time()
+            famd_cfg = config.get("famd", {})
             futures["FAMD"] = executor.submit(
                 run_famd,
                 df_active,
                 quant_vars,
                 qual_vars,
+                famd_cfg.get("n_components"),
+                famd_cfg,
                 optimize=optimize_params,
-                **config.get("famd", {})
             )
         if "pca" in methods:
             start["PCA"] = time.time()
@@ -3084,14 +3086,17 @@ def main() -> None:
             )
         if "mfa" in methods:
             start["MFA"] = time.time()
+            mfa_cfg = config.get("mfa", {})
             futures["MFA"] = executor.submit(
                 run_mfa,
                 df_active,
                 quant_vars,
                 qual_vars,
                 output_dir / "MFA",
+                n_components=mfa_cfg.get("n_components"),
+                groups=mfa_cfg.get("groups"),
                 optimize=optimize_params,
-                **config.get("mfa", {})
+                normalize=mfa_cfg.get("normalize", True),
             )
         if "pcamix" in methods:
             start["PCAmix"] = time.time()
