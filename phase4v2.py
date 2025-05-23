@@ -1144,6 +1144,13 @@ def export_tsne_results(
         plt.close()
         logger.info(f"Export t-SNE -> {fig_path}")
 
+        scatter_all_segments(
+            tsne_df[["TSNE1", "TSNE2"]],
+            df_active,
+            output_dir,
+            "tsne_scatter",
+        )
+
     if {"TSNE1", "TSNE2", "TSNE3"}.issubset(tsne_df.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
         ax = fig.add_subplot(111, projection="3d")
