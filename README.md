@@ -67,3 +67,16 @@ python phase4_famd.py --input "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\e
 
 This mirrors the paths used when the original script was created and will
 generate figures and CSV results inside the specified output folder.
+
+## Fine-tuning PHATE on Phase 3 data
+
+The script `phase4_fine_tune_phate.py` demonstrates how to run PHATE on the cleaned CSV files produced by phase 3. Provide the multivariate and univariate datasets along with an output directory:
+
+```bash
+python phase4_fine_tune_phate.py --multi /path/to/phase3_cleaned_multivariate.csv \
+                                 --univ /path/to/phase3_cleaned_univ.csv \
+                                 --output /path/to/output_dir
+```
+
+The script handles basic preprocessing (dropping identifiers, imputing values, scaling numerical variables and one-hot encoding categories) before running PHATE. Coordinates and a scatter plot coloured by `Statut commercial` are written inside the output directory.
+
