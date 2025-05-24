@@ -86,24 +86,25 @@ def main() -> None:
         "n_neighbors": [5, 15, 30, 50],
         "MN_ratio": [0.5, 1.0, 2.0],
         "n_components": [2, 3],
-        "init": ["pca", "random"],
     }
+    has_init = "init" in pacmap.PaCMAP.__init__.__code__.co_varnames
+    if has_init:
+        param_grid["init"] = ["pca", "random"]
 
-    for nn, mn, nc, ini in itertools.product(
-        param_grid["n_neighbors"],
-        param_grid["MN_ratio"],
-        param_grid["n_components"],
-        param_grid["init"],
-    ):
+    iter_args = [param_grid["n_neighbors"], param_grid["MN_ratio"], param_grid["n_components"]]
+    if has_init:
+        iter_args.append(param_grid["init"])
+    for combo in itertools.product(*iter_args):
+        if has_init:
+            nn, mn, nc, ini = combo
+        else:
+            nn, mn, nc = combo
+            ini = None
         start = time.time()
-        model = pacmap.PaCMAP(
-            n_components=nc,
-            n_neighbors=nn,
-            MN_ratio=mn,
-            FP_ratio=2.0,
-            init=ini,
-            random_state=42,
-        )
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=42)
+        if has_init:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
         embedding = model.fit_transform(X)
         runtime = time.time() - start
 
@@ -143,16 +144,11 @@ def main() -> None:
         nn = int(row["n_neighbors"])
         mn = float(row["MN_ratio"])
         nc = int(row["n_components"])
-        ini = row["init"]
-
-        model = pacmap.PaCMAP(
-            n_components=nc,
-            n_neighbors=nn,
-            MN_ratio=mn,
-            FP_ratio=2.0,
-            init=ini,
-            random_state=42,
-        )
+        ini = row.get("init") if has_init else None
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=42)
+        if has_init:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
         embedding = model.fit_transform(X)
 
         # Save coordinates

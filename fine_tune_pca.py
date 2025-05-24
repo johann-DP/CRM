@@ -59,7 +59,10 @@ def run_pca_grid(X: np.ndarray, columns: list[str]):
     contrib_rows = []
     sil_rows = []
     config_id = 0
+    max_comp = min(X.shape[0], X.shape[1])
     for n_comp, solver, whiten in itertools.product(N_COMPONENTS, SVD_SOLVERS, WHITEN_OPTIONS):
+        if n_comp > max_comp:
+            continue
         logging.info("PCA n_components=%d solver=%s whiten=%s", n_comp, solver, whiten)
         pca = PCA(n_components=n_comp, svd_solver=solver, whiten=whiten, random_state=0)
         X_pca = pca.fit_transform(X)
