@@ -4,6 +4,10 @@ import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 BASE_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora")
 PHASE1_CSV = BASE_DIR / "phase1_output" / "export_phase1_cleaned.csv"
 PHASE2_CSV = BASE_DIR / "phase2_output" / "phase2_business_variables.csv"
@@ -81,7 +85,9 @@ def run_script(script: str, args: list[Path | str]) -> int:
     cmd = [sys.executable, str(Path(__file__).parent / script)]
     cmd += [str(a) for a in args]
     env = os.environ.copy()
-    env.setdefault("OMP_NUM_THREADS", "1")
+    env["OMP_NUM_THREADS"] = str(os.cpu_count())
+    env["OPENBLAS_NUM_THREADS"] = str(os.cpu_count())
+    env["MKL_NUM_THREADS"] = str(os.cpu_count())
     result = subprocess.run(cmd, env=env)
     return result.returncode
 

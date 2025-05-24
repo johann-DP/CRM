@@ -12,6 +12,11 @@ import prince
 
 from phase4v2 import plot_correlation_circle
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
 # ----------------------------------------------------------------------
 # Configuration paths
 def parse_args() -> argparse.Namespace:

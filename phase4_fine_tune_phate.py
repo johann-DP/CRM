@@ -8,7 +8,6 @@ saved in the chosen output directory.
 """
 
 import argparse
-import os
 from pathlib import Path
 from typing import List
 
@@ -18,6 +17,10 @@ import numpy as np
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import phate
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 _DEF_DROP = {"id", "code", "client", "contact"}
@@ -36,32 +39,41 @@ def parse_args() -> argparse.Namespace:
 
 
 def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str], List[str], np.ndarray]:
-    drop_cols = [c for c in df.columns if any(p in c.lower() for p in _DEF_DROP) or "date" in c.lower()]
+    # 1) drop des colonnes inutiles
+    drop_cols = [c for c in df.columns
+                 if any(p in c.lower() for p in _DEF_DROP)
+                 or "date" in c.lower()]
     df = df.drop(columns=drop_cols, errors="ignore")
 
+    # 2) extraction et nettoyage des colonnes numériques
+    #   - on ne garde que celles qui ont au moins une valeur non-NaN
     num_cols = df.select_dtypes(include=["number"]).columns.tolist()
+    df_num = df[num_cols].loc[:, lambda d: d.notna().any(axis=0)]
+    #   - on met à jour num_cols pour qu’il corresponde à df_num
+    num_cols = df_num.columns.tolist()
+    #   - on impute par la médiane
+    df_num = df_num.fillna(df_num.median())
+
+    # 3) extraction et nettoyage des colonnes catégorielles
     cat_cols = [c for c in df.columns if c not in num_cols]
-
-    if num_cols:
-        for c in num_cols:
-            if df[c].isna().all():
-                df[c] = 0
-            else:
-                df[c] = df[c].fillna(df[c].median())
     for c in cat_cols:
-        df[c] = df[c].fillna("Non renseigné")
-        if df[c].dtype == "bool":
-            df[c] = df[c].astype(str)
+        # on remplace tous les NaN puis on force en str
+        df[c] = df[c].fillna("Non renseigné").astype(str)
 
+    # 4) Standardisation des numériques
     scaler = StandardScaler()
-    X_num = scaler.fit_transform(df[num_cols]) if num_cols else np.empty((len(df), 0))
+    X_num = scaler.fit_transform(df_num)
 
+    # 5) One-hot des catégorielles
     try:
-        enc = OneHotEncoder(drop="first", sparse_output=False, handle_unknown="ignore")
-    except TypeError:  # pragma: no cover - older scikit-learn
-        enc = OneHotEncoder(drop="first", sparse=False, handle_unknown="ignore")
+        enc = OneHotEncoder(drop="first", sparse_output=False,
+                            handle_unknown="ignore")
+    except TypeError:
+        enc = OneHotEncoder(drop="first", sparse=False,
+                            handle_unknown="ignore")
     X_cat = enc.fit_transform(df[cat_cols]) if cat_cols else np.empty((len(df), 0))
 
+    # 6) matrice finale
     X = np.hstack([X_num, X_cat])
     return df, num_cols, cat_cols, X
 

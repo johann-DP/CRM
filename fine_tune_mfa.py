@@ -12,6 +12,10 @@ from sklearn.metrics import silhouette_score, calinski_harabasz_score
 from standalone_utils import prepare_active_dataset
 from phase4v2 import run_mfa, export_mfa_results
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 def load_config(path: Path) -> dict:
     if path.suffix.lower() in {'.yaml', '.yml'}:

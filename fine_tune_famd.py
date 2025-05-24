@@ -10,6 +10,10 @@ from pathlib import Path
 from phase4v2 import run_famd, export_famd_results
 from standalone_utils import prepare_active_dataset
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine tune FAMD")

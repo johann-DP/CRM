@@ -18,6 +18,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import umap
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine tune UMAP")

@@ -17,6 +17,11 @@ from sklearn.metrics import silhouette_score
 
 from phase4v2 import plot_correlation_circle
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine tune PCA")
     parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")

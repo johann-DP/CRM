@@ -26,6 +26,12 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from joblib import Parallel, delayed
+import os
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 DEFAULT_INPUT = "/mnt/data/phase3_cleaned_multivariate.csv"
@@ -42,8 +48,11 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
         df[col] = df[col].astype(str)
 
     # Imputation
-    df_num = df[num_cols].fillna(df[num_cols].mean())
-    df_cat = df[cat_cols].fillna("unknown")
+    df_num = df[num_cols]
+    df_num = df_num.loc[:, df_num.notna().any(axis=0)]
+    df_num = df_num.fillna(df_num.mean())
+
+    df_cat = df[cat_cols].fillna("unknown").astype(str)
     for c in df_cat.columns:
         if df_cat[c].dtype == "bool":
             df_cat[c] = df_cat[c].astype(str)
@@ -55,7 +64,7 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
     try:
         encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     except TypeError:  # older scikit-learn
-        encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
+        encoder = OneHotEncoder(handle_unknown="ignore")
     X_cat = encoder.fit_transform(df_cat)
 
     X_all = np.hstack([X_num, X_cat])
@@ -72,13 +81,18 @@ def run_grid_search(X: np.ndarray) -> tuple[Dict[str, int | float | str], np.nda
     }
 
     results: List[Dict[str, float]] = []
-    best_score = -1.0
-    best_params: Dict[str, int | float | str] | None = None
-    best_emb: np.ndarray | None = None
 
-    for perp, lr, n_it, metric in product(
-        grid["perplexity"], grid["learning_rate"], grid["n_iter"], grid["metric"]
-    ):
+    # 1) liste de toutes les combinaisons à tester
+    param_grid = list(product(
+        grid["perplexity"],
+        grid["learning_rate"],
+        grid["n_iter"],
+        grid["metric"]
+    ))
+
+    # 2) fonction qui, pour un tuple d’hypers, calcule silhouette
+    def eval_tsne(params):
+        perp, lr, n_it, metric = params
         tsne = TSNE(
             random_state=42,
             init="pca",
@@ -86,31 +100,37 @@ def run_grid_search(X: np.ndarray) -> tuple[Dict[str, int | float | str], np.nda
             learning_rate=lr,
             n_iter=n_it,
             metric=metric,
+            n_jobs=1  # TSNE lui-même n’est pas multi-threadé ; on gère au niveau joblib
         )
         emb = tsne.fit_transform(X)
         labels = KMeans(n_clusters=6, random_state=42).fit_predict(emb)
         sil = silhouette_score(emb, labels)
-        results.append(
-            {
-                "perplexity": perp,
-                "learning_rate": lr,
-                "n_iter": n_it,
-                "metric": metric,
-                "silhouette": sil,
-            }
-        )
-        if sil > best_score:
-            best_score = sil
-            best_params = {
-                "perplexity": perp,
-                "learning_rate": lr,
-                "n_iter": n_it,
-                "metric": metric,
-            }
-            best_emb = emb
+        return {
+            "perplexity": perp,
+            "learning_rate": lr,
+            "n_iter": n_it,
+            "metric": metric,
+            "silhouette": sil,
+            "embedding": emb  # optionnel si vous voulez récupérer la meilleure
+        }
+
+    # 3) exécution en parallèle sur tous les cœurs
+    n_jobs = os.cpu_count() or 1
+    all_results = Parallel(n_jobs=n_jobs)(
+        delayed(eval_tsne)(params) for params in param_grid
+    )
+
+    # 4) recherche du meilleur score
+    best = max(all_results, key=lambda r: r["silhouette"])
+    best_params = {k: best[k] for k in ["perplexity", "learning_rate", "n_iter", "metric"]}
+    best_emb = best["embedding"]
+
+    # 5) (optionnel) nettoyage de best_emb dans result dict pour n’exporter que le nécessaire
+    for r in all_results:
+        r.pop("embedding", None)
 
     assert best_params is not None and best_emb is not None
-    metrics_df = pd.DataFrame(results)
+    metrics_df = pd.DataFrame(all_results).drop(columns="embedding")
     return best_params, best_emb, metrics_df
 
 

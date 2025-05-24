@@ -18,6 +18,11 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 import pacmap
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
 try:
     pacmap.PaCMAP(init="pca")
     _PACMAP_HAS_INIT = True
