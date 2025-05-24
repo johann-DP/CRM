@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 import phate
 
-from phase4v2 import select_variables, handle_missing_values
+from phase4v2 import select_variables, handle_missing_values, scatter_all_segments
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -206,6 +206,13 @@ def main() -> None:
             plt.savefig(fig_path)
             plt.close()
             generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PHATE1", "PHATE2"]],
+                df_active,
+                fig_dir,
+                f"phate_{nc}D_knn{nn}_t{tt}",
+            )
 
     index_path = out_dir / "index_phate.txt"
     with open(index_path, "w", encoding="utf-8") as f:
