@@ -137,7 +137,7 @@ def export_results(
 
     # Save embeddings with labels
     label_cols_all = [
-        "Catégories",
+        "Catégorie",
         "Entité opérationnelle",
         "Pilier",
         "Sous-catégorie",

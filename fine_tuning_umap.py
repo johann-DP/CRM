@@ -175,7 +175,7 @@ def main() -> None:
     with open(OUTPUT_DIR / "umap_model.pkl", "wb") as f:
         pickle.dump(final_model, f)
 
-    for col in ["Pilier", "Sous-catégorie", "Statut commercial"]:
+    for col in ["Pilier", "Sous-catégorie", "Catégorie", "Statut commercial"]:
         export_scatter(embedding, df, col)
 
     logger.info("UMAP fine-tuning complete")
