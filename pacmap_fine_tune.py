@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import inspect
 import time
 from pathlib import Path
 
@@ -82,28 +83,33 @@ def main() -> None:
     results = []
     generated_files = []
 
+    supports_init = "init" in inspect.signature(pacmap.PaCMAP).parameters
     param_grid = {
         "n_neighbors": [5, 15, 30, 50],
         "MN_ratio": [0.5, 1.0, 2.0],
         "n_components": [2, 3],
-        "init": ["pca", "random"],
     }
+    if supports_init:
+        param_grid["init"] = ["pca", "random"]
 
-    for nn, mn, nc, ini in itertools.product(
+    grid_iter = itertools.product(
         param_grid["n_neighbors"],
         param_grid["MN_ratio"],
         param_grid["n_components"],
-        param_grid["init"],
-    ):
+        param_grid.get("init", [None]),
+    )
+    for nn, mn, nc, ini in grid_iter:
         start = time.time()
-        model = pacmap.PaCMAP(
+        kwargs = dict(
             n_components=nc,
             n_neighbors=nn,
             MN_ratio=mn,
             FP_ratio=2.0,
-            init=ini,
             random_state=42,
         )
+        if ini is not None:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
         embedding = model.fit_transform(X)
         runtime = time.time() - start
 
@@ -118,18 +124,18 @@ def main() -> None:
             ).mean()
         )
 
-        results.append(
-            {
-                "n_neighbors": nn,
-                "MN_ratio": mn,
-                "n_components": nc,
-                "init": ini,
-                "trustworthiness": tw,
-                "continuity": ct,
-                "knn_accuracy": acc,
-                "runtime_s": runtime,
-            }
-        )
+        rec = {
+            "n_neighbors": nn,
+            "MN_ratio": mn,
+            "n_components": nc,
+            "trustworthiness": tw,
+            "continuity": ct,
+            "knn_accuracy": acc,
+            "runtime_s": runtime,
+        }
+        if ini is not None:
+            rec["init"] = ini
+        results.append(rec)
 
     metrics_df = pd.DataFrame(results)
     metrics_path = out_dir / "pacmap_tuning_metrics.csv"
@@ -143,16 +149,19 @@ def main() -> None:
         nn = int(row["n_neighbors"])
         mn = float(row["MN_ratio"])
         nc = int(row["n_components"])
-        ini = row["init"]
+        ini = row.get("init")
 
-        model = pacmap.PaCMAP(
+        kwargs = dict(
             n_components=nc,
             n_neighbors=nn,
             MN_ratio=mn,
             FP_ratio=2.0,
-            init=ini,
             random_state=42,
         )
+        if ini is not None:
+            kwargs["init"] = ini
+
+        model = pacmap.PaCMAP(**kwargs)
         embedding = model.fit_transform(X)
 
         # Save coordinates

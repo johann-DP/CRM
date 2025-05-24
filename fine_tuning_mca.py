@@ -98,12 +98,18 @@ def plot_scree(inertia: np.ndarray, base: str) -> Path:
 
 
 # ----------------------------------------------------------------------
-def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]) -> Path:
+def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]) -> Path | None:
+    if not set(axes_pair).issubset(coords.columns):
+        return None
     fig = plt.figure(figsize=(12, 6), dpi=200)
     ax = plt.gca()
-    subset = coords[[axes_pair[0], axes_pair[1]]].copy()
+    subset = coords[list(axes_pair)].copy()
     subset.columns = ["F1", "F2"]
-    plot_correlation_circle(ax, subset, f"Cercle des corrélations ({axes_pair[0]}–{axes_pair[1]})")
+    plot_correlation_circle(
+        ax,
+        subset,
+        f"Cercle des corrélations ({axes_pair[0]}–{axes_pair[1]})",
+    )
     plt.tight_layout()
     path = FIG_DIR / f"circle_{axes_pair[0].lower()}_{axes_pair[1].lower()}_{base}.png"
     plt.savefig(path)
@@ -258,9 +264,13 @@ def main() -> None:
                 # Figures
                 fig_paths = []
                 fig_paths.append(plot_scree(inertia, base))
-                fig_paths.append(plot_correlation(cols, base, ("F1", "F2")))
+                fig_path = plot_correlation(cols, base, ("F1", "F2"))
+                if fig_path:
+                    fig_paths.append(fig_path)
                 if "F3" in cols.columns:
-                    fig_paths.append(plot_correlation(cols.rename(columns={"F3": "F2"}), base, ("F1", "F3")))
+                    fig_path = plot_correlation(cols, base, ("F1", "F3"))
+                    if fig_path:
+                        fig_paths.append(fig_path)
                 indiv2d, indiv3d = plot_individuals(rows, df, base)
                 mod, mod_zoom = plot_modalities(cols, base)
                 fig_paths.extend([indiv2d, indiv3d, mod, mod_zoom])
