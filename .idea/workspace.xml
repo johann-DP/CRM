@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="Troubleshoot fine-tune scripts exit code 1">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="upgrade pandas (requirements.txt)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -232,7 +232,15 @@
       <option name="project" value="LOCAL" />
       <updated>1748024486360</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="upgrade pandas (requirements.txt)">
+      <option name="closed" value="true" />
+      <created>1748025584716</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1748025584716</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -281,6 +289,7 @@
     <MESSAGE value="enhanced params 5" />
     <MESSAGE value="enhanced params" />
     <MESSAGE value="Troubleshoot fine-tune scripts exit code 1" />
-    <option name="LAST_COMMIT_MESSAGE" value="Troubleshoot fine-tune scripts exit code 1" />
+    <MESSAGE value="upgrade pandas (requirements.txt)" />
+    <option name="LAST_COMMIT_MESSAGE" value="upgrade pandas (requirements.txt)" />
   </component>
 </project>
