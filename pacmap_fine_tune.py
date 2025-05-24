@@ -18,6 +18,12 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 import pacmap
 
+try:
+    pacmap.PaCMAP(init="pca")
+    _PACMAP_HAS_INIT = True
+except TypeError:  # pragma: no cover - older pacmap
+    _PACMAP_HAS_INIT = False
+
 # Import helper functions for variable selection and missing value handling
 from phase4v2 import select_variables, handle_missing_values
 
