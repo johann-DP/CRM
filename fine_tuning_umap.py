@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
 
 DATA_PATH = Path()
 OUTPUT_DIR = Path()
-RANDOM_STATE = 42
+RANDOM_STATE = None
 
 
 def setup_logger() -> logging.Logger:
