@@ -96,14 +96,23 @@ def main() -> None:
         param_grid["init"],
     ):
         start = time.time()
-        model = pacmap.PaCMAP(
-            n_components=nc,
-            n_neighbors=nn,
-            MN_ratio=mn,
-            FP_ratio=2.0,
-            init=ini,
-            random_state=42,
-        )
+        try:
+            model = pacmap.PaCMAP(
+                n_components=nc,
+                n_neighbors=nn,
+                MN_ratio=mn,
+                FP_ratio=2.0,
+                init=ini,
+                random_state=42,
+            )
+        except TypeError:
+            model = pacmap.PaCMAP(
+                n_components=nc,
+                n_neighbors=nn,
+                MN_ratio=mn,
+                FP_ratio=2.0,
+                random_state=42,
+            )
         embedding = model.fit_transform(X)
         runtime = time.time() - start
 
@@ -145,14 +154,23 @@ def main() -> None:
         nc = int(row["n_components"])
         ini = row["init"]
 
-        model = pacmap.PaCMAP(
-            n_components=nc,
-            n_neighbors=nn,
-            MN_ratio=mn,
-            FP_ratio=2.0,
-            init=ini,
-            random_state=42,
-        )
+        try:
+            model = pacmap.PaCMAP(
+                n_components=nc,
+                n_neighbors=nn,
+                MN_ratio=mn,
+                FP_ratio=2.0,
+                init=ini,
+                random_state=42,
+            )
+        except TypeError:
+            model = pacmap.PaCMAP(
+                n_components=nc,
+                n_neighbors=nn,
+                MN_ratio=mn,
+                FP_ratio=2.0,
+                random_state=42,
+            )
         embedding = model.fit_transform(X)
 
         # Save coordinates
