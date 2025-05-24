@@ -1,9 +1,8 @@
 import sys
 import os
-import sys
 import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List
 
 BASE_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora")
 PHASE1_CSV = BASE_DIR / "phase1_output" / "export_phase1_cleaned.csv"
@@ -68,44 +67,36 @@ SCRIPTS = [
 ]
 
 
-def _has_results(out_dir: Path) -> bool:
-    """Return True if the given directory exists and contains any file."""
-    return out_dir.exists() and any(out_dir.iterdir())
+def _get_output(args: List[Path | str]) -> Path | None:
+    for i, a in enumerate(args):
+        if str(a) == "--output" and i + 1 < len(args):
+            return Path(args[i + 1])
+    return None
 
 
-def run_script(script: str, args: list[Path | str]) -> int:
-    """Run a fine‑tuning script and return its exit code."""
+def run_script(script: str, args: List[Path | str]) -> subprocess.Popen:
     cmd = [sys.executable, str(Path(__file__).parent / script)]
     cmd += [str(a) for a in args]
     env = os.environ.copy()
     env.setdefault("OMP_NUM_THREADS", "1")
-    result = subprocess.run(cmd, env=env)
-    return result.returncode
+    return subprocess.Popen(cmd, env=env)
 
 
 def main() -> None:
-    to_run: list[tuple[str, list[Path | str]]] = []
+    processes: list[tuple[str, subprocess.Popen]] = []
     for script, args in SCRIPTS:
-        if "--output" in args:
-            out_idx = args.index("--output") + 1
-            out = Path(args[out_idx])
-            if _has_results(out):
-                print(f"Skipping {script}: output already exists")
-                continue
-        to_run.append((script, args))
+        out = _get_output(args)
+        if out and out.exists() and any(out.iterdir()):
+            print(f"Skipping {script}: output already exists")
+            continue
+        proc = run_script(script, args)
+        processes.append((script, proc))
 
-    max_workers = min(len(to_run), os.cpu_count() or 1)
-    failed: list[str] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as exe:
-        futures = {exe.submit(run_script, s, a): s for s, a in to_run}
-        for fut in as_completed(futures):
-            script = futures[fut]
-            try:
-                ret = fut.result()
-            except Exception:
-                ret = 1
-            if ret != 0:
-                failed.append(script)
+    failed = []
+    for script, proc in processes:
+        ret = proc.wait()
+        if ret != 0:
+            failed.append(script)
 
     if failed:
         print("Some scripts failed:", ", ".join(failed))

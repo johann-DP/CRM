@@ -42,13 +42,11 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
         df[col] = df[col].astype(str)
 
     # Imputation
-    df_num = df[num_cols].copy()
-    for c in num_cols:
-        if df_num[c].isna().all():
-            df_num[c] = 0
-        else:
-            df_num[c] = df_num[c].fillna(df_num[c].mean())
-    df_cat = df[cat_cols].apply(lambda s: s.astype(str)).fillna("unknown")
+    df_num = df[num_cols].fillna(df[num_cols].mean())
+    df_cat = df[cat_cols].fillna("unknown")
+    for c in df_cat.columns:
+        if df_cat[c].dtype == "bool":
+            df_cat[c] = df_cat[c].astype(str)
 
     # Encoding / scaling
     scaler = StandardScaler()

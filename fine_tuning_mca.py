@@ -98,9 +98,9 @@ def plot_scree(inertia: np.ndarray, base: str) -> Path:
 
 
 # ----------------------------------------------------------------------
-def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]) -> Path | None:
+def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]) -> Path:
     if not set(axes_pair).issubset(coords.columns):
-        return None
+        return Path()
     fig = plt.figure(figsize=(12, 6), dpi=200)
     ax = plt.gca()
     subset = coords[list(axes_pair)].copy()
@@ -268,9 +268,7 @@ def main() -> None:
                 if fig_path:
                     fig_paths.append(fig_path)
                 if "F3" in cols.columns:
-                    fig_path = plot_correlation(cols, base, ("F1", "F3"))
-                    if fig_path:
-                        fig_paths.append(fig_path)
+                    fig_paths.append(plot_correlation(cols, base, ("F1", "F3")))
                 indiv2d, indiv3d = plot_individuals(rows, df, base)
                 mod, mod_zoom = plot_modalities(cols, base)
                 fig_paths.extend([indiv2d, indiv3d, mod, mod_zoom])

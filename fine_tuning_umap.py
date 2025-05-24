@@ -50,10 +50,13 @@ def load_and_preprocess(df: pd.DataFrame) -> np.ndarray:
     cat_imputer = SimpleImputer(strategy="most_frequent")
     X_num = num_imputer.fit_transform(df[numeric_cols])
     X_cat = cat_imputer.fit_transform(df[categorical_cols])
+    for i, col in enumerate(categorical_cols):
+        if df[col].dtype == "bool":
+            X_cat[:, i] = X_cat[:, i].astype(str)
 
     try:
         encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-    except TypeError:  # for old scikit-learn
+    except TypeError:  # for older scikit-learn
         encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
     X_cat = encoder.fit_transform(X_cat)
 

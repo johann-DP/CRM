@@ -50,7 +50,7 @@ def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str], List[str], np
                 df[c] = df[c].fillna(df[c].median())
     for c in cat_cols:
         df[c] = df[c].fillna("Non renseigné")
-        if df[c].dtype == bool:
+        if df[c].dtype == "bool":
             df[c] = df[c].astype(str)
 
     scaler = StandardScaler()
@@ -72,7 +72,7 @@ def run_phate(X: np.ndarray, knn: int, decay: int, n_components: int, t: int) ->
         decay=decay,
         n_components=n_components,
         t=t,
-        random_state=42,
+        random_state=None,
     )
     return ph.fit_transform(X)
 
