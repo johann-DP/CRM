@@ -8,24 +8,36 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import subprocess
 
-# List of fine tuning scripts to execute for each algorithm
-# Order follows the project's main Phase 4 scripts
-SCRIPTS = [
-    "fine_tune_famd.py",         # FAMD
-    "fine_tuning_mca.py",        # MCA
-    "fine_tune_mfa.py",          # MFA
-    "pacmap_fine_tune.py",       # PaCMAP
-    "fine_tune_pca.py",          # PCA
-    "fine_tune_pcamix.py",       # PCAmix
-    "phase4_fine_tune_phate.py", # PHATE
-    "fine_tune_tsne.py",         # TSNE
-    "fine_tuning_umap.py",       # UMAP
-]
+# Mapping of fine-tuning scripts to their default arguments.
+# These defaults ensure the launcher can be executed without passing
+# any command-line parameters. Paths mirror those used in the Phase 4
+# notebooks and utilities.
+SCRIPTS: dict[str, list[str]] = {
+    # FAMD and MCA rely on internal constants
+    "fine_tune_famd.py": [],
+    "fine_tuning_mca.py": [],
+    # MFA requires a configuration file; skip if absent
+    "fine_tune_mfa.py": ["--config", "config_mfa.yaml"],
+    "pacmap_fine_tune.py": [],
+    "fine_tune_pca.py": [],
+    "fine_tune_pcamix.py": [],
+    # PHATE explicitly needs the cleaned data paths
+    "phase4_fine_tune_phate.py": [
+        "--multi",
+        "phase3_output/phase3_cleaned_multivariate.csv",
+        "--univ",
+        "phase3_output/phase3_cleaned_univ.csv",
+        "--output",
+        "phase4_output/fine_tuning_phate",
+    ],
+    "fine_tune_tsne.py": [],  # defaults embedded in the script
+    "fine_tuning_umap.py": [],
+}
 
 
-def run_script(script: str) -> tuple[str, int]:
-    """Execute the script and return its exit code."""
-    cmd = ["python", script]
+def run_script(script: str, args: list[str]) -> tuple[str, int]:
+    """Execute the script with optional arguments and return its exit code."""
+    cmd = ["python", script, *args]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.stdout:
         logging.debug("%s output:\n%s", script, proc.stdout)
@@ -49,13 +61,21 @@ def run_script(script: str) -> tuple[str, int]:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    available = [s for s in SCRIPTS if Path(s).is_file()]
+    available: dict[str, list[str]] = {}
+    for script, args in SCRIPTS.items():
+        if not Path(script).is_file():
+            continue
+        if script == "fine_tune_mfa.py" and not Path("config_mfa.yaml").is_file():
+            logging.info("Skipping %s (missing config_mfa.yaml)", script)
+            continue
+        available[script] = args
+
     if not available:
         logging.error("No fine tuning scripts found")
         return
 
     with ThreadPoolExecutor(max_workers=len(available)) as executor:
-        futures = {executor.submit(run_script, s): s for s in available}
+        futures = {executor.submit(run_script, s, a): s for s, a in available.items()}
         for future in as_completed(futures):
             script, code = future.result()
             if code == 0:
