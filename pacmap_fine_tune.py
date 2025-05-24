@@ -17,6 +17,12 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 import pacmap
 
+try:
+    pacmap.PaCMAP(init="pca")
+    _PACMAP_HAS_INIT = True
+except TypeError:  # pragma: no cover - older pacmap
+    _PACMAP_HAS_INIT = False
+
 # Import helper functions for variable selection and missing value handling
 from phase4v2 import select_variables, handle_missing_values
 
@@ -86,33 +92,21 @@ def main() -> None:
         "n_neighbors": [5, 15, 30, 50],
         "MN_ratio": [0.5, 1.0, 2.0],
         "n_components": [2, 3],
-        "init": ["pca", "random"],
     }
+    if _PACMAP_HAS_INIT:
+        param_grid["init"] = ["pca", "random"]
 
-    for nn, mn, nc, ini in itertools.product(
-        param_grid["n_neighbors"],
-        param_grid["MN_ratio"],
-        param_grid["n_components"],
-        param_grid["init"],
-    ):
+    iterables = [param_grid["n_neighbors"], param_grid["MN_ratio"], param_grid["n_components"]]
+    if _PACMAP_HAS_INIT:
+        iterables.append(param_grid["init"])
+    for combo in itertools.product(*iterables):
+        nn, mn, nc = combo[:3]
+        ini = combo[3] if _PACMAP_HAS_INIT else "pca"
         start = time.time()
-        try:
-            model = pacmap.PaCMAP(
-                n_components=nc,
-                n_neighbors=nn,
-                MN_ratio=mn,
-                FP_ratio=2.0,
-                init=ini,
-                random_state=42,
-            )
-        except TypeError:
-            model = pacmap.PaCMAP(
-                n_components=nc,
-                n_neighbors=nn,
-                MN_ratio=mn,
-                FP_ratio=2.0,
-                random_state=42,
-            )
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=42)
+        if _PACMAP_HAS_INIT:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
         embedding = model.fit_transform(X)
         runtime = time.time() - start
 

@@ -40,7 +40,7 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
 
     # Imputation
     df_num = df[num_cols].fillna(df[num_cols].mean())
-    df_cat = df[cat_cols].fillna("unknown")
+    df_cat = df[cat_cols].astype(str).fillna("unknown")
 
     # Encoding / scaling
     scaler = StandardScaler()
@@ -48,7 +48,7 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
 
     try:
         encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-    except TypeError:  # for older scikit-learn
+    except TypeError:  # older scikit-learn
         encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
     X_cat = encoder.fit_transform(df_cat)
 
