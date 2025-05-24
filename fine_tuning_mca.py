@@ -14,12 +14,12 @@ from phase4v2 import plot_correlation_circle
 # ----------------------------------------------------------------------
 # Configuration paths
 INPUT_FILES = [
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase1_output\\phase1_categorical_cleaned.csv",
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase2_output\\phase2_categorical_overview.csv",
-    r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase3_output\\phase3_cleaned_multivariate.csv",
+    "phase1_output/export_phase1_cleaned.csv",
+    "phase2_output/phase2_categorical_overview.csv",
+    "phase3_output/phase3_cleaned_multivariate.csv",
 ]
 
-OUTPUT_ROOT = Path(r"D:\\DATAPREDICT\\DATAPREDICT 2024\\Missions\\Digora\\phase4_output\\fine_tuning_mca")
+OUTPUT_ROOT = Path("phase4_output/fine_tuning_mca")
 FIG_DIR = OUTPUT_ROOT / "figures"
 CSV_DIR = OUTPUT_ROOT / "csv"
 

@@ -20,8 +20,8 @@ import pacmap
 from phase4v2 import select_variables, handle_missing_values
 
 
-INPUT_FILE = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_multivariate.csv")
-OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output\fine_tuning_pacmap")
+INPUT_FILE = Path("phase3_output/phase3_cleaned_multivariate.csv")
+OUTPUT_DIR = Path("phase4_output/fine_tuning_pacmap")
 
 
 def prepare_dataset(path: Path) -> tuple[pd.DataFrame, list[str], list[str], pd.Series]:

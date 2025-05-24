@@ -28,8 +28,8 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
-DEFAULT_INPUT = "/mnt/data/phase3_cleaned_multivariate.csv"
-DEFAULT_OUTPUT = "/mnt/data/phase4_output/fine_tuning_tsne"
+DEFAULT_INPUT = "phase3_output/phase3_cleaned_multivariate.csv"
+DEFAULT_OUTPUT = "phase4_output/fine_tuning_tsne"
 
 
 def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:

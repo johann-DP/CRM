@@ -16,8 +16,8 @@ from sklearn.metrics import silhouette_score
 
 from phase4v2 import plot_correlation_circle
 
-INPUT_FILE = r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_multivariate.csv"
-OUTPUT_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output\fine_tuning_pca")
+INPUT_FILE = "phase3_output/phase3_cleaned_multivariate.csv"
+OUTPUT_DIR = Path("phase4_output/fine_tuning_pca")
 
 CANDIDATE_QUANT = [
     "Total recette actualisé",

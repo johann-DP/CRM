@@ -9,8 +9,8 @@ from pathlib import Path
 from phase4v2 import run_famd, export_famd_results
 from standalone_utils import prepare_active_dataset
 
-DATA_PATH = Path("/mnt/data/phase3_cleaned_multivariate.csv")
-OUTPUT_DIR = Path("/mnt/data/phase4_output/fine_tuning_famd")
+DATA_PATH = Path("phase3_output/phase3_cleaned_multivariate.csv")
+OUTPUT_DIR = Path("phase4_output/fine_tuning_famd")
 
 
 def main() -> None:

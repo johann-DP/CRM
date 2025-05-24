@@ -18,9 +18,9 @@ from sklearn.metrics import silhouette_score
 import umap
 
 
-DATA_PATH = Path("/mnt/data/phase3_cleaned_multivariate.csv")
-DICT_PATH = Path("/mnt/data/phase3_data_dictionary.xlsx")
-OUTPUT_DIR = Path("/mnt/data/phase4_output/fine_tuning_umap")
+DATA_PATH = Path("phase3_output/phase3_cleaned_multivariate.csv")
+DICT_PATH = Path("phase3_output/phase3_data_dictionary.xlsx")
+OUTPUT_DIR = Path("phase4_output/fine_tuning_umap")
 RANDOM_STATE = 42
 
 
