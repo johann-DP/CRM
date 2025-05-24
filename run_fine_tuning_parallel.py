@@ -14,14 +14,12 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-
 BASE_DIR = Path(r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora")
 PHASE1_CSV = BASE_DIR / "phase1_output" / "export_phase1_cleaned.csv"
 PHASE2_CSV = BASE_DIR / "phase2_output" / "phase2_business_variables.csv"
 PHASE3_MULTI = BASE_DIR / "phase3_output" / "phase3_cleaned_multivariate.csv"
 PHASE3_UNIV = BASE_DIR / "phase3_output" / "phase3_cleaned_univ.csv"
 PHASE4_DIR = BASE_DIR / "phase4_output"
-
 
 class Job:
     def __init__(self, script: str, args: list[Path | str], out_dir: Path) -> None:
@@ -128,4 +126,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
