@@ -1,4 +1,5 @@
 import sys
+import os
 import subprocess
 from pathlib import Path
 
@@ -66,21 +67,22 @@ SCRIPTS = [
 
 
 def run_script(script: str, args: list[Path | str]) -> subprocess.Popen:
+    """Launch a fine-tuning script as a subprocess."""
     cmd = [sys.executable, str(Path(__file__).parent / script)]
     cmd += [str(a) for a in args]
-    return subprocess.Popen(cmd)
+    env = os.environ.copy()
+    env.setdefault("OMP_NUM_THREADS", "1")
+    return subprocess.Popen(cmd, env=env)
 
 
 def main() -> None:
     processes: list[tuple[str, subprocess.Popen]] = []
     for script, args in SCRIPTS:
-        proc = run_script(script, args)
-        processes.append((script, proc))
+        processes.append((script, run_script(script, args)))
 
-    failed = []
+    failed: list[str] = []
     for script, proc in processes:
-        ret = proc.wait()
-        if ret != 0:
+        if proc.wait() != 0:
             failed.append(script)
 
     if failed:
