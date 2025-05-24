@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import inspect
 import time
 from pathlib import Path
 
@@ -16,6 +17,12 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 import pacmap
+
+try:
+    pacmap.PaCMAP(init="pca")
+    _PACMAP_HAS_INIT = True
+except TypeError:  # pragma: no cover - older pacmap
+    _PACMAP_HAS_INIT = False
 
 # Import helper functions for variable selection and missing value handling
 from phase4v2 import select_variables, handle_missing_values
@@ -82,6 +89,7 @@ def main() -> None:
     results = []
     generated_files = []
 
+    supports_init = "init" in inspect.signature(pacmap.PaCMAP).parameters
     param_grid = {
         "n_neighbors": [5, 15, 30, 50],
         "MN_ratio": [0.5, 1.0, 2.0],
@@ -119,18 +127,18 @@ def main() -> None:
             ).mean()
         )
 
-        results.append(
-            {
-                "n_neighbors": nn,
-                "MN_ratio": mn,
-                "n_components": nc,
-                "init": ini,
-                "trustworthiness": tw,
-                "continuity": ct,
-                "knn_accuracy": acc,
-                "runtime_s": runtime,
-            }
-        )
+        rec = {
+            "n_neighbors": nn,
+            "MN_ratio": mn,
+            "n_components": nc,
+            "trustworthiness": tw,
+            "continuity": ct,
+            "knn_accuracy": acc,
+            "runtime_s": runtime,
+        }
+        if ini is not None:
+            rec["init"] = ini
+        results.append(rec)
 
     metrics_df = pd.DataFrame(results)
     metrics_path = out_dir / "pacmap_tuning_metrics.csv"

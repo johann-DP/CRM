@@ -105,7 +105,11 @@ def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]
     ax = plt.gca()
     subset = coords[list(axes_pair)].copy()
     subset.columns = ["F1", "F2"]
-    plot_correlation_circle(ax, subset, f"Cercle des corrélations ({axes_pair[0]}–{axes_pair[1]})")
+    plot_correlation_circle(
+        ax,
+        subset,
+        f"Cercle des corrélations ({axes_pair[0]}–{axes_pair[1]})",
+    )
     plt.tight_layout()
     path = FIG_DIR / f"circle_{axes_pair[0].lower()}_{axes_pair[1].lower()}_{base}.png"
     plt.savefig(path)
@@ -260,7 +264,9 @@ def main() -> None:
                 # Figures
                 fig_paths = []
                 fig_paths.append(plot_scree(inertia, base))
-                fig_paths.append(plot_correlation(cols, base, ("F1", "F2")))
+                fig_path = plot_correlation(cols, base, ("F1", "F2"))
+                if fig_path:
+                    fig_paths.append(fig_path)
                 if "F3" in cols.columns:
                     fig_paths.append(plot_correlation(cols, base, ("F1", "F3")))
                 indiv2d, indiv3d = plot_individuals(rows, df, base)
