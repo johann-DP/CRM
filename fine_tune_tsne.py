@@ -39,8 +39,13 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
     cat_cols = df.select_dtypes(exclude="number").columns.tolist()
 
     # Imputation
-    df_num = df[num_cols].fillna(df[num_cols].mean())
-    df_cat = df[cat_cols].astype(str).fillna("unknown")
+    df_num = df[num_cols].copy()
+    for c in num_cols:
+        if df_num[c].isna().all():
+            df_num[c] = 0
+        else:
+            df_num[c] = df_num[c].fillna(df_num[c].mean())
+    df_cat = df[cat_cols].apply(lambda s: s.astype(str)).fillna("unknown")
 
     # Encoding / scaling
     scaler = StandardScaler()

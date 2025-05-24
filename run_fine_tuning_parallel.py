@@ -67,21 +67,8 @@ SCRIPTS = [
 ]
 
 
-def _get_output_dir(args: list[Path | str]) -> Path | None:
-    """Return the path given to '--output' if present."""
-    for i, token in enumerate(args[:-1]):
-        if token == "--output":
-            return Path(args[i + 1])
-    return None
-
-
 def run_script(script: str, args: list[Path | str]) -> int:
-    """Run a fine‑tuning script and return its exit code."""
-    out_dir = _get_output_dir(args)
-    if out_dir and out_dir.exists() and any(out_dir.iterdir()):
-        print(f"Skipping {script}: output already exists")
-        return 0
-
+    """Run a fine-tuning script and return its exit code."""
     cmd = [sys.executable, str(Path(__file__).parent / script)]
     cmd += [str(a) for a in args]
     env = os.environ.copy()
@@ -94,11 +81,19 @@ def main() -> None:
     max_workers = min(len(SCRIPTS), os.cpu_count() or 1)
     failed: list[str] = []
     with ThreadPoolExecutor(max_workers=max_workers) as exe:
-        futures = {exe.submit(run_script, s, a): s for s, a in SCRIPTS}
-        for fut in as_completed(futures):
-            script = futures[fut]
+        future_to_script = {}
+        for script, args in SCRIPTS:
+            out_arg = args[-1] if args else None
+            if isinstance(out_arg, Path) and out_arg.exists() and any(out_arg.iterdir()):
+                print(f"Skipping {script}: output already exists")
+                continue
+            future = exe.submit(run_script, script, args)
+            future_to_script[future] = script
+
+        for future in as_completed(future_to_script):
+            script = future_to_script[future]
             try:
-                ret = fut.result()
+                ret = future.result()
             except Exception:
                 ret = 1
             if ret != 0:
