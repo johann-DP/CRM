@@ -37,16 +37,25 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
     df = pd.read_csv(csv_path)
     num_cols = df.select_dtypes(include="number").columns.tolist()
     cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+    # ensure booleans are strings for OneHotEncoder
+    for col in df.select_dtypes(include="bool").columns:
+        df[col] = df[col].astype(str)
 
     # Imputation
     df_num = df[num_cols].fillna(df[num_cols].mean())
     df_cat = df[cat_cols].fillna("unknown")
+    for c in df_cat.columns:
+        if df_cat[c].dtype == "bool":
+            df_cat[c] = df_cat[c].astype(str)
 
     # Encoding / scaling
     scaler = StandardScaler()
     X_num = scaler.fit_transform(df_num)
 
-    encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
+    try:
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    except TypeError:  # older scikit-learn
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse=False)
     X_cat = encoder.fit_transform(df_cat)
 
     X_all = np.hstack([X_num, X_cat])

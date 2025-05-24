@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
 
 DATA_PATH = Path()
 OUTPUT_DIR = Path()
-RANDOM_STATE = 42
+RANDOM_STATE = None
 
 
 def setup_logger() -> logging.Logger:
@@ -50,10 +50,13 @@ def load_and_preprocess(df: pd.DataFrame) -> np.ndarray:
     cat_imputer = SimpleImputer(strategy="most_frequent")
     X_num = num_imputer.fit_transform(df[numeric_cols])
     X_cat = cat_imputer.fit_transform(df[categorical_cols])
+    for i, col in enumerate(categorical_cols):
+        if df[col].dtype == "bool":
+            X_cat[:, i] = X_cat[:, i].astype(str)
 
     try:
         encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-    except TypeError:  # for old scikit-learn
+    except TypeError:  # for older scikit-learn
         encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
     X_cat = encoder.fit_transform(X_cat)
 
@@ -83,14 +86,13 @@ def grid_search_umap(X: np.ndarray, logger: logging.Logger):
                     md,
                     metric,
                 )
-                reducer = umap.UMAP(
-                    n_neighbors=nn,
-                    min_dist=md,
-                    metric=metric,
-                    random_state=RANDOM_STATE,
-                )
+                kwargs = dict(n_neighbors=nn, min_dist=md, metric=metric)
+                if RANDOM_STATE is not None:
+                    kwargs["random_state"] = RANDOM_STATE
+                reducer = umap.UMAP(**kwargs)
                 emb = reducer.fit_transform(X)
-                labels = KMeans(n_clusters=5, random_state=RANDOM_STATE).fit_predict(emb)
+                km_rs = RANDOM_STATE if RANDOM_STATE is not None else 0
+                labels = KMeans(n_clusters=5, random_state=km_rs).fit_predict(emb)
                 score = silhouette_score(emb, labels)
                 logger.info("Silhouette: %.3f", score)
                 results.append({
@@ -158,12 +160,10 @@ def main() -> None:
         metric,
         score,
     )
-    final_model = umap.UMAP(
-        n_neighbors=nn,
-        min_dist=md,
-        metric=metric,
-        random_state=RANDOM_STATE,
-    )
+    kwargs = dict(n_neighbors=nn, min_dist=md, metric=metric)
+    if RANDOM_STATE is not None:
+        kwargs["random_state"] = RANDOM_STATE
+    final_model = umap.UMAP(**kwargs)
     embedding = final_model.fit_transform(X)
     pd.DataFrame(embedding, columns=["UMAP1", "UMAP2"]).to_csv(
         OUTPUT_DIR / "umap_embeddings.csv", index=False
