@@ -2697,6 +2697,13 @@ def export_pca_results(
         plt.savefig(output_dir / "pca_indiv_plot.png")
         plt.close()
 
+        scatter_all_segments(
+            row_coords[["F1", "F2"]],
+            df_active,
+            output_dir,
+            "pca_indiv",
+        )
+
     # Individuals 3D
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
