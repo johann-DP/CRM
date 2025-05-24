@@ -37,6 +37,9 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
     df = pd.read_csv(csv_path)
     num_cols = df.select_dtypes(include="number").columns.tolist()
     cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+    # ensure booleans are strings for OneHotEncoder
+    for col in df.select_dtypes(include="bool").columns:
+        df[col] = df[col].astype(str)
 
     # Imputation
     df_num = df[num_cols].copy()

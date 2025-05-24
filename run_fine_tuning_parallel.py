@@ -1,5 +1,6 @@
 import sys
 import os
+import sys
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -67,8 +68,13 @@ SCRIPTS = [
 ]
 
 
+def _has_results(out_dir: Path) -> bool:
+    """Return True if the given directory exists and contains any file."""
+    return out_dir.exists() and any(out_dir.iterdir())
+
+
 def run_script(script: str, args: list[Path | str]) -> int:
-    """Run a fine-tuning script and return its exit code."""
+    """Run a fine‑tuning script and return its exit code."""
     cmd = [sys.executable, str(Path(__file__).parent / script)]
     cmd += [str(a) for a in args]
     env = os.environ.copy()
@@ -78,22 +84,24 @@ def run_script(script: str, args: list[Path | str]) -> int:
 
 
 def main() -> None:
-    max_workers = min(len(SCRIPTS), os.cpu_count() or 1)
-    failed: list[str] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as exe:
-        future_to_script = {}
-        for script, args in SCRIPTS:
-            out_arg = args[-1] if args else None
-            if isinstance(out_arg, Path) and out_arg.exists() and any(out_arg.iterdir()):
+    to_run: list[tuple[str, list[Path | str]]] = []
+    for script, args in SCRIPTS:
+        if "--output" in args:
+            out_idx = args.index("--output") + 1
+            out = Path(args[out_idx])
+            if _has_results(out):
                 print(f"Skipping {script}: output already exists")
                 continue
-            future = exe.submit(run_script, script, args)
-            future_to_script[future] = script
+        to_run.append((script, args))
 
-        for future in as_completed(future_to_script):
-            script = future_to_script[future]
+    max_workers = min(len(to_run), os.cpu_count() or 1)
+    failed: list[str] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as exe:
+        futures = {exe.submit(run_script, s, a): s for s, a in to_run}
+        for fut in as_completed(futures):
+            script = futures[fut]
             try:
-                ret = future.result()
+                ret = fut.result()
             except Exception:
                 ret = 1
             if ret != 0:
