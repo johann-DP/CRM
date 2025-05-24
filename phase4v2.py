@@ -49,7 +49,7 @@ CONFIG = {
 
 # Principal CRM segmentation columns used to generate variant scatters
 SEGMENT_COLUMNS = [
-    "Catégories",
+    "Catégorie",
     "Entité opérationnelle",
     "Pilier",
     "Sous-catégorie",
