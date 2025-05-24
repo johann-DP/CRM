@@ -260,7 +260,7 @@ def main() -> None:
                 fig_paths.append(plot_scree(inertia, base))
                 fig_paths.append(plot_correlation(cols, base, ("F1", "F2")))
                 if "F3" in cols.columns:
-                    fig_paths.append(plot_correlation(cols.rename(columns={"F3": "F2"}), base, ("F1", "F3")))
+                    fig_paths.append(plot_correlation(cols, base, ("F1", "F3")))
                 indiv2d, indiv3d = plot_individuals(rows, df, base)
                 mod, mod_zoom = plot_modalities(cols, base)
                 fig_paths.extend([indiv2d, indiv3d, mod, mod_zoom])

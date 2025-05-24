@@ -45,6 +45,8 @@ def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str], List[str], np
     if num_cols:
         df[num_cols] = df[num_cols].fillna(df[num_cols].median())
     for c in cat_cols:
+        if df[c].dtype == bool:
+            df[c] = df[c].astype(str)
         df[c] = df[c].fillna("Non renseigné")
 
     scaler = StandardScaler()
