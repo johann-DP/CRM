@@ -64,7 +64,11 @@ def run_pca_grid(X: np.ndarray, columns: list[str]):
             continue
         logging.info("PCA n_components=%d solver=%s whiten=%s", n_comp, solver, whiten)
         pca = PCA(n_components=n_comp, svd_solver=solver, whiten=whiten, random_state=0)
-        X_pca = pca.fit_transform(X)
+        try:
+            X_pca = pca.fit_transform(X)
+        except ValueError:
+            logging.warning("Skipping n_components=%d with solver=%s", n_comp, solver)
+            continue
 
         cum_var = np.cumsum(pca.explained_variance_ratio_)
         for i, (var_ratio, sv) in enumerate(zip(pca.explained_variance_ratio_, pca.singular_values_), 1):
