@@ -7,7 +7,12 @@ import argparse
 import logging
 from pathlib import Path
 
-from phase4v2 import run_pcamix, export_pcamix_results
+from phase4v2 import (
+    run_pcamix,
+    export_pcamix_results,
+    load_data,
+    prepare_data,
+)
 from standalone_utils import prepare_active_dataset
 
 import warnings
@@ -37,6 +42,10 @@ def main() -> None:
 
     df_active, quant_vars, qual_vars = prepare_active_dataset(str(data_path), out_dir)
 
+    # Load cleaned dataset for segmentation scatters
+    df_full = prepare_data(load_data(str(data_path)))
+    df_full = df_full.loc[df_active.index]
+
     model, inertia, rows, cols = run_pcamix(
         df_active,
         quant_vars,
@@ -53,7 +62,7 @@ def main() -> None:
         out_dir,
         quant_vars,
         qual_vars,
-        df_active=df_active,
+        df_active=df_full,
     )
     logging.info("PCAmix fine-tuning complete")
 

@@ -10,7 +10,12 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score
 
 from standalone_utils import prepare_active_dataset
-from phase4v2 import run_mfa, export_mfa_results
+from phase4v2 import (
+    run_mfa,
+    export_mfa_results,
+    load_data,
+    prepare_data,
+)
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -67,6 +72,10 @@ def main() -> None:
 
     df_active, quant_vars, qual_vars = prepare_active_dataset(input_file, out_dir)
 
+    # Keep segmentation columns by loading the full cleaned dataset
+    df_full = prepare_data(load_data(input_file))
+    df_full = df_full.loc[df_active.index]
+
     results = []
     best = None
     best_metrics = (-1.0, -1.0)
@@ -105,7 +114,14 @@ def main() -> None:
     else:
         model, rows, n_comp, weights = best
 
-    export_mfa_results(model, rows, out_dir / "best", quant_vars, qual_vars, df_active=df_active)
+    export_mfa_results(
+        model,
+        rows,
+        out_dir / "best",
+        quant_vars,
+        qual_vars,
+        df_active=df_full,
+    )
     logging.info("Best MFA with %d components", n_comp)
 
 

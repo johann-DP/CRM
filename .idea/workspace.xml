@@ -4,18 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="delete run_all_fine_tunes.py">
+    <list default="true" id="9e803e2f-4ec7-4380-839d-9b34cce9c19b" name="Changes" comment="updates">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tune_famd.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tune_famd.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tune_mfa.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tune_mfa.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tune_pca.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tune_pca.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tune_pcamix.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tune_pcamix.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tune_tsne.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tune_tsne.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tuning_mca.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tuning_mca.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/fine_tuning_umap.py" beforeDir="false" afterPath="$PROJECT_DIR$/fine_tuning_umap.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pacmap_fine_tune.py" beforeDir="false" afterPath="$PROJECT_DIR$/pacmap_fine_tune.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/phase4_fine_tune_phate.py" beforeDir="false" afterPath="$PROJECT_DIR$/phase4_fine_tune_phate.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/run_fine_tuning_parallel.py" beforeDir="false" afterPath="$PROJECT_DIR$/run_fine_tuning_parallel.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -258,7 +248,23 @@
       <option name="project" value="LOCAL" />
       <updated>1748074304814</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="fix TSNE &amp; PHATE tunes">
+      <option name="closed" value="true" />
+      <created>1748097603602</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1748097603602</updated>
+    </task>
+    <task id="LOCAL-00026" summary="updates">
+      <option name="closed" value="true" />
+      <created>1748155029967</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1748155029967</updated>
+    </task>
+    <option name="localTasksCounter" value="27" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -309,6 +315,8 @@
     <MESSAGE value="Troubleshoot fine-tune scripts exit code 1" />
     <MESSAGE value="upgrade pandas (requirements.txt)" />
     <MESSAGE value="delete run_all_fine_tunes.py" />
-    <option name="LAST_COMMIT_MESSAGE" value="delete run_all_fine_tunes.py" />
+    <MESSAGE value="fix TSNE &amp; PHATE tunes" />
+    <MESSAGE value="updates" />
+    <option name="LAST_COMMIT_MESSAGE" value="updates" />
   </component>
 </project>
