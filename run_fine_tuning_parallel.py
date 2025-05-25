@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import pandas as pd
+import json
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -118,6 +120,23 @@ def main() -> None:
         print("Some scripts failed:", ", ".join(failed))
     else:
         print("All fine-tuning scripts completed successfully")
+
+        rows = []
+        for d in PHASE4_DIR.glob("fine_tune_*"):
+            bp = d / "best_params.json"
+            if not bp.exists():
+                continue
+            with open(bp, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            method = data.get("method", d.name.replace("fine_tune_", "")).upper()
+            params = data.get("params", {})
+            for k, v in params.items():
+                rows.append({"method": method, "param": k, "value": json.dumps(v)})
+        if rows:
+            df = pd.DataFrame(rows)
+            csv_path = PHASE4_DIR / "best_params.csv"
+            df.to_csv(csv_path, index=False)
+            print(f"Best parameters saved to {csv_path}")
 
 
 if __name__ == "__main__":

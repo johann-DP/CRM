@@ -7,7 +7,13 @@ import argparse
 import logging
 from pathlib import Path
 
-from phase4v2 import run_famd, export_famd_results
+from phase4v2 import (
+    run_famd,
+    export_famd_results,
+    load_data,
+    prepare_data,
+)
+import json
 from standalone_utils import prepare_active_dataset
 
 import warnings
@@ -37,6 +43,10 @@ def main() -> None:
 
     df_active, quant_vars, qual_vars = prepare_active_dataset(str(data_path), out_dir)
 
+    # Load the full cleaned dataset to keep segmentation columns for plots
+    df_full = prepare_data(load_data(str(data_path)))
+    df_full = df_full.loc[df_active.index]
+
     famd, inertia, rows, cols, contrib = run_famd(
         df_active,
         quant_vars,
@@ -53,8 +63,13 @@ def main() -> None:
         quant_vars,
         qual_vars,
         out_dir,
-        df_active=df_active,
+        df_active=df_full,
     )
+
+    best = {"method": "FAMD", "params": {"n_components": int(getattr(famd, "n_components", len(inertia)))}}
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
+
     logging.info("FAMD fine-tuning complete")
 
 

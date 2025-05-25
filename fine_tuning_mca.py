@@ -6,11 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import json
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import prince
 
-from phase4v2 import plot_correlation_circle
+from phase4v2 import plot_correlation_circle, scatter_all_segments
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -139,6 +140,12 @@ def plot_individuals(df_coords: pd.DataFrame, df_source: pd.DataFrame, base: str
         p2 = FIG_DIR / f"indiv_2d_{base}.png"
         plt.savefig(p2)
         plt.close()
+        scatter_all_segments(
+            df_coords[["F1", "F2"]],
+            df_source,
+            FIG_DIR,
+            f"indiv_{base}",
+        )
     if {"F1", "F2", "F3"}.issubset(df_coords.columns):
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
         fig = plt.figure(figsize=(12, 6), dpi=200)
@@ -288,7 +295,22 @@ def main() -> None:
                 })
 
     assemble_pdf(all_figs, OUTPUT_ROOT / "mca_fine_tuning_results.pdf")
-    pd.DataFrame(results).to_csv(OUTPUT_ROOT / "tuning_report.csv", index=False)
+    df_res = pd.DataFrame(results)
+    df_res.to_csv(OUTPUT_ROOT / "tuning_report.csv", index=False)
+
+    if not df_res.empty:
+        best_row = df_res.sort_values("explained_variance_cum", ascending=False).iloc[0]
+        best = {
+            "method": "MCA",
+            "params": {
+                "n_components": int(best_row["n_components"]),
+                "normalize": bool(best_row["normalize"]),
+                "n_iter": int(best_row["n_iter"]),
+            },
+        }
+        with open(OUTPUT_ROOT / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best, fh, indent=2)
+
     logging.info("Fine-tuning MCA complete")
 
 
