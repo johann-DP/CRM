@@ -13,6 +13,8 @@ import datetime
 import logging
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -20,6 +22,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary.pdf") -> Path:
     """Génère un PDF rassemblant toutes les figures des fine-tunes."""
     logger = logging.getLogger(__name__)
+    output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = output_dir / pdf_name
     fine_dirs = sorted(d for d in output_dir.glob("fine_tune_*") if d.is_dir())
 
@@ -29,32 +32,34 @@ def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary
 
     with PdfPages(pdf_path) as pdf:
         # Page de garde
-        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=150)
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         ax.text(0.5, 0.6, "Bilan des fine-tuning", fontsize=20, ha="center", va="center")
         ax.text(0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center")
         ax.axis("off")
-        pdf.savefig(fig, dpi=300)
+        pdf.savefig(fig, dpi=150)
         plt.close(fig)
 
         for d in fine_dirs:
             method = d.name.replace("fine_tune_", "").upper()
+            logger.info("Traitement de %s", method)
 
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=150)
             ax.text(0.5, 0.5, method, fontsize=24, ha="center", va="center")
             ax.axis("off")
-            pdf.savefig(fig, dpi=300)
+            pdf.savefig(fig, dpi=150)
             plt.close(fig)
 
             for img_path in sorted(d.rglob("*.png")):
+                logger.debug("Ajout de %s", img_path)
                 img = plt.imread(img_path)
-                fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+                fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
                 ax.imshow(img)
                 ax.axis("off")
                 fig.tight_layout()
                 rel = img_path.relative_to(output_dir)
                 fig.text(0.99, 0.01, str(rel), ha="right", va="bottom", fontsize=6, color="gray")
-                pdf.savefig(fig, dpi=300)
+                pdf.savefig(fig, dpi=150)
                 plt.close(fig)
 
     logger.info("PDF généré : %s", pdf_path)
