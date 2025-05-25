@@ -129,7 +129,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Assemble les résultats de fine-tune en un PDF")
     p.add_argument(
         "--output",
-        default="phase4_output",
+        default=r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output\phase4_output",
         help="Répertoire contenant les dossiers fine_tune_*",
     )
     args = p.parse_args()
