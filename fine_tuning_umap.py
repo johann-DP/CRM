@@ -7,6 +7,7 @@ import argparse
 import logging
 import pickle
 from pathlib import Path
+import json
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -175,7 +176,19 @@ def main() -> None:
     with open(OUTPUT_DIR / "umap_model.pkl", "wb") as f:
         pickle.dump(final_model, f)
 
-    for col in ["Pilier", "Sous-catégorie", "Statut commercial"]:
+    best = {
+        "method": "UMAP",
+        "params": {
+            "n_neighbors": int(nn),
+            "min_dist": float(md),
+            "metric": metric,
+            "n_components": 2,
+        },
+    }
+    with open(OUTPUT_DIR / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
+
+    for col in ["Pilier", "Sous-catégorie", "Catégorie", "Statut commercial"]:
         export_scatter(embedding, df, col)
 
     logger.info("UMAP fine-tuning complete")

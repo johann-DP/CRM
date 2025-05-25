@@ -5,6 +5,7 @@ import argparse
 import logging
 from pathlib import Path
 import itertools
+import json
 
 import numpy as np
 import pandas as pd
@@ -15,7 +16,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
-from phase4v2 import plot_correlation_circle
+from phase4v2 import plot_correlation_circle, scatter_all_segments
+from standalone_utils import prepare_active_dataset
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -252,11 +254,11 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    df_quant, quant_cols = load_quantitative_data(data_path)
+    df_active, quant_cols, _ = prepare_active_dataset(data_path, out_dir)
     logging.info("Variables quantitatives utilisées : %s", quant_cols)
 
     scaler = StandardScaler()
-    X = scaler.fit_transform(df_quant)
+    X = scaler.fit_transform(df_active[quant_cols])
 
     results, exp_df, load_df, contrib_df, sil_df = run_pca_grid(X, quant_cols)
 
@@ -279,7 +281,21 @@ def main() -> None:
     plot_correlation_and_contrib(out_dir, best_sil_res["loadings"], quant_cols, "best_silhouette")
     plot_best_clusters(out_dir, best_sil_res["scores"], int(best_k))
 
+    scores_df = pd.DataFrame(best_sil_res["scores"][:, :2], index=df_active.index, columns=["F1", "F2"])
+    scatter_all_segments(scores_df, df_active, out_dir, "pca_best")
+
     write_index(out_dir)
+
+    best_params = {
+        "method": "PCA",
+        "params": {
+            "n_components": int(best_sil_res["n_components"]),
+            "svd_solver": best_sil_res["svd_solver"],
+            "whiten": bool(best_sil_res["whiten"]),
+        },
+    }
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best_params, fh, indent=2)
 
     logging.info(
         "Meilleure config variance >=80%% : id=%d (solver=%s, whiten=%s, n_comp=%d, variance=%.2f%%)",

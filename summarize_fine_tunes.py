@@ -75,7 +75,6 @@ def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary
 
         for d in fine_dirs:
             method = d.name.replace("fine_tune_", "").upper()
-
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
             ax.text(0.5, 0.5, method, fontsize=24, ha="center", va="center")
             ax.axis("off")
