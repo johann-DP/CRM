@@ -8,6 +8,7 @@ import itertools
 import inspect
 import time
 from pathlib import Path
+import json
 
 import joblib
 import pandas as pd
@@ -149,6 +150,21 @@ def main() -> None:
     metrics_path = out_dir / "pacmap_tuning_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
     generated_files.append(metrics_path)
+
+    if not metrics_df.empty:
+        best_row = metrics_df.sort_values("trustworthiness", ascending=False).iloc[0]
+        best_params = {
+            "method": "PaCMAP",
+            "params": {
+                "n_neighbors": int(best_row["n_neighbors"]),
+                "MN_ratio": float(best_row["MN_ratio"]),
+                "n_components": int(best_row["n_components"]),
+            },
+        }
+        if "init" in best_row:
+            best_params["params"]["init"] = best_row["init"]
+        with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best_params, fh, indent=2)
 
     # Select best two configs by trustworthiness
     top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)

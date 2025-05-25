@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
+import json
 
 from phase4v2 import (
     run_pcamix,
@@ -64,6 +65,10 @@ def main() -> None:
         qual_vars,
         df_active=df_full,
     )
+
+    best = {"method": "PCAmix", "params": {"n_components": int(model.n_components)}}
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
     logging.info("PCAmix fine-tuning complete")
 
 

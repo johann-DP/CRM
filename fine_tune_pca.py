@@ -5,6 +5,7 @@ import argparse
 import logging
 from pathlib import Path
 import itertools
+import json
 
 import numpy as np
 import pandas as pd
@@ -284,6 +285,17 @@ def main() -> None:
     scatter_all_segments(scores_df, df_active, out_dir, "pca_best")
 
     write_index(out_dir)
+
+    best_params = {
+        "method": "PCA",
+        "params": {
+            "n_components": int(best_sil_res["n_components"]),
+            "svd_solver": best_sil_res["svd_solver"],
+            "whiten": bool(best_sil_res["whiten"]),
+        },
+    }
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best_params, fh, indent=2)
 
     logging.info(
         "Meilleure config variance >=80%% : id=%d (solver=%s, whiten=%s, n_comp=%d, variance=%.2f%%)",

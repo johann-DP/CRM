@@ -15,6 +15,7 @@ import logging
 import pickle
 from pathlib import Path
 from typing import Dict, List
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -201,6 +202,11 @@ def main() -> None:
     final_emb = final_tsne.fit_transform(X_pca)
 
     export_results(df, final_emb, best_params, metrics_df, out_dir)
+
+    best = {"method": "TSNE", "params": best_params}
+    best["params"]["n_components"] = 2
+    with open(Path(args.output) / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
     logging.info("t-SNE fine-tuning complete")
 
 

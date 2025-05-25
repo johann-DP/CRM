@@ -13,6 +13,7 @@ from phase4v2 import (
     load_data,
     prepare_data,
 )
+import json
 from standalone_utils import prepare_active_dataset
 
 import warnings
@@ -64,6 +65,11 @@ def main() -> None:
         out_dir,
         df_active=df_full,
     )
+
+    best = {"method": "FAMD", "params": {"n_components": int(getattr(famd, "n_components", len(inertia)))}}
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
+
     logging.info("FAMD fine-tuning complete")
 
 
