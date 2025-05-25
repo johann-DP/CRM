@@ -2,7 +2,7 @@
 """Fine-tune t-SNE embeddings for the CRM dataset.
 
 The script loads the cleaned multivariate CSV, performs preprocessing,
-optionally reduces the dimensionality with PCA and runs a grid search
+optionally reduces the dimensionality with PCA and runs a random search
 over several t-SNE parameters. The best configuration is selected using
 the silhouette score after clustering with KMeans. The final model and
 embeddings are exported along with basic scatter plots.
@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import logging
 import pickle
-from itertools import product
 from pathlib import Path
 from typing import Dict, List
 
@@ -26,8 +25,6 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from joblib import Parallel, delayed
-import os
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -71,8 +68,8 @@ def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
     return df, X_all
 
 
-def run_grid_search(X: np.ndarray) -> tuple[Dict[str, int | float | str], np.ndarray, pd.DataFrame]:
-    """Evaluate several t-SNE parameter combinations."""
+def run_random_search(X: np.ndarray, n_trials: int = 20) -> tuple[Dict[str, int | float | str], np.ndarray, pd.DataFrame]:
+    """Evaluate t-SNE with random parameter combinations."""
     grid = {
         "perplexity": [5, 10, 20, 30, 50],
         "learning_rate": [10, 100, 200, 500],
@@ -80,57 +77,45 @@ def run_grid_search(X: np.ndarray) -> tuple[Dict[str, int | float | str], np.nda
         "metric": ["euclidean", "cosine"],
     }
 
+    rng = np.random.default_rng(42)
     results: List[Dict[str, float]] = []
 
-    # 1) liste de toutes les combinaisons à tester
-    param_grid = list(product(
-        grid["perplexity"],
-        grid["learning_rate"],
-        grid["n_iter"],
-        grid["metric"]
-    ))
+    for i in range(n_trials):
+        params = {
+            "perplexity": int(rng.choice(grid["perplexity"])),
+            "learning_rate": int(rng.choice(grid["learning_rate"])),
+            "n_iter": int(rng.choice(grid["n_iter"])),
+            "metric": str(rng.choice(grid["metric"])),
+        }
 
-    # 2) fonction qui, pour un tuple d’hypers, calcule silhouette
-    def eval_tsne(params):
-        perp, lr, n_it, metric = params
+        logging.info("t-SNE trial %d/%d with params %s", i + 1, n_trials, params)
+
         tsne = TSNE(
             random_state=42,
             init="pca",
-            perplexity=perp,
-            learning_rate=lr,
-            n_iter=n_it,
-            metric=metric,
-            n_jobs=1  # TSNE lui-même n’est pas multi-threadé ; on gère au niveau joblib
+            perplexity=params["perplexity"],
+            learning_rate=params["learning_rate"],
+            n_iter=params["n_iter"],
+            metric=params["metric"],
+            n_jobs=1,
         )
         emb = tsne.fit_transform(X)
         labels = KMeans(n_clusters=6, random_state=42).fit_predict(emb)
         sil = silhouette_score(emb, labels)
-        return {
-            "perplexity": perp,
-            "learning_rate": lr,
-            "n_iter": n_it,
-            "metric": metric,
+        results.append({
+            **params,
             "silhouette": sil,
-            "embedding": emb  # optionnel si vous voulez récupérer la meilleure
-        }
+            "embedding": emb,
+        })
 
-    # 3) exécution en parallèle sur tous les cœurs
-    n_jobs = os.cpu_count() or 1
-    all_results = Parallel(n_jobs=n_jobs)(
-        delayed(eval_tsne)(params) for params in param_grid
-    )
-
-    # 4) recherche du meilleur score
-    best = max(all_results, key=lambda r: r["silhouette"])
+    best = max(results, key=lambda r: r["silhouette"])
     best_params = {k: best[k] for k in ["perplexity", "learning_rate", "n_iter", "metric"]}
     best_emb = best["embedding"]
 
-    # 5) (optionnel) nettoyage de best_emb dans result dict pour n’exporter que le nécessaire
-    for r in all_results:
+    for r in results:
         r.pop("embedding", None)
 
-    assert best_params is not None and best_emb is not None
-    metrics_df = pd.DataFrame(all_results).drop(columns="embedding")
+    metrics_df = pd.DataFrame(results)
     return best_params, best_emb, metrics_df
 
 
@@ -152,7 +137,7 @@ def export_results(
 
     # Save embeddings with labels
     label_cols_all = [
-        "Catégories",
+        "Catégorie",
         "Entité opérationnelle",
         "Pilier",
         "Sous-catégorie",
@@ -194,6 +179,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fine-tune t-SNE on CRM data")
     parser.add_argument("--input", default=DEFAULT_INPUT, help="CSV file")
     parser.add_argument("--output", default=DEFAULT_OUTPUT, help="Output directory")
+    parser.add_argument("--n-trials", type=int, default=20, help="Number of random search iterations")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -206,8 +192,8 @@ def main() -> None:
     n_components = min(50, X_all.shape[1])
     X_pca = PCA(n_components=n_components, random_state=42).fit_transform(X_all)
 
-    logging.info("Starting t-SNE grid search")
-    best_params, best_emb, metrics_df = run_grid_search(X_pca)
+    logging.info("Starting t-SNE random search")
+    best_params, best_emb, metrics_df = run_random_search(X_pca, n_trials=args.n_trials)
     logging.info("Best params: %s", best_params)
 
     logging.info("Refitting t-SNE with best parameters")

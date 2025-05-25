@@ -49,7 +49,7 @@ CONFIG = {
 
 # Principal CRM segmentation columns used to generate variant scatters
 SEGMENT_COLUMNS = [
-    "Catégories",
+    "Catégorie",
     "Entité opérationnelle",
     "Pilier",
     "Sous-catégorie",
@@ -2696,6 +2696,13 @@ def export_pca_results(
         plt.tight_layout()
         plt.savefig(output_dir / "pca_indiv_plot.png")
         plt.close()
+
+        scatter_all_segments(
+            row_coords[["F1", "F2"]],
+            df_active,
+            output_dir,
+            "pca_indiv",
+        )
 
     # Individuals 3D
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):

@@ -30,7 +30,7 @@ except TypeError:  # pragma: no cover - older pacmap
     _PACMAP_HAS_INIT = False
 
 # Import helper functions for variable selection and missing value handling
-from phase4v2 import select_variables, handle_missing_values
+from phase4v2 import select_variables, handle_missing_values, scatter_all_segments
 
 
 
@@ -206,6 +206,13 @@ def main() -> None:
             plt.savefig(fig_path)
             plt.close()
             generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PACMAP1", "PACMAP2"]],
+                df_active,
+                fig_dir,
+                f"pacmap_{nn}_{mn}",
+            )
 
         if nc >= 3:
             from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
