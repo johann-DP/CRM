@@ -6,8 +6,14 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
+import json
 
-from phase4v2 import run_pcamix, export_pcamix_results
+from phase4v2 import (
+    run_pcamix,
+    export_pcamix_results,
+    load_data,
+    prepare_data,
+)
 from standalone_utils import prepare_active_dataset
 
 import warnings
@@ -37,6 +43,10 @@ def main() -> None:
 
     df_active, quant_vars, qual_vars = prepare_active_dataset(str(data_path), out_dir)
 
+    # Load cleaned dataset for segmentation scatters
+    df_full = prepare_data(load_data(str(data_path)))
+    df_full = df_full.loc[df_active.index]
+
     model, inertia, rows, cols = run_pcamix(
         df_active,
         quant_vars,
@@ -53,8 +63,12 @@ def main() -> None:
         out_dir,
         quant_vars,
         qual_vars,
-        df_active=df_active,
+        df_active=df_full,
     )
+
+    best = {"method": "PCAmix", "params": {"n_components": int(model.n_components)}}
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
     logging.info("PCAmix fine-tuning complete")
 
 

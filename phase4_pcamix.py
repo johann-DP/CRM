@@ -5,8 +5,16 @@ import argparse
 import logging
 from pathlib import Path
 
-from phase4v2 import run_pcamix, export_pcamix_results
-from standalone_utils import prepare_active_dataset
+from phase4v2 import (
+    load_data,
+    prepare_data,
+    select_variables,
+    sanity_check,
+    handle_missing_values,
+    segment_data,
+    run_pcamix,
+    export_pcamix_results,
+)
 
 
 def main() -> None:
@@ -19,7 +27,14 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     out_dir = Path(args.output) / "PCAmix"
 
-    df_active, quant_vars, qual_vars = prepare_active_dataset(args.input, out_dir)
+    df_raw = load_data(args.input)
+    df_clean = prepare_data(df_raw)
+    df_active_tmp, quant_vars, qual_vars = select_variables(df_clean)
+    quant_vars, qual_vars = sanity_check(df_active_tmp, quant_vars, qual_vars)
+    df_active = df_active_tmp[quant_vars + qual_vars]
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+    segment_data(df_active, qual_vars, out_dir)
+    df_full = df_clean.loc[df_active.index]
 
     model, inertia, rows, cols = run_pcamix(
         df_active,
@@ -29,7 +44,16 @@ def main() -> None:
         n_components=args.n_components,
     )
 
-    export_pcamix_results(model, inertia, rows, cols, out_dir, quant_vars, qual_vars, df_active=df_active)
+    export_pcamix_results(
+        model,
+        inertia,
+        rows,
+        cols,
+        out_dir,
+        quant_vars,
+        qual_vars,
+        df_active=df_full,
+    )
     logging.info("PCAmix analysis complete")
 
 

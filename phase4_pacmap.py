@@ -5,8 +5,16 @@ import argparse
 import logging
 from pathlib import Path
 
-from phase4v2 import run_pacmap, export_pacmap_results
-from standalone_utils import prepare_active_dataset
+from phase4v2 import (
+    load_data,
+    prepare_data,
+    select_variables,
+    sanity_check,
+    handle_missing_values,
+    segment_data,
+    run_pacmap,
+    export_pacmap_results,
+)
 
 
 def main() -> None:
@@ -20,7 +28,14 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     out_dir = Path(args.output) / "PaCMAP"
 
-    df_active, quant_vars, qual_vars = prepare_active_dataset(args.input, out_dir)
+    df_raw = load_data(args.input)
+    df_clean = prepare_data(df_raw)
+    df_active_tmp, quant_vars, qual_vars = select_variables(df_clean)
+    quant_vars, qual_vars = sanity_check(df_active_tmp, quant_vars, qual_vars)
+    df_active = df_active_tmp[quant_vars + qual_vars]
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+    segment_data(df_active, qual_vars, out_dir)
+    df_full = df_clean.loc[df_active.index]
 
     model, emb = run_pacmap(
         df_active,
@@ -32,7 +47,7 @@ def main() -> None:
     )
 
     if model is not None:
-        export_pacmap_results(emb, df_active, out_dir)
+        export_pacmap_results(emb, df_full, out_dir)
     logging.info("PaCMAP analysis complete")
 
 
