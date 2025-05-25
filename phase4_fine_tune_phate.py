@@ -1,136 +1,223 @@
 #!/usr/bin/env python3
-"""Fine-tuning PHATE on Phase 3 cleaned datasets.
+"""Grid search fine-tuning for PHATE on cleaned CRM data."""
 
-This script loads the cleaned CSV files produced at the end of phase 3,
-performs basic preprocessing (imputation, scaling, encoding) and runs the
-PHATE algorithm. The resulting embeddings and a simple scatter plot are
-saved in the chosen output directory.
-"""
+from __future__ import annotations
 
 import argparse
+import itertools
+import time
 from pathlib import Path
-from typing import List
 
-import matplotlib.pyplot as plt
+import joblib
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.manifold import trustworthiness
+from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
 import phate
+
+from phase4v2 import select_variables, handle_missing_values, scatter_all_segments
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
-_DEF_DROP = {"id", "code", "client", "contact"}
+# ---------------------------------------------------------------------------
+# Helpers
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fine tune PHATE on Phase 3 data")
+    parser = argparse.ArgumentParser(description="Fine tune PHATE")
     parser.add_argument("--multi", required=True, help="Cleaned multivariate CSV")
     parser.add_argument("--univ", required=False, help="Cleaned univariate CSV")
     parser.add_argument("--output", required=True, help="Output directory")
-    parser.add_argument("--knn", type=int, default=10, help="Number of neighbors")
-    parser.add_argument("--decay", type=int, default=20, help="Kernel decay")
-    parser.add_argument("--n_components", type=int, default=2, help="Dimensions")
-    parser.add_argument("--t", type=int, default=20, help="Diffusion steps")
     return parser.parse_args()
 
 
-def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, List[str], List[str], np.ndarray]:
-    # 1) drop des colonnes inutiles
-    drop_cols = [c for c in df.columns
-                 if any(p in c.lower() for p in _DEF_DROP)
-                 or "date" in c.lower()]
-    df = df.drop(columns=drop_cols, errors="ignore")
+def prepare_dataset(path: Path) -> tuple[pd.DataFrame, list[str], list[str], pd.Series]:
+    """Load CSV and return processed dataset with target column."""
 
-    # 2) extraction et nettoyage des colonnes numériques
-    #   - on ne garde que celles qui ont au moins une valeur non-NaN
-    num_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    df_num = df[num_cols].loc[:, lambda d: d.notna().any(axis=0)]
-    #   - on met à jour num_cols pour qu’il corresponde à df_num
-    num_cols = df_num.columns.tolist()
-    #   - on impute par la médiane
-    df_num = df_num.fillna(df_num.median())
+    df = pd.read_csv(path)
 
-    # 3) extraction et nettoyage des colonnes catégorielles
-    cat_cols = [c for c in df.columns if c not in num_cols]
-    for c in cat_cols:
-        # on remplace tous les NaN puis on force en str
-        df[c] = df[c].fillna("Non renseigné").astype(str)
+    for col in df.select_dtypes(include="object"):
+        df[col] = df[col].astype("category")
 
-    # 4) Standardisation des numériques
-    scaler = StandardScaler()
-    X_num = scaler.fit_transform(df_num)
+    df_active, quant_vars, qual_vars = select_variables(df)
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
-    # 5) One-hot des catégorielles
-    try:
-        enc = OneHotEncoder(drop="first", sparse_output=False,
-                            handle_unknown="ignore")
-    except TypeError:
-        enc = OneHotEncoder(drop="first", sparse=False,
-                            handle_unknown="ignore")
-    X_cat = enc.fit_transform(df[cat_cols]) if cat_cols else np.empty((len(df), 0))
-
-    # 6) matrice finale
-    X = np.hstack([X_num, X_cat])
-    return df, num_cols, cat_cols, X
-
-
-def run_phate(X: np.ndarray, knn: int, decay: int, n_components: int, t: int) -> np.ndarray:
-    ph = phate.PHATE(
-        knn=knn,
-        decay=decay,
-        n_components=n_components,
-        t=t,
-        random_state=None,
+    y = (
+        df_active["Statut commercial"].astype("category")
+        if "Statut commercial" in df_active.columns
+        else pd.Series()
     )
-    return ph.fit_transform(X)
+
+    return df_active, quant_vars, qual_vars, y
+
+
+def preprocess(df: pd.DataFrame, quant_vars: list[str], qual_vars: list[str]) -> np.ndarray:
+    """Return scaled numeric and encoded categorical matrix."""
+
+    X_num = StandardScaler().fit_transform(df[quant_vars]) if quant_vars else pd.DataFrame()
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # older scikit-learn
+        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = enc.fit_transform(df[qual_vars]) if qual_vars else pd.DataFrame()
+
+    if quant_vars and qual_vars:
+        X = np.hstack([X_num, X_cat])
+    elif quant_vars:
+        X = X_num
+    else:
+        X = X_cat
+    return X
+
+
+# ---------------------------------------------------------------------------
+# Main logic
 
 
 def main() -> None:
     args = parse_args()
-    out = Path(args.output)
-    out.mkdir(parents=True, exist_ok=True)
+    input_file = Path(args.multi)
+    out_dir = Path(args.output)
 
-    df_multi = pd.read_csv(args.multi)
-    if args.univ:
-        pd.read_csv(args.univ)  # loaded for completeness but not used further
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = out_dir / "figures"
+    fig_dir.mkdir(exist_ok=True)
 
-    df_multi, num_cols, cat_cols, X = preprocess(df_multi)
-    emb = run_phate(X, args.knn, args.decay, args.n_components, args.t)
+    df_active, quant_vars, qual_vars, y = prepare_dataset(input_file)
+    X = preprocess(df_active, quant_vars, qual_vars)
 
-    cols = [f"PHATE{i+1}" for i in range(args.n_components)]
-    df_emb = pd.DataFrame(emb, columns=cols)
-    df_emb.to_csv(out / "phate_coordinates.csv", index=False)
+    # Parameter grid
+    param_grid = {
+        "n_components": [2, 3],
+        "knn": [5, 15, 30],
+        "t": [5, 20],
+        "decay": [10, 20],
+    }
 
-    if {"PHATE1", "PHATE2"}.issubset(df_emb.columns) and "Statut commercial" in df_multi.columns:
-        plot_df = df_emb.join(df_multi["Statut commercial"])
-        plt.figure(figsize=(8, 6))
-        sns.scatterplot(x="PHATE1", y="PHATE2", hue="Statut commercial", data=plot_df, palette="tab10")
-        plt.title("PHATE – Statut commercial")
-        plt.tight_layout()
-        plt.savefig(out / "phate_scatter_statut_commercial.png")
-        plt.close()
+    results: list[dict[str, float | int]] = []
+    generated_files: list[Path] = []
 
-    readme = out / "README.md"
-    with readme.open("w", encoding="utf-8") as fh:
-        fh.write("# Fine-tuning PHATE\n")
-        fh.write("Input files: ``{}``, ``{}``\n".format(args.multi, args.univ or "n/a"))
-        fh.write("\n")
-        fh.write("Hyperparameters:\n")
-        fh.write(f"- knn = {args.knn}\n")
-        fh.write(f"- decay = {args.decay}\n")
-        fh.write(f"- n_components = {args.n_components}\n")
-        fh.write(f"- t = {args.t}\n")
-        fh.write("\n")
-        fh.write("Run with:\n")
-        fh.write("```bash\n")
-        fh.write(
-            f"python {Path(__file__).name} --multi '{args.multi}' --univ '{args.univ or ''}' --output '{args.output}'\n"
+    combos = itertools.product(
+        param_grid["n_components"],
+        param_grid["knn"],
+        param_grid["t"],
+        param_grid["decay"],
+    )
+
+    for nc, nn, tt, dc in combos:
+        start = time.time()
+        model = phate.PHATE(
+            n_components=nc,
+            knn=nn,
+            t=tt,
+            decay=dc,
+            n_jobs=-1,
+            random_state=42,
         )
-        fh.write("```\n")
+        emb = model.fit_transform(X)
+        runtime = time.time() - start
+
+        tw = trustworthiness(X, emb)
+        ct = trustworthiness(emb, X)
+        if not y.empty:
+            acc = float(
+                cross_val_score(KNeighborsClassifier(n_neighbors=5), emb, y, cv=5).mean()
+            )
+        else:
+            acc = float("nan")
+
+        results.append(
+            {
+                "n_components": nc,
+                "knn": nn,
+                "t": tt,
+                "decay": dc,
+                "trustworthiness": tw,
+                "continuity": ct,
+                "knn_accuracy": acc,
+                "runtime_s": runtime,
+            }
+        )
+
+    metrics_df = pd.DataFrame(results)
+    metrics_path = out_dir / "phate_tuning_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+    generated_files.append(metrics_path)
+
+    # Select best two configs by trustworthiness
+    top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)
+
+    for _, row in top.iterrows():
+        nc = int(row["n_components"])
+        nn = int(row["knn"])
+        tt = int(row["t"])
+        dc = int(row["decay"])
+        model = phate.PHATE(
+            n_components=nc,
+            knn=nn,
+            t=tt,
+            decay=dc,
+            n_jobs=-1,
+            random_state=42,
+        )
+        embedding = model.fit_transform(X)
+
+        coord_df = pd.DataFrame(
+            embedding,
+            index=df_active.index,
+            columns=[f"PHATE{i+1}" for i in range(nc)],
+        )
+        coords_path = out_dir / f"phate_coords_{nc}D_knn{nn}_t{tt}_decay{dc}.csv"
+        coord_df.to_csv(coords_path, index=True)
+        generated_files.append(coords_path)
+
+        model_path = out_dir / f"phate_model_{nc}D_knn{nn}_t{tt}_decay{dc}.joblib"
+        joblib.dump(model, model_path)
+        generated_files.append(model_path)
+
+        if nc >= 2 and not y.empty:
+            plt.figure(figsize=(12, 6), dpi=200)
+            cats = y.astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    coord_df.loc[mask, "PHATE1"],
+                    coord_df.loc[mask, "PHATE2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.xlabel("PHATE1")
+            plt.ylabel("PHATE2")
+            plt.title("PHATE - 2D")
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            fig_path = fig_dir / f"phate_{nc}D_knn{nn}_t{tt}.png"
+            plt.savefig(fig_path)
+            plt.close()
+            generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PHATE1", "PHATE2"]],
+                df_active,
+                fig_dir,
+                f"phate_{nc}D_knn{nn}_t{tt}",
+            )
+
+    index_path = out_dir / "index_phate.txt"
+    with open(index_path, "w", encoding="utf-8") as f:
+        for p in generated_files:
+            f.write(str(Path(p).resolve()) + "\n")
 
 
 if __name__ == "__main__":
