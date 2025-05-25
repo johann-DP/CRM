@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+import json
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import prince
@@ -294,7 +295,22 @@ def main() -> None:
                 })
 
     assemble_pdf(all_figs, OUTPUT_ROOT / "mca_fine_tuning_results.pdf")
-    pd.DataFrame(results).to_csv(OUTPUT_ROOT / "tuning_report.csv", index=False)
+    df_res = pd.DataFrame(results)
+    df_res.to_csv(OUTPUT_ROOT / "tuning_report.csv", index=False)
+
+    if not df_res.empty:
+        best_row = df_res.sort_values("explained_variance_cum", ascending=False).iloc[0]
+        best = {
+            "method": "MCA",
+            "params": {
+                "n_components": int(best_row["n_components"]),
+                "normalize": bool(best_row["normalize"]),
+                "n_iter": int(best_row["n_iter"]),
+            },
+        }
+        with open(OUTPUT_ROOT / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best, fh, indent=2)
+
     logging.info("Fine-tuning MCA complete")
 
 

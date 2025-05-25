@@ -122,6 +122,12 @@ def main() -> None:
         qual_vars,
         df_active=df_full,
     )
+    best_params = {
+        "method": "MFA",
+        "params": {"n_components": int(n_comp), "weights": weights},
+    }
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best_params, fh, indent=2)
     logging.info("Best MFA with %d components", n_comp)
 
 

@@ -7,6 +7,7 @@ import argparse
 import itertools
 import time
 from pathlib import Path
+import json
 
 import joblib
 import pandas as pd
@@ -151,6 +152,20 @@ def main() -> None:
     metrics_path = out_dir / "phate_tuning_metrics.csv"
     metrics_df.to_csv(metrics_path, index=False)
     generated_files.append(metrics_path)
+
+    if not metrics_df.empty:
+        br = metrics_df.sort_values("trustworthiness", ascending=False).iloc[0]
+        best_params = {
+            "method": "PHATE",
+            "params": {
+                "n_components": int(br["n_components"]),
+                "knn": int(br["knn"]),
+                "t": int(br["t"]),
+                "decay": int(br["decay"]),
+            },
+        }
+        with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best_params, fh, indent=2)
 
     # Select best two configs by trustworthiness
     top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)
