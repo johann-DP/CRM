@@ -66,7 +66,7 @@ def preprocess(df: pd.DataFrame, quant_vars: list[str], qual_vars: list[str]) ->
     try:
         enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
     except TypeError:  # older scikit-learn
-        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+        enc = OneHotEncoder(handle_unknown="ignore")
     X_cat = enc.fit_transform(df[qual_vars]) if qual_vars else pd.DataFrame()
 
     if quant_vars and qual_vars:
