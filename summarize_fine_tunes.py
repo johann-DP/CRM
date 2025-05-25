@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Assemble un rapport PDF des fine-tuning pour toutes les méthodes.
 
-Le script parcourt les dossiers ``fine_tune_*`` au sein du répertoire
-``phase4_output`` (par défaut) et regroupe toutes les figures ``.png`` dans un
-unique PDF. Les sous-dossiers ``segments`` sont ignorés puis ajoutés à la fin en
-annexe. Pour ``fine_tune_mca`` on reproduit le contenu du rapport PDF généré par
-``fine_tuning_mca.py`` en insérant directement ses figures.
+Le script parcourt les dossiers ``fine_tune_*`` à l'intérieur d'un répertoire
+donné (par défaut ``phase4_output``) et agrège toutes les figures ``.png`` dans
+un unique PDF. Chaque méthode dispose d'une page de titre suivie de ses images.
 """
 
 from __future__ import annotations
@@ -20,48 +18,51 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+try:
+    from PyPDF2 import PdfMerger
+except Exception:  # pragma: no cover - optional dependency
+    PdfMerger = None
+
+
+def _collect_images(method_dir: Path, *, keep_segments: bool) -> tuple[list[Path], list[Path]]:
+    """Retourne les images ordinaires et celles des segments."""
+    images: list[Path] = []
+    segs: list[Path] = []
+    for img_path in sorted(method_dir.rglob("*.png")):
+        lowers = {p.lower() for p in img_path.parts}
+        if "segments" in lowers or "segment" in lowers:
+            if keep_segments:
+                segs.append(img_path)
+            continue
+        images.append(img_path)
+    return images, segs
+
 
 def _pdf_add_images(pdf: PdfPages, images: list[Path], root: Path) -> None:
-    """Append images to ``pdf`` as pages."""
-
     for img_path in images:
         img = plt.imread(img_path)
         fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
         ax.imshow(img)
         ax.axis("off")
         fig.tight_layout()
-        try:
-            rel = img_path.relative_to(root)
-        except ValueError:
-            rel = img_path.name
+        rel = img_path.relative_to(root)
         fig.text(0.99, 0.01, str(rel), ha="right", va="bottom", fontsize=6, color="gray")
         pdf.savefig(fig, dpi=300)
         plt.close(fig)
 
-
-def _collect_images(root: Path, ignore_segments: bool = True) -> list[Path]:
-    """Return all PNG files under ``root`` sorted lexicographically.
-
-    If ``ignore_segments`` is True, any file located in a directory named
-    ``segments`` (case insensitive) is skipped."""
-
-    images: list[Path] = []
-    for p in sorted(root.rglob("*.png")):
-        if ignore_segments and any(part.lower() == "segments" for part in p.parts):
-            continue
-        images.append(p)
-    return images
-
+        
 def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary.pdf") -> Path:
     """Génère un PDF rassemblant toutes les figures des fine-tunes."""
     logger = logging.getLogger(__name__)
-    output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = output_dir / pdf_name
     fine_dirs = sorted(d for d in output_dir.glob("fine_tune_*") if d.is_dir())
 
     if not fine_dirs:
         logger.warning("Aucun dossier 'fine_tune_*' trouvé dans %s", output_dir)
         return pdf_path
+
+    famd_segments: list[Path] = []
+    mca_pdf: Path | None = None
 
     with PdfPages(pdf_path) as pdf:
         # Page de garde
@@ -75,29 +76,45 @@ def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary
 
         for d in fine_dirs:
             method = d.name.replace("fine_tune_", "").upper()
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            logger.info("Traitement de %s", method)
+
+            title, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
             ax.text(0.5, 0.5, method, fontsize=24, ha="center", va="center")
             ax.axis("off")
-            pdf.savefig(fig, dpi=300)
-            plt.close(fig)
+            pdf.savefig(title, dpi=300)
+            plt.close(title)
 
             if method == "MCA":
-                fig_dir = d / "figures"
-                images = _collect_images(fig_dir)
-            else:
-                images = _collect_images(d)
-            _pdf_add_images(pdf, images, output_dir)
+                candidate = d / "mca_fine_tuning_results.pdf"
+                if candidate.exists():
+                    mca_pdf = candidate
+                else:
+                    images, _ = _collect_images(d, keep_segments=False)
+                    _pdf_add_images(pdf, images, output_dir)
+                continue
 
-        # Annexe segments
-        seg_dir = output_dir / "segments"
-        seg_images = _collect_images(seg_dir, ignore_segments=False) if seg_dir.exists() else []
-        if seg_images:
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
-            ax.text(0.5, 0.5, "Annexe : segments", fontsize=24, ha="center", va="center")
+            keep_seg = method == "FAMD"
+            skip_seg = method in {"MFA", "PCA", "PCAMIX"}
+            images, segs = _collect_images(d, keep_segments=keep_seg and not skip_seg)
+            _pdf_add_images(pdf, images, output_dir)
+            if method == "FAMD":
+                famd_segments.extend(segs)
+
+        if famd_segments:
+            title, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.text(0.5, 0.5, "Annexe – Segments FAMD", fontsize=20, ha="center", va="center")
             ax.axis("off")
-            pdf.savefig(fig, dpi=300)
-            plt.close(fig)
-            _pdf_add_images(pdf, seg_images, seg_dir)
+            pdf.savefig(title, dpi=300)
+            plt.close(title)
+            _pdf_add_images(pdf, famd_segments, output_dir)
+
+    if mca_pdf and PdfMerger:
+        merger = PdfMerger()
+        merger.append(str(pdf_path))
+        merger.append(str(mca_pdf))
+        with open(pdf_path, "wb") as fh:
+            merger.write(fh)
+        merger.close()
 
     logger.info("PDF généré : %s", pdf_path)
     return pdf_path
