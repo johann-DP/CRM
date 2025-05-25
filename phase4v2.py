@@ -35,6 +35,8 @@ import seaborn as sns
 import datetime
 import phate
 import pacmap
+import json
+import ast
 
 # Ex. : lire un YAML/JSON de config, ici un simple dict
 CONFIG = {
@@ -49,7 +51,7 @@ CONFIG = {
 
 # Principal CRM segmentation columns used to generate variant scatters
 SEGMENT_COLUMNS = [
-    "Catégories",
+    "Catégorie",
     "Entité opérationnelle",
     "Pilier",
     "Sous-catégorie",
@@ -57,6 +59,28 @@ SEGMENT_COLUMNS = [
     "Statut production",
     "Type opportunité",
 ]
+
+
+def load_best_params(csv_file: Path) -> Dict[str, Dict[str, Any]]:
+    """Load best parameter values from a CSV created by the fine-tuning step."""
+    if not csv_file.exists():
+        return {}
+    df = pd.read_csv(csv_file)
+    params: Dict[str, Dict[str, Any]] = {}
+    for method, group in df.groupby("method"):
+        d: Dict[str, Any] = {}
+        for _, row in group.iterrows():
+            val = row["value"]
+            try:
+                val = json.loads(val)
+            except Exception:
+                try:
+                    val = ast.literal_eval(val)
+                except Exception:
+                    pass
+            d[str(row["param"])] = val
+        params[method.lower()] = d
+    return params
 
 
 def plot_correlation_circle(
@@ -2697,6 +2721,13 @@ def export_pca_results(
         plt.savefig(output_dir / "pca_indiv_plot.png")
         plt.close()
 
+        scatter_all_segments(
+            row_coords[["F1", "F2"]],
+            df_active,
+            output_dir,
+            "pca_indiv",
+        )
+
     # Individuals 3D
     if {"F1", "F2", "F3"}.issubset(row_coords.columns):
         fig = plt.figure(figsize=(12, 6), dpi=200)
@@ -3334,6 +3365,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Phase 4")
     parser.add_argument("--config", required=True, help="Chemin du fichier YAML/JSON")
+    parser.add_argument("--best-params", help="CSV des meilleurs paramètres")
     args = parser.parse_args()
 
     cfg = Path(args.config)
@@ -3349,6 +3381,13 @@ def main() -> None:
 
     import copy
     effective_config = copy.deepcopy(config)
+
+    if args.best_params:
+        bp = load_best_params(Path(args.best_params))
+        for meth, params in bp.items():
+            config.setdefault(meth, {}).update(params)
+            effective_config.setdefault(meth, {}).update(params)
+        config["optimize_params"] = False
 
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)

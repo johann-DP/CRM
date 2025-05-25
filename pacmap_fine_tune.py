@@ -8,6 +8,7 @@ import itertools
 import inspect
 import time
 from pathlib import Path
+import json
 
 import joblib
 import pandas as pd
@@ -30,7 +31,7 @@ except TypeError:  # pragma: no cover - older pacmap
     _PACMAP_HAS_INIT = False
 
 # Import helper functions for variable selection and missing value handling
-from phase4v2 import select_variables, handle_missing_values
+from phase4v2 import select_variables, handle_missing_values, scatter_all_segments
 
 
 
@@ -150,6 +151,21 @@ def main() -> None:
     metrics_df.to_csv(metrics_path, index=False)
     generated_files.append(metrics_path)
 
+    if not metrics_df.empty:
+        best_row = metrics_df.sort_values("trustworthiness", ascending=False).iloc[0]
+        best_params = {
+            "method": "PaCMAP",
+            "params": {
+                "n_neighbors": int(best_row["n_neighbors"]),
+                "MN_ratio": float(best_row["MN_ratio"]),
+                "n_components": int(best_row["n_components"]),
+            },
+        }
+        if "init" in best_row:
+            best_params["params"]["init"] = best_row["init"]
+        with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best_params, fh, indent=2)
+
     # Select best two configs by trustworthiness
     top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)
 
@@ -206,6 +222,13 @@ def main() -> None:
             plt.savefig(fig_path)
             plt.close()
             generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PACMAP1", "PACMAP2"]],
+                df_active,
+                fig_dir,
+                f"pacmap_{nn}_{mn}",
+            )
 
         if nc >= 3:
             from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
