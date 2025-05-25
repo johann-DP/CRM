@@ -50,6 +50,7 @@ def _pdf_add_images(pdf: PdfPages, images: list[Path], root: Path) -> None:
         pdf.savefig(fig, dpi=300)
         plt.close(fig)
 
+        
 def generate_fine_tune_pdf(output_dir: Path, pdf_name: str = "fine_tunes_summary.pdf") -> Path:
     """Génère un PDF rassemblant toutes les figures des fine-tunes."""
     logger = logging.getLogger(__name__)
@@ -123,7 +124,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Assemble les résultats de fine-tune en un PDF")
     p.add_argument(
         "--output",
-        default="phase4_output",
+        default=r"D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output",
         help="Répertoire contenant les dossiers fine_tune_*",
     )
     args = p.parse_args()
@@ -135,4 +136,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
