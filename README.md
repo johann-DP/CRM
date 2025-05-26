@@ -57,6 +57,20 @@ threads. The provided configuration sets `n_jobs: 1` whenever a seed is used to
 avoid this warning and keep results reproducible. You can remove the seed if you
 prefer parallelism over determinism.
 
+## Running `phase4v3.py`
+
+The file `phase4v3.py` offers a modular pipeline that orchestrates the different
+blocks of Phase 4. It reads a JSON or YAML configuration just like
+`phase4v2.py` but writes logs to `phase4.log` and fixes the random seed for
+deterministic results. Run it with:
+
+```bash
+python phase4v3.py --config config.yaml
+```
+
+The recommended versions of the dependencies are listed in
+`requirements.txt` to ensure the same results can be reproduced later.
+
 ## Running `phase4_famd.py`
 
 For a streamlined FAMD-only pipeline without a configuration file, you can use
