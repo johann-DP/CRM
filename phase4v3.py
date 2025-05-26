@@ -89,8 +89,9 @@ def main() -> None:
     df_active, quant_vars, qual_vars = select_variables(df)
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
-    if config.get("stop_after_prep"):
-        logging.info("Préparation terminée, arrêt demandé par la configuration")
+    if config.get("stop_after_prep", False):
+        df_active.to_csv(out_dir / "df_active.csv", index=False)
+        logging.info("stop_after_prep enabled - exiting after data preparation")
         return
 
     # ------------------------------------------------------------------
