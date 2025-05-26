@@ -79,10 +79,13 @@ def run_mca(df_active: pd.DataFrame, qual_vars: List[str]) -> Dict[str, object]:
     """Run Multiple Correspondence Analysis with automatic dimension selection."""
     start = time()
 
-    df_cat = df_active[qual_vars].astype("category")
+    df_cat = df_active[qual_vars].astype(object)
     df_cat.replace([np.inf, -np.inf], np.nan, inplace=True)
     if df_cat.isna().any().any():
-        df_cat = df_cat.fillna("Non renseigné").astype("category")
+        df_cat = df_cat.fillna("Non renseigné")
+    df_cat = df_cat.astype("category")
+    if df_cat.isna().any().any():
+        raise ValueError("MCA input contains NaN or infinite values after cleaning")
     max_dim = sum(df_cat[c].nunique() for c in df_cat.columns) - len(df_cat.columns)
 
     tmp = prince.MCA(n_components=max_dim).fit(df_cat)
@@ -92,9 +95,15 @@ def run_mca(df_active: pd.DataFrame, qual_vars: List[str]) -> Dict[str, object]:
     mca = mca.fit(df_cat)
     rows = mca.row_coordinates(df_cat)
     rows.index = df_active.index
-    inertia = pd.Series(
-        mca.explained_inertia_, index=[f"F{i+1}" for i in range(n_comp)]
-    )
+    if hasattr(mca, "explained_inertia_"):
+        inertia_values = mca.explained_inertia_
+    else:
+        eigenvalues = getattr(mca, "eigenvalues_", None)
+        if eigenvalues is None:
+            inertia_values = mca.percentage_of_variance_ / 100
+        else:
+            inertia_values = eigenvalues / sum(eigenvalues)
+    inertia = pd.Series(inertia_values, index=[f"F{i+1}" for i in range(n_comp)])
 
     runtime = time() - start
     return {
@@ -136,16 +145,26 @@ def run_famd(
     tmp = prince.FAMD(n_components=df_mix.shape[1], n_iter=3, engine="sklearn").fit(df_mix)
     eigenvalues = getattr(tmp, "eigenvalues_", None)
     if eigenvalues is None:
-        eigenvalues = np.array(tmp.explained_inertia_) * df_mix.shape[1]
+        inertia_attr = getattr(tmp, "explained_inertia_", None)
+        if inertia_attr is not None:
+            eigenvalues = np.array(inertia_attr) * df_mix.shape[1]
+        else:
+            eigenvalues = np.array(tmp.percentage_of_variance_) * df_mix.shape[1] / 100
     n_comp = _auto_components(eigenvalues)
 
     famd = prince.FAMD(n_components=n_comp, n_iter=3, engine="sklearn")
     famd = famd.fit(df_mix)
     rows = famd.row_coordinates(df_mix)
     rows.index = df_active.index
-    inertia = pd.Series(
-        famd.explained_inertia_, index=[f"F{i+1}" for i in range(n_comp)]
-    )
+    if hasattr(famd, "explained_inertia_"):
+        inertia_values = famd.explained_inertia_
+    else:
+        ev = getattr(famd, "eigenvalues_", None)
+        if ev is None:
+            inertia_values = famd.percentage_of_variance_ / 100
+        else:
+            inertia_values = ev / sum(ev)
+    inertia = pd.Series(inertia_values, index=[f"F{i+1}" for i in range(n_comp)])
 
     runtime = time() - start
     return {
@@ -200,9 +219,15 @@ def run_mfa(
     mfa = mfa.fit(df_proc, groups=group_dict)
     rows = mfa.row_coordinates(df_proc)
     rows.index = df_active.index
-    inertia = pd.Series(
-        mfa.explained_inertia_, index=[f"F{i+1}" for i in range(n_comp)]
-    )
+    if hasattr(mfa, "explained_inertia_"):
+        inertia_values = mfa.explained_inertia_
+    else:
+        ev = getattr(mfa, "eigenvalues_", None)
+        if ev is None:
+            inertia_values = mfa.percentage_of_variance_ / 100
+        else:
+            inertia_values = ev / sum(ev)
+    inertia = pd.Series(inertia_values, index=[f"F{i+1}" for i in range(n_comp)])
 
     runtime = time() - start
     return {
