@@ -1258,8 +1258,8 @@ def run_umap(
         n_neighbors: Optional[int] = None,
         min_dist: Optional[float] = None,
         n_components: int = 2,
-        random_state: int | None = 42,
-        n_jobs: int | None = None,
+        random_state: int | None = None,
+        n_jobs: int | None = -1,
         metric: str = "euclidean",
         optimize: bool = False,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
@@ -1276,10 +1276,8 @@ def run_umap(
         min_dist: Distance minimale UMAP.
         n_components: Dimension de sortie (2 ou 3).
         random_state: Graine pour reproductibilité. ``None`` pour laisser
-            UMAP utiliser le parallélisme.
-        n_jobs: Nombre de threads UMAP. Si ``random_state`` est défini et
-            ``n_jobs`` n'est pas ``1``, la valeur sera forcée à ``1`` pour
-            éviter le warning de ``umap-learn``.
+            UMAP exploiter tous les cœurs.
+        n_jobs: Nombre de threads UMAP (``-1`` pour tous les cœurs).
         metric: Fonction de distance à utiliser ("euclidean", "manhattan",
             "cosine", ...).
         optimize: si ``True`` et que ``n_neighbors``/``min_dist`` ne sont pas
@@ -1315,21 +1313,12 @@ def run_umap(
     dist = min_dist if min_dist is not None else 0.1
 
     def _build_umap(nn, md):
-        nj = n_jobs
-        if random_state is not None:
-            if nj not in (None, 1):
-                logger.warning(
-                    "random_state défini (%s) : n_jobs=%s forcé à 1 pour garantir la reproductibilité",
-                    random_state,
-                    nj,
-                )
-            nj = -1
         return umap.UMAP(
             n_neighbors=nn,
             min_dist=md,
             n_components=n_components,
             random_state=random_state,
-            n_jobs=nj,
+            n_jobs=n_jobs,
             metric=metric,
         )
 
@@ -1453,7 +1442,7 @@ def run_pacmap(
         n_neighbors: Optional[int] = None,
         MN_ratio: float = 0.5,
         FP_ratio: float = 2.0,
-        random_state: int | None = 42,
+        random_state: int | None = None,
         optimize: bool = False,
         neighbor_grid: Sequence[int] | None = None,
 ) -> Tuple[Any | None, pd.DataFrame]:
@@ -1620,7 +1609,7 @@ def run_phate(
         n_components: int = 2,
         knn: int | str | None = None,
         t: int | str | None = "auto",
-        random_state: int | None = 42,
+        random_state: int | None = None,
         optimize: bool = False,
 ) -> Tuple[Any | None, pd.DataFrame]:
     """Exécute PHATE sur les données CRM pour détecter des trajectoires potentielles.
@@ -1629,8 +1618,7 @@ def run_phate(
     par exemple le passage de prospect à client fidèle. Il s'appuie sur un
     graphe de voisins et une diffusion pour préserver la structure globale. Les
     valeurs par défaut (``knn=5``, ``t='auto'``) conviennent généralement aux
-    volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs et ``random_state=42``
-    assure la reproductibilité. Lorsque ``optimize`` est activé et qu'aucun
+    volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs. Lorsque ``optimize`` est activé et qu'aucun
     ``knn`` n'est fourni, une recherche sur grille utilise le nombre de
     modalités des variables de segmentation comme valeurs candidates.
     """
@@ -3448,6 +3436,9 @@ def main() -> None:
     n_jobs = int(config.get("n_jobs", 2))
     logger.info("Parallel executor using %d workers", n_jobs)
     methods = config.get("methods", [])
+    if "famd" in methods:
+        logger.info("FAMD step skipped")
+        methods.remove("famd")
     results: Dict[str, Dict[str, Any]] = {}
 
     start: Dict[str, float] = {}
