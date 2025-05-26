@@ -69,6 +69,10 @@ deterministic results. Run it with:
 python phase4v3.py --config config.yaml
 ```
 
+Set `stop_after_prep: true` in the configuration if you only wish to generate
+the cleaned dataset and exit before running the heavy dimensionality reduction
+steps.
+
 The recommended versions of the dependencies are listed in
 `requirements.txt` to ensure the same results can be reproduced later.
 

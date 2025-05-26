@@ -69,11 +69,11 @@ def _umap_distance_diff(train: pd.DataFrame, test: pd.DataFrame) -> float:
     cat_cols_t = [c for c in test.columns if c not in num_cols_t]
     X_test = _prepare_matrix(test, num_cols_t, cat_cols_t)
 
-    reducer = umap.UMAP(random_state=0)
+    reducer = umap.UMAP()
     reducer.fit(X_train)
     proj_test = reducer.transform(X_test)
 
-    reducer2 = umap.UMAP(random_state=0)
+    reducer2 = umap.UMAP()
     emb_test = reducer2.fit_transform(X_test)
 
     d1 = pairwise_distances(proj_test)
@@ -118,7 +118,7 @@ def unsupervised_cv_and_temporal_tests(
     if n_splits < 2:
         n_splits = 2
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=0)
+    kf = KFold(n_splits=n_splits, shuffle=True)
     pca_sims: list[float] = []
     umap_diffs: list[float] = []
     for train_idx, test_idx in kf.split(df_active):

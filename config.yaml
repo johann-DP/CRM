@@ -5,6 +5,7 @@ input_file: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19)
 output_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: 'D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
 n_jobs: 2
+stop_after_prep: false
 optimize_params: false
 methods: [famd, pca, mca, mfa, pcamix, umap, pacmap, phate, tsne]
 

@@ -89,6 +89,12 @@ def main() -> None:
     df_active, quant_vars, qual_vars = select_variables(df)
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
+    if config.get("stop_after_prep"):
+        csv_path = out_dir / "df_clean.csv"
+        df_active.to_csv(csv_path, index=False)
+        logging.info("stop_after_prep enabled - cleaned data saved to %s", csv_path)
+        return
+
     # ------------------------------------------------------------------
     # Dimensionality reduction
     # ------------------------------------------------------------------
