@@ -68,12 +68,6 @@ def run_umap(
     X = _to_numeric_matrix(df_active)
 
     start = time.time()
-    if random_state is not None and n_jobs not in (None, 1):
-        logging.getLogger(__name__).warning(
-            "random_state is set (%s): forcing n_jobs=1 for reproducibility",
-            random_state,
-        )
-        n_jobs = 1
 
     reducer = umap.UMAP(
         n_components=n_components,
@@ -108,7 +102,7 @@ def run_phate(
     n_components: int = 2,
     k: int = 15,
     a: int = 40,
-    random_state: int | None = 42,
+    random_state: int | None = None,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active`` and return embeddings with runtime."""
 
