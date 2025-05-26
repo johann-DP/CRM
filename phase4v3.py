@@ -248,32 +248,7 @@ def select_variables(
 from block4_factor_methods import run_all_factor_methods
 from nonlinear_methods import run_all_nonlin
 from block6_visualization import generate_figures
-from block7_evaluation import evaluate_methods, plot_methods_heatmap
-
-
-def compare_datasets_versions(datasets: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
-    """Apply the whole analysis pipeline on multiple dataset versions."""
-
-    comp_frames = []
-    all_figs: Dict[str, Any] = {}
-
-    for name, df in datasets.items():
-        df_active, quant_vars, qual_vars = select_variables(df)
-        f_res = run_all_factor_methods(df_active, quant_vars, qual_vars)
-        n_res = run_all_nonlin(df_active)
-        metrics = evaluate_methods(
-            {**f_res, **n_res}, df_active, quant_vars, qual_vars
-        )
-        metrics["dataset_version"] = name
-        comp_frames.append(metrics.assign(dataset_version=name))
-        figs = generate_figures(f_res, n_res, df_active, quant_vars, qual_vars)
-        for fname, fig in figs.items():
-            all_figs[f"{name}_{fname}"] = fig
-
-    comp_df = pd.concat(comp_frames).set_index("dataset_version", append=True)
-    comp_df = comp_df.reorder_levels(["dataset_version", "method"])
-
-    return {"metrics": comp_df, "figures": all_figs}
+from block9_unsupervised_cv import unsupervised_cv_and_temporal_tests
 
 
 def main() -> None:
@@ -308,13 +283,9 @@ def main() -> None:
     factor_results = run_all_factor_methods(df_active, quant_vars, qual_vars)
     nonlin_results = run_all_nonlin(df_active)
 
-    metrics = evaluate_methods(
-        {**factor_results, **nonlin_results}, df_active, quant_vars, qual_vars
-    )
+    cv_temporal = unsupervised_cv_and_temporal_tests(df_active, quant_vars, qual_vars)
 
-    figs = generate_figures(
-        factor_results, nonlin_results, df_active, quant_vars, qual_vars
-    )
+    figs = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
 
     out_dir = Path(config.get("output_dir", "phase4_output"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -324,6 +295,8 @@ def main() -> None:
 
     for name, fig in figs.items():
         fig.savefig(out_dir / f"{name}.png")
+    with open(out_dir / "cv_temporal_results.json", "w", encoding="utf-8") as fh:
+        json.dump(cv_temporal, fh, ensure_ascii=False, indent=2)
     print(f"Figures saved in {out_dir}")
 
 
