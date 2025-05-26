@@ -497,22 +497,37 @@ def select_variables(
     return df_active, quant_vars, qual_vars
 
 
-def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]) -> pd.DataFrame:
-    """Impute and optionally drop NA values for the provided DataFrame."""
+def handle_missing_values(
+    df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]
+) -> pd.DataFrame:
+    """Impute missing values and remove remaining invalid entries."""
+
     logger = logging.getLogger(__name__)
+
+    # Replace infinite values by NA so they can be handled uniformly
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
     na_count = int(df.isna().sum().sum())
     if na_count > 0:
-        logger.info(f"Imputation des {na_count} valeurs manquantes restantes")
+        logger.info("Imputation des %s valeurs manquantes restantes", na_count)
         if quant_vars:
             df[quant_vars] = df[quant_vars].fillna(df[quant_vars].median())
         for col in qual_vars:
-            if df[col].dtype.name == "category" and 'Non renseigné' not in df[col].cat.categories:
-                df[col] = df[col].cat.add_categories('Non renseigné')
-            df[col] = df[col].fillna('Non renseigné').astype('category')
+            if (
+                df[col].dtype.name == "category"
+                and "Non renseigné" not in df[col].cat.categories
+            ):
+                df[col] = df[col].cat.add_categories("Non renseigné")
+            df[col] = df[col].fillna("Non renseigné").astype("category")
+
+        # Second pass in case inf values were introduced by coercion above
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
         remaining_na = int(df.isna().sum().sum())
         if remaining_na > 0:
             logger.warning(
-                f"{remaining_na} NA subsistent après imputation → suppression des lignes concernées"
+                "%s NA subsistent après imputation → suppression des lignes concernées",
+                remaining_na,
             )
             df.dropna(inplace=True)
     else:
@@ -522,6 +537,7 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
         logger.error("Des NA demeurent dans df après traitement")
     else:
         logger.info("DataFrame sans NA prêt pour FAMD")
+
     return df
 
 
