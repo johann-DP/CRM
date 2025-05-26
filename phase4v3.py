@@ -248,7 +248,73 @@ def select_variables(
 from block4_factor_methods import run_all_factor_methods
 from nonlinear_methods import run_all_nonlin
 from block6_visualization import generate_figures
+from block7_evaluation import evaluate_methods, plot_methods_heatmap
 from block9_unsupervised_cv import unsupervised_cv_and_temporal_tests
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+
+def export_report_to_pdf(figures: Dict[str, plt.Figure],
+                         tables: Dict[str, Any],
+                         output_path: str | Path) -> None:
+    """Compile figures and tables into a single PDF report."""
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    def _df_to_fig(df: pd.DataFrame, title: str) -> plt.Figure:
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))
+        ax.axis("off")
+        ax.set_title(title)
+        tbl = ax.table(cellText=df.values,
+                       colLabels=df.columns,
+                       rowLabels=df.index,
+                       loc="center")
+        tbl.auto_set_font_size(False)
+        tbl.set_fontsize(8)
+        return fig
+
+    with PdfPages(out) as pdf:
+        # Title page
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))
+        ax.axis("off")
+        ax.text(0.5, 0.6, "Rapport Phase 4", ha="center", va="center", fontsize=16)
+        ax.text(0.5, 0.4, datetime.now().strftime("%d/%m/%Y"),
+                ha="center", va="center", fontsize=12)
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Figures
+        for name, fig in figures.items():
+            if fig is None:
+                continue
+            fig.suptitle(name.replace("_", " "))
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        # Tables and text
+        for name, obj in tables.items():
+            if isinstance(obj, plt.Figure):
+                pdf.savefig(obj)
+                plt.close(obj)
+            elif isinstance(obj, pd.DataFrame):
+                f = _df_to_fig(obj.round(2), name.replace("_", " "))
+                pdf.savefig(f)
+                plt.close(f)
+            else:
+                f, ax = plt.subplots(figsize=(8.27, 11.69))
+                ax.axis("off")
+                ax.set_title(name.replace("_", " "))
+                ax.text(0.5, 0.5, str(obj), ha="center", va="center")
+                pdf.savefig(f)
+                plt.close(f)
+
+        # Closing page
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Fin du rapport", ha="center", va="center")
+        pdf.savefig(fig)
+        plt.close(fig)
 
 
 def main() -> None:
@@ -287,6 +353,9 @@ def main() -> None:
 
     figs = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
 
+    metrics = evaluate_methods({**factor_results, **nonlin_results},
+                              df_active, quant_vars, qual_vars)
+
     out_dir = Path(config.get("output_dir", "phase4_output"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -295,9 +364,19 @@ def main() -> None:
 
     for name, fig in figs.items():
         fig.savefig(out_dir / f"{name}.png")
+
     with open(out_dir / "cv_temporal_results.json", "w", encoding="utf-8") as fh:
         json.dump(cv_temporal, fh, ensure_ascii=False, indent=2)
+
+    tables = {
+        "Comparaison des methodes": metrics,
+        "Validation croisee / Temporal": pd.DataFrame.from_dict(cv_temporal, orient="index"),
+    }
+
+    output_pdf = Path(config.get("output_pdf", out_dir / "phase4_report.pdf"))
+    export_report_to_pdf(figs, tables, output_pdf)
     print(f"Figures saved in {out_dir}")
+    print(f"PDF generated at {output_pdf}")
 
 
 if __name__ == "__main__":
