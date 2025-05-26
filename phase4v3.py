@@ -241,3 +241,55 @@ def select_variables(
     return df_active, quant_vars, qual_vars
 
 
+
+# ---------------------------------------------------------------------------
+# Integration of subsequent blocks
+# ---------------------------------------------------------------------------
+from block4_factor_methods import run_all_factor_methods
+from nonlinear_methods import run_all_nonlin
+from block6_visualization import generate_figures
+
+
+def main() -> None:
+    """Minimal orchestrator for phase 4 using helper functions."""
+    import argparse
+    import json
+    try:
+        import yaml  # type: ignore
+    except Exception:  # pragma: no cover - optional dependency
+        yaml = None
+
+    parser = argparse.ArgumentParser(description="Run phase 4 pipeline")
+    parser.add_argument("--config", required=True, help="YAML or JSON configuration")
+    args = parser.parse_args()
+
+    cfg_path = Path(args.config)
+    if not cfg_path.exists():
+        raise FileNotFoundError(cfg_path)
+    with open(cfg_path, "r", encoding="utf-8") as fh:
+        if cfg_path.suffix.lower() == ".json":
+            config = json.load(fh)
+        else:
+            if yaml is None:
+                raise RuntimeError("PyYAML is required for YAML configuration")
+            config = yaml.safe_load(fh)
+
+    datasets = load_datasets(config)
+    df = datasets.get("phase3") or datasets.get("phase2") or datasets.get("phase1") or datasets["raw"]
+
+    df_active, quant_vars, qual_vars = select_variables(df)
+
+    factor_results = run_all_factor_methods(df_active, quant_vars, qual_vars)
+    nonlin_results = run_all_nonlin(df_active)
+
+    figs = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
+
+    out_dir = Path(config.get("output_dir", "phase4_output"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, fig in figs.items():
+        fig.savefig(out_dir / f"{name}.png")
+    print(f"Figures saved in {out_dir}")
+
+
+if __name__ == "__main__":
+    main()
