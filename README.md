@@ -69,6 +69,9 @@ deterministic results. Run it with:
 python phase4v3.py --config config.yaml
 ```
 
+Set `stop_after_prep: true` in the configuration to abort the pipeline once the
+cleaned dataset has been written to `df_active.csv` in the output directory.
+
 The recommended versions of the dependencies are listed in
 `requirements.txt` to ensure the same results can be reproduced later.
 

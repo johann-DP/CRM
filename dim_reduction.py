@@ -24,7 +24,7 @@ def run_all_factor_methods(
     results = {
         "PCA": run_pca(df_active, quant_vars),
         "MCA": run_mca(df_active, qual_vars),
-        "FAMD": run_famd(df_active, quant_vars, qual_vars),
+        # "FAMD": run_famd(df_active, quant_vars, qual_vars),  # temporarily disabled
     }
     if groups is not None:
         results["MFA"] = run_mfa(df_active, groups)
