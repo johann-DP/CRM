@@ -89,6 +89,10 @@ def main() -> None:
     df_active, quant_vars, qual_vars = select_variables(df)
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
+    if config.get("stop_after_prep"):
+        logging.info("Préparation terminée, arrêt demandé par la configuration")
+        return
+
     # ------------------------------------------------------------------
     # Dimensionality reduction
     # ------------------------------------------------------------------
