@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
+from sklearn.preprocessing import StandardScaler
+
 import pandas as pd
 
 
@@ -110,4 +112,76 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
             logger.warning("Colonnes incohérentes pour %s (manquantes=%s, en_trop=%s)",
                            name, sorted(miss), sorted(extra))
     return datasets
+
+
+
+def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
+    """Clean and standardise a CRM dataset.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame loaded via :func:`load_datasets`.
+    exclude_lost : bool, optional
+        Whether to drop rows marked as lost or cancelled, by default ``True``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Cleaned and standardised DataFrame ready for analysis.
+    """
+    logger = logging.getLogger(__name__)
+    df_clean = df.copy()
+
+    # --- remove flagged outliers -----------------------------------------
+    flag_cols = [c for c in df_clean.columns if c.lower().startswith("flag_")]
+    for col in flag_cols:
+        try:
+            mask = df_clean[col].astype(bool)
+        except Exception:
+            continue
+        if mask.any():
+            logger.info("%s lignes exclues via %s", int(mask.sum()), col)
+            df_clean = df_clean.loc[~mask]
+        df_clean.drop(columns=col, inplace=True)
+
+    # --- date parsing and out-of-range filtering -------------------------
+    min_date = pd.Timestamp("1990-01-01")
+    max_date = pd.Timestamp("2050-12-31")
+    for col in df_clean.columns:
+        if "date" in col.lower():
+            df_clean[col] = pd.to_datetime(df_clean[col], errors="coerce")
+            mask = df_clean[col].lt(min_date) | df_clean[col].gt(max_date)
+            if mask.any():
+                logger.info("%s dates hors plage dans %s", int(mask.sum()), col)
+                df_clean.loc[mask, col] = pd.NaT
+
+    # --- basic missing value handling ------------------------------------
+    num_cols = df_clean.select_dtypes(include=[float, int]).columns.tolist()
+    for col in num_cols:
+        median = df_clean[col].median()
+        df_clean[col].fillna(median, inplace=True)
+    for col in df_clean.select_dtypes(include="object"):
+        df_clean[col] = df_clean[col].fillna("Non renseigné").astype("category")
+
+    # --- optional exclusion of lost deals --------------------------------
+    if exclude_lost:
+        if "Statut commercial" in df_clean.columns:
+            lost_values = {"Perdu", "Annulé", "Abandonné"}
+            mask = df_clean["Statut commercial"].isin(lost_values)
+            if mask.any():
+                logger.info("%s lignes perdues/annulées retirées", int(mask.sum()))
+                df_clean = df_clean.loc[~mask]
+        elif "Motif_non_conformité" in df_clean.columns:
+            mask = df_clean["Motif_non_conformité"].notna()
+            if mask.any():
+                logger.info("%s lignes retirées via Motif_non_conformité", int(mask.sum()))
+                df_clean = df_clean.loc[~mask]
+
+    # --- numeric standardisation ----------------------------------------
+    scaler = StandardScaler()
+    if num_cols:
+        df_clean[num_cols] = scaler.fit_transform(df_clean[num_cols])
+
+    return df_clean
 
