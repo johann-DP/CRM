@@ -98,7 +98,10 @@ def main() -> None:
         qual_vars,
         groups=config.get("mfa_groups"),
     )
-    nonlin_results = run_all_nonlin(df_active)
+    nonlin_results = run_all_nonlin(
+        df_active,
+        umap_params=config.get("umap", {}),
+    )
 
     # ------------------------------------------------------------------
     # Optional cross-validation and temporal tests
