@@ -130,7 +130,11 @@ def run_famd(
         index=df_active.index,
         columns=quant_vars,
     )
-    df_cat = df_active[qual_vars].astype("category")
+    df_cat = df_active[qual_vars].copy()
+    for col in df_cat.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_cat[col]):
+            df_cat[col] = df_cat[col].dt.strftime("%Y-%m-%d")
+        df_cat[col] = df_cat[col].astype("category")
     df_mix = pd.concat([df_quanti, df_cat], axis=1)
     df_mix.replace([np.inf, -np.inf], np.nan, inplace=True)
     if df_mix.isna().any().any():

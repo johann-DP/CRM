@@ -147,6 +147,8 @@ def select_variables(
 
     final_qual: List[str] = []
     for col in qual_vars:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].dt.strftime("%Y-%m-%d")
         df[col] = df[col].astype("category")
         counts = df[col].value_counts(dropna=False)
         rares = counts[counts < min_modalite_freq].index

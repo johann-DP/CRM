@@ -43,3 +43,15 @@ def test_run_famd_basic():
     assert cols.shape == (3, 2)
     assert contrib.shape == (3, 2)
     assert pytest.approx(float(inertia.sum()), rel=1e-6) == 1.0
+
+
+def test_run_famd_with_datetimes():
+    run_famd = load_run_famd()
+    df = pd.DataFrame({
+        'num': [1, 2, 3, 4],
+        'date': pd.to_datetime(['2020-01-01', '2020-01-02', '2020-01-03', '2020-01-04']),
+        'cat': ['a', 'b', 'a', 'b'],
+    })
+    famd, inertia, rows, cols, contrib = run_famd(df, ['num'], ['date', 'cat'], n_components=2)
+    assert rows.shape[0] == 4
+

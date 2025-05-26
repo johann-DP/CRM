@@ -2006,10 +2006,13 @@ def run_famd(
     )
 
     # 2) Assemblage du DataFrame mixte (quantitatif réduit + qualitatif brut)
-    df_for_famd = pd.concat(
-        [df_quanti_scaled, df_active[qual_vars].astype('category')],
-        axis=1
-    )
+    df_cat = df_active[qual_vars].copy()
+    for col in df_cat.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_cat[col]):
+            df_cat[col] = df_cat[col].dt.strftime("%Y-%m-%d")
+        df_cat[col] = df_cat[col].astype("category")
+
+    df_for_famd = pd.concat([df_quanti_scaled, df_cat], axis=1)
     if df_for_famd.isnull().any().any():
         logger.error("Des valeurs manquantes subsistent dans df_for_famd. Corriger avant FAMD.")
         raise ValueError("NA détectés dans df_for_famd")
