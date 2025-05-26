@@ -248,6 +248,7 @@ def select_variables(
 from block4_factor_methods import run_all_factor_methods
 from nonlinear_methods import run_all_nonlin
 from block6_visualization import generate_figures
+from block9_unsupervised_cv import unsupervised_cv_and_temporal_tests
 
 
 def main() -> None:
@@ -282,12 +283,16 @@ def main() -> None:
     factor_results = run_all_factor_methods(df_active, quant_vars, qual_vars)
     nonlin_results = run_all_nonlin(df_active)
 
+    cv_temporal = unsupervised_cv_and_temporal_tests(df_active, quant_vars, qual_vars)
+
     figs = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
 
     out_dir = Path(config.get("output_dir", "phase4_output"))
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, fig in figs.items():
         fig.savefig(out_dir / f"{name}.png")
+    with open(out_dir / "cv_temporal_results.json", "w", encoding="utf-8") as fh:
+        json.dump(cv_temporal, fh, ensure_ascii=False, indent=2)
     print(f"Figures saved in {out_dir}")
 
 
