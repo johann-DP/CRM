@@ -289,6 +289,10 @@ def main() -> None:
 
     out_dir = Path(config.get("output_dir", "phase4_output"))
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics.to_csv(out_dir / "methods_comparison.csv")
+    plot_methods_heatmap(metrics, out_dir)
+
     for name, fig in figs.items():
         fig.savefig(out_dir / f"{name}.png")
     with open(out_dir / "cv_temporal_results.json", "w", encoding="utf-8") as fh:
