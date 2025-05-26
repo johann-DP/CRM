@@ -127,7 +127,7 @@ def select_variables(
             exclude.add(col)
         elif (
             df[col].dtype == object
-            and df[col].str.len().mean() > 50
+            and df[col].astype(str).str.len().mean() > 50
             and df[col].nunique() > 20
         ):
             exclude.add(col)
