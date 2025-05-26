@@ -139,5 +139,13 @@ python fine_tune_mfa.py --config config_mfa.yaml
 ```
 
 The script exports metrics for each configuration and saves the best model (by
-silhouette and Calinski–Harabasz indices) in the configured output directory.
 
+## Running tests
+
+After installing the requirements (or using `setup.sh` in a Codex environment), run:
+
+```bash
+pytest
+```
+
+to execute the automated test suite.
