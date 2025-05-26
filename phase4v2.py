@@ -536,7 +536,7 @@ def handle_missing_values(
     if df.isna().any().any():
         logger.error("Des NA demeurent dans df après traitement")
     else:
-        logger.info("DataFrame sans NA prêt pour FAMD")
+        logger.info("DataFrame sans NA prêt")
 
     return df
 
@@ -3428,7 +3428,7 @@ def main() -> None:
     if df_active.isna().any().any():
         logger.error("Des NA demeurent dans df_active après traitement")
     else:
-        logger.info("DataFrame actif sans NA prêt pour FAMD")
+        logger.info("DataFrame actif sans NA prêt")
 
     segment_data(df_active, qual_vars, output_dir)
 
