@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple, Optional
 
 import pandas as pd
+import numpy as np
 
 
 def _read_generic(path: Path) -> pd.DataFrame:
@@ -110,4 +111,93 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
             logger.warning("Colonnes incohérentes pour %s (manquantes=%s, en_trop=%s)",
                            name, sorted(miss), sorted(extra))
     return datasets
+
+
+def select_variables(
+    df: pd.DataFrame,
+    *,
+    data_dict: Optional[pd.DataFrame] = None,
+    min_modalite_freq: int = 5,
+) -> Tuple[pd.DataFrame, List[str], List[str]]:
+    """Identify quantitative and qualitative variables for dimensional analyses.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame nettoyé issu de :func:`prepare_data`.
+    data_dict : Optional[pandas.DataFrame], optional
+        Dictionnaire précisant les variables actives (colonne ``keep`` booléenne).
+    min_modalite_freq : int, default=5
+        Seuil sous lequel les modalités rares sont regroupées en ``Autre``.
+
+    Returns
+    -------
+    tuple
+        ``(df_active, quant_vars, qual_vars)`` avec le DataFrame restreint aux
+        variables retenues.
+    """
+    logger = logging.getLogger(__name__)
+    df = df.copy()
+
+    # ----- 1. Exclusion des colonnes non informatives -----------------------
+    exclude: set[str] = set()
+    if data_dict is not None:
+        cols = {c.lower(): c for c in data_dict.columns}
+        name_col = next((cols[c] for c in ["variable", "column", "colonne"] if c in cols), None)
+        keep_col = next((cols[c] for c in ["keep", "active", "actif"] if c in cols), None)
+        if name_col and keep_col:
+            excl = data_dict.loc[~data_dict[keep_col].astype(bool), name_col].astype(str)
+            exclude.update(excl.tolist())
+
+    keywords = ["id", "code", "ident", "uuid", "titre", "comment", "desc", "texte"]
+    for col in df.columns:
+        low = col.lower()
+        if any(k in low for k in keywords):
+            exclude.add(col)
+        elif df[col].nunique(dropna=False) <= 1:
+            exclude.add(col)
+        elif df[col].isna().mean() > 0.9:
+            exclude.add(col)
+        elif (
+            df[col].dtype == object
+            and df[col].str.len().mean() > 50
+            and df[col].nunique() > 20
+        ):
+            exclude.add(col)
+
+    if exclude:
+        logger.info("Exclusion de %s colonnes non pertinentes", len(exclude))
+        df = df.drop(columns=[c for c in exclude if c in df.columns])
+
+    # ----- 2. Séparation quanti/quali --------------------------------------
+    quant_vars = list(df.select_dtypes(include=["number"]).columns)
+    qual_vars = [c for c in df.columns if c not in quant_vars]
+
+    for col in quant_vars:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if (df[col] > 0).all() and abs(df[col].skew()) > 3:
+            df[col] = np.log10(df[col] + 1)
+
+    # ----- 3. Traitement des qualitatives ----------------------------------
+    final_qual: List[str] = []
+    for col in qual_vars:
+        df[col] = df[col].astype("category")
+        counts = df[col].value_counts(dropna=False)
+        rares = counts[counts < min_modalite_freq].index
+        if len(rares):
+            df[col] = df[col].cat.add_categories("Autre")
+            df[col] = df[col].where(~df[col].isin(rares), "Autre").astype("category")
+        if df[col].nunique() > 1:
+            final_qual.append(col)
+
+    qual_vars = final_qual
+    quant_vars = [c for c in quant_vars if df[c].var(skipna=True) not in (0, float("nan"))]
+
+    selected = quant_vars + qual_vars
+    df_active = df[selected].copy()
+
+    logger.info("%s variables quantitatives conservées", len(quant_vars))
+    logger.info("%s variables qualitatives conservées", len(qual_vars))
+
+    return df_active, quant_vars, qual_vars
 
