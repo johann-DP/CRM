@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover - optional dependency
     yaml = None
 
 from data_processing import load_datasets, select_variables
+from phase4v2 import handle_missing_values
 from dim_reduction import run_all_factor_methods, run_all_nonlin
 from block6_visualization import generate_figures
 from evaluation import (
@@ -84,7 +85,9 @@ def main() -> None:
         or datasets.get("phase1")
         or datasets["raw"]
     )
+
     df_active, quant_vars, qual_vars = select_variables(df)
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
     # ------------------------------------------------------------------
     # Dimensionality reduction
