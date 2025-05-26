@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple, Optional
 
 from sklearn.preprocessing import StandardScaler
 
 import pandas as pd
+import numpy as np
 
 
 def _read_generic(path: Path) -> pd.DataFrame:
@@ -114,74 +115,92 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
     return datasets
 
 
-
-def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
-    """Clean and standardise a CRM dataset.
+def select_variables(
+    df: pd.DataFrame,
+    *,
+    data_dict: Optional[pd.DataFrame] = None,
+    min_modalite_freq: int = 5,
+) -> Tuple[pd.DataFrame, List[str], List[str]]:
+    """Identify quantitative and qualitative variables for dimensional analyses.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame loaded via :func:`load_datasets`.
-    exclude_lost : bool, optional
-        Whether to drop rows marked as lost or cancelled, by default ``True``.
+    df : pandas.DataFrame
+        DataFrame nettoyé issu de :func:`prepare_data`.
+    data_dict : Optional[pandas.DataFrame], optional
+        Dictionnaire précisant les variables actives (colonne ``keep`` booléenne).
+    min_modalite_freq : int, default=5
+        Seuil sous lequel les modalités rares sont regroupées en ``Autre``.
 
     Returns
     -------
-    pd.DataFrame
-        Cleaned and standardised DataFrame ready for analysis.
+    tuple
+        ``(df_active, quant_vars, qual_vars)`` avec le DataFrame restreint aux
+        variables retenues.
     """
     logger = logging.getLogger(__name__)
-    df_clean = df.copy()
+    df = df.copy()
 
-    # --- remove flagged outliers -----------------------------------------
-    flag_cols = [c for c in df_clean.columns if c.lower().startswith("flag_")]
-    for col in flag_cols:
-        try:
-            mask = df_clean[col].astype(bool)
-        except Exception:
-            continue
-        if mask.any():
-            logger.info("%s lignes exclues via %s", int(mask.sum()), col)
-            df_clean = df_clean.loc[~mask]
-        df_clean.drop(columns=col, inplace=True)
+    # ----- 1. Exclusion des colonnes non informatives -----------------------
+    exclude: set[str] = set()
+    if data_dict is not None:
+        cols = {c.lower(): c for c in data_dict.columns}
+        name_col = next((cols[c] for c in ["variable", "column", "colonne"] if c in cols), None)
+        keep_col = next((cols[c] for c in ["keep", "active", "actif"] if c in cols), None)
+        if name_col and keep_col:
+            excl = data_dict.loc[~data_dict[keep_col].astype(bool), name_col].astype(str)
+            exclude.update(excl.tolist())
 
-    # --- date parsing and out-of-range filtering -------------------------
-    min_date = pd.Timestamp("1990-01-01")
-    max_date = pd.Timestamp("2050-12-31")
-    for col in df_clean.columns:
-        if "date" in col.lower():
-            df_clean[col] = pd.to_datetime(df_clean[col], errors="coerce")
-            mask = df_clean[col].lt(min_date) | df_clean[col].gt(max_date)
-            if mask.any():
-                logger.info("%s dates hors plage dans %s", int(mask.sum()), col)
-                df_clean.loc[mask, col] = pd.NaT
+    keywords = ["id", "code", "ident", "uuid", "titre", "comment", "desc", "texte"]
+    for col in df.columns:
+        low = col.lower()
+        if any(k in low for k in keywords):
+            exclude.add(col)
+        elif df[col].nunique(dropna=False) <= 1:
+            exclude.add(col)
+        elif df[col].isna().mean() > 0.9:
+            exclude.add(col)
+        elif (
+            df[col].dtype == object
+            and df[col].str.len().mean() > 50
+            and df[col].nunique() > 20
+        ):
+            exclude.add(col)
 
-    # --- basic missing value handling ------------------------------------
-    num_cols = df_clean.select_dtypes(include=[float, int]).columns.tolist()
-    for col in num_cols:
-        median = df_clean[col].median()
-        df_clean[col].fillna(median, inplace=True)
-    for col in df_clean.select_dtypes(include="object"):
-        df_clean[col] = df_clean[col].fillna("Non renseigné").astype("category")
+    if exclude:
+        logger.info("Exclusion de %s colonnes non pertinentes", len(exclude))
+        df = df.drop(columns=[c for c in exclude if c in df.columns])
 
-    # --- optional exclusion of lost deals --------------------------------
-    if exclude_lost:
-        if "Statut commercial" in df_clean.columns:
-            lost_values = {"Perdu", "Annulé", "Abandonné"}
-            mask = df_clean["Statut commercial"].isin(lost_values)
-            if mask.any():
-                logger.info("%s lignes perdues/annulées retirées", int(mask.sum()))
-                df_clean = df_clean.loc[~mask]
-        elif "Motif_non_conformité" in df_clean.columns:
-            mask = df_clean["Motif_non_conformité"].notna()
-            if mask.any():
-                logger.info("%s lignes retirées via Motif_non_conformité", int(mask.sum()))
-                df_clean = df_clean.loc[~mask]
+    # ----- 2. Séparation quanti/quali --------------------------------------
+    quant_vars = list(df.select_dtypes(include=["number"]).columns)
+    qual_vars = [c for c in df.columns if c not in quant_vars]
 
-    # --- numeric standardisation ----------------------------------------
-    scaler = StandardScaler()
-    if num_cols:
-        df_clean[num_cols] = scaler.fit_transform(df_clean[num_cols])
+    for col in quant_vars:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if (df[col] > 0).all() and abs(df[col].skew()) > 3:
+            df[col] = np.log10(df[col] + 1)
 
-    return df_clean
+    # ----- 3. Traitement des qualitatives ----------------------------------
+    final_qual: List[str] = []
+    for col in qual_vars:
+        df[col] = df[col].astype("category")
+        counts = df[col].value_counts(dropna=False)
+        rares = counts[counts < min_modalite_freq].index
+        if len(rares):
+            df[col] = df[col].cat.add_categories("Autre")
+            df[col] = df[col].where(~df[col].isin(rares), "Autre").astype("category")
+        if df[col].nunique() > 1:
+            final_qual.append(col)
+
+    qual_vars = final_qual
+    quant_vars = [c for c in quant_vars if df[c].var(skipna=True) not in (0, float("nan"))]
+
+    selected = quant_vars + qual_vars
+    df_active = df[selected].copy()
+
+    logger.info("%s variables quantitatives conservées", len(quant_vars))
+    logger.info("%s variables qualitatives conservées", len(qual_vars))
+
+    return df_active, quant_vars, qual_vars
+
 
