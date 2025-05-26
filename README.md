@@ -54,10 +54,9 @@ analyses. UMAP accepts several parameters in `config.yaml`, including
 
 ### UMAP warnings
 
-UMAP emits a warning when `random_state` is provided while using multiple
-threads. The provided configuration sets `n_jobs: 1` whenever a seed is used to
-avoid this warning and keep results reproducible. You can remove the seed if you
-prefer parallelism over determinism.
+UMAP runs in parallel by default (`n_jobs: -1`). If you set `random_state` for
+reproducibility, the library falls back to a single thread and prints a
+warning. Remove the seed if maximum CPU usage is preferred.
 
 ## Running `phase4v3.py`
 

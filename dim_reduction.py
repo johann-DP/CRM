@@ -31,12 +31,33 @@ def run_all_factor_methods(
     return results
 
 
-def run_all_nonlin(df_active: Any) -> Dict[str, Dict[str, Any]]:
+def run_all_nonlin(
+    df_active: Any,
+    *,
+    umap_params: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Dict[str, Any]]:
     """Run UMAP, PHATE and PaCMAP on the given dataset."""
+
     results: Dict[str, Dict[str, Any]] = {}
-    for name, func in (("UMAP", run_umap), ("PHATE", run_phate), ("PACMAP", run_pacmap)):
+
+    allowed_umap_keys = {
+        "n_components",
+        "n_neighbors",
+        "min_dist",
+        "random_state",
+        "n_jobs",
+    }
+    filtered_umap = {
+        k: v for k, v in (umap_params or {}).items() if k in allowed_umap_keys
+    }
+
+    for name, func, params in [
+        ("UMAP", run_umap, filtered_umap),
+        ("PHATE", run_phate, {}),
+        ("PACMAP", run_pacmap, {}),
+    ]:
         try:
-            results[name] = func(df_active)
+            results[name] = func(df_active, **params)
         except Exception as exc:  # pragma: no cover - missing deps
             results[name] = {"error": str(exc)}
     return results
