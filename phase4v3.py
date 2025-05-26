@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
+from sklearn.preprocessing import StandardScaler
+
 import pandas as pd
 import numpy as np
 
@@ -200,4 +202,5 @@ def select_variables(
     logger.info("%s variables qualitatives conservées", len(qual_vars))
 
     return df_active, quant_vars, qual_vars
+
 
