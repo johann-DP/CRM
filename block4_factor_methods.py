@@ -80,6 +80,9 @@ def run_mca(df_active: pd.DataFrame, qual_vars: List[str]) -> Dict[str, object]:
     start = time()
 
     df_cat = df_active[qual_vars].astype("category")
+    df_cat.replace([np.inf, -np.inf], np.nan, inplace=True)
+    if df_cat.isna().any().any():
+        df_cat = df_cat.fillna("Non renseigné").astype("category")
     max_dim = sum(df_cat[c].nunique() for c in df_cat.columns) - len(df_cat.columns)
 
     tmp = prince.MCA(n_components=max_dim).fit(df_cat)
