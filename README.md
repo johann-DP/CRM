@@ -26,7 +26,9 @@ packages with:
 python -m pip install -r requirements.txt
 ```
 In a Codex environment this step is automated: the `setup.sh` script in the
-repository runs the same command before network access is disabled.
+repository installs the dependencies before network access is disabled. The
+script also installs helpful utilities like `nano`, `vim` and `htop` so they are
+available inside the container.
 
 If you encounter an error similar to::
 
