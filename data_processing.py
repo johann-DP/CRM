@@ -23,9 +23,11 @@ def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         low = col.lower()
         if "date" in low:
-            df[col] = pd.to_datetime(df[col], errors="ignore")
+            df[col] = pd.to_datetime(df[col], errors="coerce")
         elif df[col].dtype == object:
-            cleaned = pd.to_numeric(df[col].str.replace(",", ".", regex=False), errors="ignore")
+            cleaned = pd.to_numeric(
+                df[col].str.replace(",", ".", regex=False), errors="coerce"
+            )
             if cleaned.notna().any():
                 df[col] = cleaned
     return df
