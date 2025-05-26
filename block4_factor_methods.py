@@ -80,6 +80,9 @@ def run_mca(df_active: pd.DataFrame, qual_vars: List[str]) -> Dict[str, object]:
     start = time()
 
     df_cat = df_active[qual_vars].astype("category")
+    df_cat.replace([np.inf, -np.inf], np.nan, inplace=True)
+    if df_cat.isna().any().any():
+        df_cat = df_cat.fillna("Non renseigné").astype("category")
     max_dim = sum(df_cat[c].nunique() for c in df_cat.columns) - len(df_cat.columns)
 
     tmp = prince.MCA(n_components=max_dim).fit(df_cat)
@@ -120,6 +123,15 @@ def run_famd(
     )
     df_cat = df_active[qual_vars].astype("category")
     df_mix = pd.concat([df_quanti, df_cat], axis=1)
+    df_mix.replace([np.inf, -np.inf], np.nan, inplace=True)
+    if df_mix.isna().any().any():
+        num_cols = df_mix.select_dtypes(include="number").columns
+        cat_cols = [c for c in df_mix.columns if c not in num_cols]
+        if len(num_cols):
+            df_mix[num_cols] = df_mix[num_cols].fillna(0)
+        for col in cat_cols:
+            df_mix[col] = df_mix[col].cat.add_categories("Non renseigné")
+            df_mix[col] = df_mix[col].fillna("Non renseigné")
 
     tmp = prince.FAMD(n_components=df_mix.shape[1], n_iter=3, engine="sklearn").fit(df_mix)
     eigenvalues = getattr(tmp, "eigenvalues_", None)
@@ -170,6 +182,13 @@ def run_mfa(
             sub = pd.get_dummies(sub, columns=cat_cols)
         group_dict[gname] = list(sub.columns)
         df_proc = pd.concat([df_proc, sub], axis=1)
+
+    df_proc.replace([np.inf, -np.inf], np.nan, inplace=True)
+    if df_proc.isna().any().any():
+        num_cols_all = df_proc.select_dtypes(include="number").columns
+        if len(num_cols_all):
+            df_proc[num_cols_all] = df_proc[num_cols_all].fillna(0)
+        df_proc = df_proc.fillna(0)
 
     tmp = prince.MFA(n_components=df_proc.shape[1]).fit(df_proc, groups=group_dict)
     eigenvalues = getattr(tmp, "eigenvalues_", None)
