@@ -402,97 +402,89 @@ def prepare_data(df: pd.DataFrame, metrics_dir: Optional[str] = None) -> pd.Data
 
 
 def select_variables(
-        df: pd.DataFrame,
-        min_modalite_freq: int = 5
+    df: pd.DataFrame,
+    *,
+    data_dict: Optional[pd.DataFrame] = None,
+    min_modalite_freq: int = 5,
 ) -> Tuple[pd.DataFrame, List[str], List[str]]:
-    """
-    Sélectionne les variables actives pour l'AFDM à partir du DataFrame préparé.
+    """Identify quantitative and qualitative variables for the analysis.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame nettoyé issu de prepare_data().
+        DataFrame nettoyé issu de :func:`prepare_data`.
+    data_dict : Optional[pd.DataFrame], optional
+        Dictionnaire précisant les variables actives (colonne ``keep`` booléenne).
     min_modalite_freq : int, default=5
-        Seuil minimal de fréquence pour regrouper les modalités rares en 'Autre'.
+        Seuil sous lequel les modalités rares sont regroupées en ``Autre``.
 
     Returns
     -------
     df_active : pd.DataFrame
-        Sous-ensemble de df ne contenant que les variables sélectionnées.
-    quant_vars : List[str]
-        Liste des noms de variables quantitatives retenues.
-    qual_vars : List[str]
-        Liste des noms de variables qualitatives retenues.
-
-    Notes
-    -----
-    - Exclut les variables identifiants (ex. Code, Client).
-    - Regroupe les modalités rares (< min_modalite_freq) en 'Autre' pour chaque qualitative.
-    - Élimine les variables à variance nulle (quantitatives) ou à unique modalité (qualitatives).
-    - Les listes de variables candidates doivent refléter les enseignements des Phases 1–3.
+        DataFrame restreint aux variables retenues.
+    quant_vars : list[str]
+        Variables quantitatives conservées.
+    qual_vars : list[str]
+        Variables qualitatives conservées.
     """
+
     logger = logging.getLogger(__name__)
+    df = df.copy()
 
-    # 1) Listes candidates basées sur Phases 1–3
-    candidate_quant = [
-        'Total recette actualisé',
-        'Total recette réalisé',
-        'Total recette produit',
-        'Budget client estimé',
-        'duree_projet_jours',
-        'taux_realisation',
-        'marge_estimee'
-    ]
-    candidate_qual = [
-        'Statut commercial',
-        'Statut production',
-        'Type opportunité',
-        'Catégorie',
-        'Sous-catégorie',
-        'Pilier',
-        'Entité opérationnelle',
-        'Présence partenaire'
-    ]
+    # ----- 1. Identification des colonnes à exclure ---------------------------
+    exclude: set[str] = set()
+    if data_dict is not None:
+        cols = {c.lower(): c for c in data_dict.columns}
+        name_col = next((cols[c] for c in ["variable", "column", "colonne"] if c in cols), None)
+        keep_col = next((cols[c] for c in ["keep", "active", "actif"] if c in cols), None)
+        if name_col and keep_col:
+            excl = data_dict.loc[~data_dict[keep_col].astype(bool), name_col].astype(str)
+            exclude.update(excl.tolist())
 
-    # 2) Intersection avec les colonnes disponibles
-    quant_vars = [c for c in candidate_quant if c in df.columns]
-    qual_vars = [c for c in candidate_qual if c in df.columns]
-    logger.info(f"Variables quantitatives candidates retenues : {quant_vars}")
-    logger.info(f"Variables qualitatives candidates retenues : {qual_vars}")
+    keywords = ["id", "code", "ident", "uuid", "titre", "comment", "desc", "texte"]
+    for col in df.columns:
+        low = col.lower()
+        if any(k in low for k in keywords):
+            exclude.add(col)
+        elif df[col].nunique(dropna=False) <= 1:
+            exclude.add(col)
+        elif df[col].isna().mean() > 0.9:
+            exclude.add(col)
+        elif df[col].dtype == object and df[col].str.len().mean() > 50 and df[col].nunique() > 20:
+            exclude.add(col)
 
-    # 3) Exclusion des identifiants et non-pertinentes
-    exclude = {'Code', 'Client', 'Contact principal', 'Titre'}
-    quant_vars = [c for c in quant_vars if c not in exclude]
-    qual_vars = [c for c in qual_vars if c not in exclude]
+    if exclude:
+        logger.info("Exclusion de %s colonnes non pertinentes", len(exclude))
+        df = df.drop(columns=[c for c in exclude if c in df.columns])
 
-    # 4) Filtrage des quantitatives : on retire celles à variance nulle
-    quant_vars = [c for c in quant_vars if df[c].var() not in (0, float('nan'))]
-    logger.info(f"Quantitatives après variance > 0 : {quant_vars}")
+    # ----- 2. Séparation quantitatives / qualitatives -------------------------
+    quant_vars = list(df.select_dtypes(include=["number"]).columns)
+    qual_vars = [c for c in df.columns if c not in quant_vars]
 
-    # 5) Traitement des qualitatives :
-    #    - Regrouper les modalités rares en 'Autre'
-    #    - Supprimer variables à unique modalité
+    for col in quant_vars:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if (df[col] > 0).all() and abs(df[col].skew()) > 3:
+            df[col] = np.log10(df[col] + 1)
+
     final_qual = []
     for col in qual_vars:
+        df[col] = df[col].astype("category")
         counts = df[col].value_counts(dropna=False)
         rares = counts[counts < min_modalite_freq].index
         if len(rares):
-            logger.info(f"{len(rares)} modalités rares dans '{col}' → regroupement en 'Autre'")
-            df[col] = df[col].cat.add_categories('Autre')
-            df[col] = df[col].apply(lambda x: 'Autre' if x in rares else x).astype('category')
-        # Vérifier la cardinalité après regroupement
+            df[col] = df[col].cat.add_categories("Autre")
+            df[col] = df[col].where(~df[col].isin(rares), "Autre").astype("category")
         if df[col].nunique() > 1:
             final_qual.append(col)
-        else:
-            logger.warning(f"Variable qualitative '{col}' exclue (une seule modalité restante)")
 
     qual_vars = final_qual
-    logger.info(f"Qualitatives finales : {qual_vars}")
+    quant_vars = [c for c in quant_vars if df[c].var(skipna=True) not in (0, float("nan"))]
 
-    # 6) Constitution du DataFrame actif
-    selected_cols = quant_vars + qual_vars
-    df_active = df[selected_cols].copy()
-    logger.info(f"DataFrame actif avec {len(selected_cols)} variables")
+    selected = quant_vars + qual_vars
+    df_active = df[selected].copy()
+
+    logger.info("%s variables quantitatives conservées", len(quant_vars))
+    logger.info("%s variables qualitatives conservées", len(qual_vars))
 
     return df_active, quant_vars, qual_vars
 
