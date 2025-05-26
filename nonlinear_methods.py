@@ -8,6 +8,7 @@ the fitted model/operator, the resulting embeddings and runtime.
 from __future__ import annotations
 
 import time
+import logging
 from typing import Any, Dict
 
 import numpy as np
