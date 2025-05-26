@@ -17,6 +17,43 @@ from sklearn.preprocessing import StandardScaler
 
 import pandas as pd
 
+# scripts de fine-tuning fournis (Bloc 1-bis)
+try:
+    from fine_tune_famd import run_famd as tune_famd
+except ImportError:
+    logging.getLogger(__name__).warning("Module fine_tune_famd introuvable")
+    tune_famd = None
+try:
+    from fine_tune_pca import run_pca as tune_pca
+except ImportError:
+    logging.getLogger(__name__).warning("Module fine_tune_pca introuvable")
+    tune_pca = None
+try:
+    from fine_tuning_mca import run_mca as tune_mca
+except ImportError:
+    logging.getLogger(__name__).warning("Module fine_tuning_mca introuvable")
+    tune_mca = None
+try:
+    from fine_tune_mfa import run_mfa as tune_mfa
+except ImportError:
+    logging.getLogger(__name__).warning("Module fine_tune_mfa introuvable")
+    tune_mfa = None
+try:
+    from fine_tuning_umap import run_umap as tune_umap
+except ImportError:
+    logging.getLogger(__name__).warning("Module fine_tuning_umap introuvable")
+    tune_umap = None
+try:
+    from phase4_fine_tune_phate import run_phate as tune_phate
+except ImportError:
+    logging.getLogger(__name__).warning("Module phase4_fine_tune_phate introuvable")
+    tune_phate = None
+try:
+    from pacmap_fine_tune import run_pacmap as tune_pacmap
+except ImportError:
+    logging.getLogger(__name__).warning("Module pacmap_fine_tune introuvable")
+    tune_pacmap = None
+
 
 def _read_generic(path: Path) -> pd.DataFrame:
     """Read a CSV or Excel file depending on its suffix."""
