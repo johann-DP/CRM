@@ -1,6 +1,6 @@
 import pandas as pd
 
-from dataset_comparison import compare_datasets_versions
+import dataset_comparison as dc
 
 
 def sample_datasets():
@@ -21,7 +21,7 @@ def sample_datasets():
 
 def test_compare_versions_basic():
     datasets = sample_datasets()
-    res = compare_datasets_versions(datasets, min_modalite_freq=1)
+    res = dc.compare_datasets_versions(datasets, min_modalite_freq=1)
 
     combined = res["metrics"]
     assert set(combined["dataset_version"]) == {"phase1", "phase3"}
@@ -32,3 +32,18 @@ def test_compare_versions_basic():
     for d in details.values():
         assert isinstance(d["figures"], dict)
         assert not d["metrics"].empty
+
+
+def test_compare_versions_monkeypatched(monkeypatch, tmp_path):
+    datasets = sample_datasets()
+
+    def dummy_eval(*_args, **_kwargs):
+        return pd.DataFrame({"silhouette": [0.5]}, index=["dummy"])
+
+    monkeypatch.setattr(dc, "evaluate_methods", dummy_eval)
+    monkeypatch.setattr(dc, "generate_figures", lambda *a, **k: {})
+
+    res = dc.compare_datasets_versions(datasets, min_modalite_freq=1, output_dir=tmp_path)
+    combined = res["metrics"]
+    assert len(combined) == len(datasets)
+    assert set(combined["dataset_version"]) == set(datasets)
