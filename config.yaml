@@ -1,6 +1,4 @@
-# Example configuration for phase4v2.py
-# Adjust the paths as needed. Below reflects the original dataset location used
-# when `phase4_famd.py` was created.
+# Configuration
 # Use UNC paths when running over the network from another machine
 input_file: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx'
 output_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
