@@ -1405,6 +1405,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         groups.append(qual_vars)
     if "mfa" in methods_cfg and len(groups) > 1:
         params = _filter_kwargs(run_mfa, _method_params("mfa", config))
+        # Allow overriding the automatically determined groups via the config
+        # while avoiding passing the ``groups`` parameter twice
+        cfg_groups = params.pop("groups", None)
+        if cfg_groups:
+            groups = cfg_groups
         if "n_components" in params:
             params["n_components"] = min(params["n_components"], df_active.shape[1])
         factor_results["mfa"] = run_mfa(
