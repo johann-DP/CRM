@@ -1486,7 +1486,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     np.random.seed(0)
     random.seed(0)
     cfg = _load_config(Path(args.config))
-    CONFIG.update(cfg)
     run_pipeline(cfg)
 
 
