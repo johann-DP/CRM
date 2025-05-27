@@ -1308,7 +1308,7 @@ def _params_for(method: str) -> Dict[str, Any]:
 
 def _filter_kwargs(func: Any, params: Dict[str, Any]) -> Dict[str, Any]:
     sig = inspect.signature(func)
-    return {k: v for k, v in params.items() if k in sig.parameters}
+    return {k: v for k, v in params.items() if k in sig.parameters and v is not None}
 
 
 def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
