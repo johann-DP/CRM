@@ -6,6 +6,7 @@ import datetime
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Mapping, Union
 
@@ -84,6 +85,9 @@ def export_report_to_pdf(
 
     logger.info("Exporting PDF report to %s", out)
 
+    # Ensure previous figures do not accumulate and trigger warnings
+    plt.close("all")
+
     try:
         from fpdf import FPDF  # type: ignore
 
@@ -138,10 +142,8 @@ def export_report_to_pdf(
         pdf.output(str(out))
 
         for p in tmp_paths:
-            try:
+            with suppress(OSError):
                 os.remove(p)
-            except OSError:
-                pass
 
         plt.close("all")
 
@@ -162,6 +164,15 @@ def export_report_to_pdf(
                     continue
                 if isinstance(figure, (str, Path)):
                     img = plt.imread(figure)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                    continue
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
                     f, ax = plt.subplots()
                     ax.imshow(img)
                     ax.axis("off")
