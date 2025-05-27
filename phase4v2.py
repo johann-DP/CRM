@@ -497,22 +497,37 @@ def select_variables(
     return df_active, quant_vars, qual_vars
 
 
-def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]) -> pd.DataFrame:
-    """Impute and optionally drop NA values for the provided DataFrame."""
+def handle_missing_values(
+    df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]
+) -> pd.DataFrame:
+    """Impute missing values and remove remaining invalid entries."""
+
     logger = logging.getLogger(__name__)
+
+    # Replace infinite values by NA so they can be handled uniformly
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
     na_count = int(df.isna().sum().sum())
     if na_count > 0:
-        logger.info(f"Imputation des {na_count} valeurs manquantes restantes")
+        logger.info("Imputation des %s valeurs manquantes restantes", na_count)
         if quant_vars:
             df[quant_vars] = df[quant_vars].fillna(df[quant_vars].median())
         for col in qual_vars:
-            if df[col].dtype.name == "category" and 'Non renseigné' not in df[col].cat.categories:
-                df[col] = df[col].cat.add_categories('Non renseigné')
-            df[col] = df[col].fillna('Non renseigné').astype('category')
+            if (
+                df[col].dtype.name == "category"
+                and "Non renseigné" not in df[col].cat.categories
+            ):
+                df[col] = df[col].cat.add_categories("Non renseigné")
+            df[col] = df[col].fillna("Non renseigné").astype("category")
+
+        # Second pass in case inf values were introduced by coercion above
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
         remaining_na = int(df.isna().sum().sum())
         if remaining_na > 0:
             logger.warning(
-                f"{remaining_na} NA subsistent après imputation → suppression des lignes concernées"
+                "%s NA subsistent après imputation → suppression des lignes concernées",
+                remaining_na,
             )
             df.dropna(inplace=True)
     else:
@@ -522,6 +537,7 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
         logger.error("Des NA demeurent dans df après traitement")
     else:
         logger.info("DataFrame sans NA prêt pour FAMD")
+
     return df
 
 
@@ -1242,8 +1258,8 @@ def run_umap(
         n_neighbors: Optional[int] = None,
         min_dist: Optional[float] = None,
         n_components: int = 2,
-        random_state: int | None = 42,
-        n_jobs: int | None = None,
+        random_state: int | None = None,
+        n_jobs: int | None = -1,
         metric: str = "euclidean",
         optimize: bool = False,
 ) -> Tuple[umap.UMAP, pd.DataFrame]:
@@ -1260,10 +1276,8 @@ def run_umap(
         min_dist: Distance minimale UMAP.
         n_components: Dimension de sortie (2 ou 3).
         random_state: Graine pour reproductibilité. ``None`` pour laisser
-            UMAP utiliser le parallélisme.
-        n_jobs: Nombre de threads UMAP. Si ``random_state`` est défini et
-            ``n_jobs`` n'est pas ``1``, la valeur sera forcée à ``1`` pour
-            éviter le warning de ``umap-learn``.
+            UMAP exploiter tous les cœurs.
+        n_jobs: Nombre de threads UMAP (``-1`` pour tous les cœurs).
         metric: Fonction de distance à utiliser ("euclidean", "manhattan",
             "cosine", ...).
         optimize: si ``True`` et que ``n_neighbors``/``min_dist`` ne sont pas
@@ -1299,21 +1313,12 @@ def run_umap(
     dist = min_dist if min_dist is not None else 0.1
 
     def _build_umap(nn, md):
-        nj = n_jobs
-        if random_state is not None:
-            if nj not in (None, 1):
-                logger.warning(
-                    "random_state défini (%s) : n_jobs=%s forcé à 1 pour garantir la reproductibilité",
-                    random_state,
-                    nj,
-                )
-            nj = -1
         return umap.UMAP(
             n_neighbors=nn,
             min_dist=md,
             n_components=n_components,
             random_state=random_state,
-            n_jobs=nj,
+            n_jobs=n_jobs,
             metric=metric,
         )
 
@@ -1437,7 +1442,7 @@ def run_pacmap(
         n_neighbors: Optional[int] = None,
         MN_ratio: float = 0.5,
         FP_ratio: float = 2.0,
-        random_state: int | None = 42,
+        random_state: int | None = None,
         optimize: bool = False,
         neighbor_grid: Sequence[int] | None = None,
 ) -> Tuple[Any | None, pd.DataFrame]:
@@ -1604,7 +1609,7 @@ def run_phate(
         n_components: int = 2,
         knn: int | str | None = None,
         t: int | str | None = "auto",
-        random_state: int | None = 42,
+        random_state: int | None = None,
         optimize: bool = False,
 ) -> Tuple[Any | None, pd.DataFrame]:
     """Exécute PHATE sur les données CRM pour détecter des trajectoires potentielles.
@@ -1613,8 +1618,7 @@ def run_phate(
     par exemple le passage de prospect à client fidèle. Il s'appuie sur un
     graphe de voisins et une diffusion pour préserver la structure globale. Les
     valeurs par défaut (``knn=5``, ``t='auto'``) conviennent généralement aux
-    volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs et ``random_state=42``
-    assure la reproductibilité. Lorsque ``optimize`` est activé et qu'aucun
+    volumes CRM ; ``n_jobs=-1`` exploite tous les cœurs. Lorsque ``optimize`` est activé et qu'aucun
     ``knn`` n'est fourni, une recherche sur grille utilise le nombre de
     modalités des variables de segmentation comme valeurs candidates.
     """
@@ -1990,10 +1994,13 @@ def run_famd(
     )
 
     # 2) Assemblage du DataFrame mixte (quantitatif réduit + qualitatif brut)
-    df_for_famd = pd.concat(
-        [df_quanti_scaled, df_active[qual_vars].astype('category')],
-        axis=1
-    )
+    df_cat = df_active[qual_vars].copy()
+    for col in df_cat.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_cat[col]):
+            df_cat[col] = df_cat[col].dt.strftime("%Y-%m-%d")
+        df_cat[col] = df_cat[col].astype("category")
+
+    df_for_famd = pd.concat([df_quanti_scaled, df_cat], axis=1)
     if df_for_famd.isnull().any().any():
         logger.error("Des valeurs manquantes subsistent dans df_for_famd. Corriger avant FAMD.")
         raise ValueError("NA détectés dans df_for_famd")
@@ -3429,6 +3436,9 @@ def main() -> None:
     n_jobs = int(config.get("n_jobs", 2))
     logger.info("Parallel executor using %d workers", n_jobs)
     methods = config.get("methods", [])
+    if "famd" in methods:
+        logger.info("FAMD step skipped")
+        methods.remove("famd")
     results: Dict[str, Dict[str, Any]] = {}
 
     start: Dict[str, float] = {}

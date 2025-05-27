@@ -26,7 +26,9 @@ packages with:
 python -m pip install -r requirements.txt
 ```
 In a Codex environment this step is automated: the `setup.sh` script in the
-repository runs the same command before network access is disabled.
+repository installs the dependencies before network access is disabled. The
+script also installs helpful utilities like `nano`, `vim` and `htop` so they are
+available inside the container.
 
 If you encounter an error similar to::
 
@@ -52,10 +54,23 @@ analyses. UMAP accepts several parameters in `config.yaml`, including
 
 ### UMAP warnings
 
-UMAP emits a warning when `random_state` is provided while using multiple
-threads. The provided configuration sets `n_jobs: 1` whenever a seed is used to
-avoid this warning and keep results reproducible. You can remove the seed if you
-prefer parallelism over determinism.
+UMAP runs in parallel by default (`n_jobs: -1`). If you set `random_state` for
+reproducibility, the library falls back to a single thread and prints a
+warning. Remove the seed if maximum CPU usage is preferred.
+
+## Running `phase4v3.py`
+
+The file `phase4v3.py` offers a modular pipeline that orchestrates the different
+blocks of Phase 4. It reads a JSON or YAML configuration just like
+`phase4v2.py` but writes logs to `phase4.log` and fixes the random seed for
+deterministic results. Run it with:
+
+```bash
+python phase4v3.py --config config.yaml
+```
+
+The recommended versions of the dependencies are listed in
+`requirements.txt` to ensure the same results can be reproduced later.
 
 ## Running `phase4_famd.py`
 
@@ -123,5 +138,13 @@ python fine_tune_mfa.py --config config_mfa.yaml
 ```
 
 The script exports metrics for each configuration and saves the best model (by
-silhouette and Calinski–Harabasz indices) in the configured output directory.
 
+## Running tests
+
+After installing the requirements (or using `setup.sh` in a Codex environment), run:
+
+```bash
+pytest
+```
+
+to execute the automated test suite.
