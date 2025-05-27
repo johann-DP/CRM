@@ -42,3 +42,25 @@ def test_prepare_data_basic():
 
     # derived columns exist
     assert {"duree_projet_jours", "taux_realisation", "marge_estimee"} <= set(cleaned.columns)
+
+
+def test_prepare_data_flag_file(tmp_path: Path):
+    mod = importlib.import_module("data_preparation")
+
+    df = pd.DataFrame(
+        {
+            "Code": [1, 2, 3],
+            "Date de début actualisée": ["2024-01-01"] * 3,
+            "Date de fin réelle": ["2024-01-02"] * 3,
+            "Total recette réalisé": [10, 20, 30],
+            "Budget client estimé": [10, 20, 30],
+        }
+    )
+
+    flagged = pd.DataFrame({"Code": [2]})
+    flagged_path = tmp_path / "dataset_phase3_flagged.csv"
+    flagged.to_csv(flagged_path, index=False)
+
+    cleaned = mod.prepare_data(df, exclude_lost=False, flagged_ids_path=flagged_path)
+
+    assert list(cleaned["Code"]) == [1, 3]

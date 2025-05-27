@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 
 
@@ -23,7 +24,10 @@ logger = logging.getLogger(__name__)
 # Public API
 # ---------------------------------------------------------------------------
 
-def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
+
+def prepare_data(
+    df: pd.DataFrame, *, exclude_lost: bool = True, flagged_ids_path: str | Path | None = None
+) -> pd.DataFrame:
     """Return a cleaned and standardised copy of ``df``.
 
     Parameters
@@ -33,6 +37,10 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
     exclude_lost : bool, default ``True``
         If ``True``, rows marked as lost or cancelled opportunities are
         removed from the returned DataFrame.
+    flagged_ids_path : str or Path, optional
+        Optional CSV file containing an identifier column named ``Code`` to
+        remove additional rows flagged as outliers during phase 3. The file is
+        ignored if not found.
 
     Returns
     -------
@@ -85,7 +93,32 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
             logger.info("%d duplicated rows dropped", before - len(df_clean))
 
     # ------------------------------------------------------------------
-    # 4) Derived indicators used in later analyses
+    # 4) Optional external list of outliers to exclude
+    # ------------------------------------------------------------------
+    flagged_file = (
+        Path(flagged_ids_path)
+        if flagged_ids_path is not None
+        else Path(__file__).with_name("dataset_phase3_flagged.csv")
+    )
+    if flagged_file.is_file() and "Code" in df_clean.columns:
+        try:
+            flagged_df = pd.read_csv(flagged_file)
+        except Exception as exc:  # pragma: no cover - unexpected I/O error
+            logger.warning("Could not read %s: %s", flagged_file, exc)
+        else:
+            if "Code" in flagged_df.columns:
+                flagged_ids = set(flagged_df["Code"])
+                mask_flagged = df_clean["Code"].isin(flagged_ids)
+                if mask_flagged.any():
+                    logger.info(
+                        "%d outliers removed via '%s'",
+                        int(mask_flagged.sum()),
+                        flagged_file.name,
+                    )
+                    df_clean = df_clean.loc[~mask_flagged]
+
+    # ------------------------------------------------------------------
+    # 5) Derived indicators used in later analyses
     # ------------------------------------------------------------------
     if {"Date de début actualisée", "Date de fin réelle"} <= set(df_clean.columns):
         df_clean["duree_projet_jours"] = (
@@ -99,7 +132,7 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
         df_clean["marge_estimee"] = df_clean["Total recette réalisé"] - df_clean["Charge prévisionnelle projet"]
 
     # ------------------------------------------------------------------
-    # 5) Simple missing value handling
+    # 6) Simple missing value handling
     # ------------------------------------------------------------------
     impute_cols: list[str] = [c for c in amount_cols if c in df_clean.columns]
     if "taux_realisation" in df_clean.columns:
@@ -111,7 +144,7 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
         df_clean[col] = df_clean[col].fillna("Non renseigné").astype("category")
 
     # ------------------------------------------------------------------
-    # 6) Filter multivariate outliers flagged during phase 3
+    # 7) Filter multivariate outliers flagged during phase 3
     # ------------------------------------------------------------------
     if "flag_multivariate" in df_clean.columns:
         out = df_clean["flag_multivariate"].astype(bool)
@@ -120,7 +153,7 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
             df_clean = df_clean.loc[~out]
 
     # ------------------------------------------------------------------
-    # 7) Exclude lost or cancelled opportunities if requested
+    # 8) Exclude lost or cancelled opportunities if requested
     # ------------------------------------------------------------------
     if exclude_lost and "Statut commercial" in df_clean.columns:
         lost_mask = df_clean["Statut commercial"].astype(str).str.contains(
@@ -136,7 +169,7 @@ def prepare_data(df: pd.DataFrame, exclude_lost: bool = True) -> pd.DataFrame:
             df_clean = df_clean.loc[~mask_nc]
 
     # ------------------------------------------------------------------
-    # 8) Standardise numerical columns
+    # 9) Standardise numerical columns
     # ------------------------------------------------------------------
     num_cols = df_clean.select_dtypes(include=[np.number]).columns
     num_cols = [c for c in num_cols if c != "Code"]
