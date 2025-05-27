@@ -6,6 +6,7 @@ import datetime
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Mapping, Union
 
@@ -84,6 +85,9 @@ def export_report_to_pdf(
 
     logger.info("Exporting PDF report to %s", out)
 
+    # Ensure previous figures do not accumulate and trigger warnings
+    plt.close("all")
+
     try:
         from fpdf import FPDF  # type: ignore
 
@@ -129,8 +133,11 @@ def export_report_to_pdf(
                 img_path = str(fig)
             else:
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
-                plt.close(fig)
+                try:
+                    fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                finally:
+                    tmp.close()
+                    plt.close(fig)
                 img_path = tmp.name
                 tmp_paths.append(tmp.name)
             pdf.image(img_path, w=180)
@@ -138,10 +145,8 @@ def export_report_to_pdf(
         pdf.output(str(out))
 
         for p in tmp_paths:
-            try:
+            with suppress(OSError):
                 os.remove(p)
-            except OSError:
-                pass
 
     except Exception:  # pragma: no cover - fallback when FPDF not installed
         logger.info("FPDF not available, falling back to PdfPages")
@@ -154,6 +159,18 @@ def export_report_to_pdf(
             ax.axis("off")
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
+
+            for name, table in tables.items():
+                if isinstance(table, (str, Path)):
+                    try:
+                        table = pd.read_csv(table)
+                    except Exception:
+                        continue
+                if not isinstance(table, pd.DataFrame):
+                    continue
+                fig = _table_to_figure(table, name)
+                pdf_backend.savefig(fig, dpi=300)
+                plt.close(fig)
 
             for name, fig in figures.items():
                 if fig is None:
@@ -172,17 +189,5 @@ def export_report_to_pdf(
                     pdf_backend.savefig(fig, dpi=300)
                 finally:
                     plt.close(fig)
-
-            for name, table in tables.items():
-                if isinstance(table, (str, Path)):
-                    try:
-                        table = pd.read_csv(table)
-                    except Exception:
-                        continue
-                if not isinstance(table, pd.DataFrame):
-                    continue
-                fig = _table_to_figure(table, name)
-                pdf_backend.savefig(fig, dpi=300)
-                plt.close(fig)
 
     return out
