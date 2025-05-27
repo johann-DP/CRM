@@ -101,45 +101,39 @@ def unsupervised_cv_and_temporal_tests(
     *,
     n_splits: int = 5,
     random_state: Optional[int] = None,
-) -> pd.DataFrame:
-    """Assess robustness of PCA and UMAP with cross-validation and time splits."""
+) -> Dict[str, Dict[str, float]]:
+    """Assess stability of PCA/UMAP with cross-validation and temporal splits."""
+
     logger = logging.getLogger(__name__)
 
     if not isinstance(df_active, pd.DataFrame):
         raise TypeError("df_active must be a DataFrame")
-
     if n_splits < 2:
         raise ValueError("n_splits must be >= 2")
 
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
-    pca_axis_scores = []
-    pca_dist_scores = []
-    umap_dist_scores = []
+    pca_axis_scores: list[float] = []
+    pca_dist_scores: list[float] = []
+    umap_dist_scores: list[float] = []
 
     for train_idx, test_idx in kf.split(df_active):
         df_train = df_active.iloc[train_idx]
         df_test = df_active.iloc[test_idx]
+
         X_train, scaler, encoder = _fit_preprocess(df_train, quant_vars, qual_vars)
         X_test = _transform(df_test, quant_vars, qual_vars, scaler, encoder)
 
-        # PCA
         n_comp = min(2, X_train.shape[1]) or 1
-        pca_train = PCA(n_components=n_comp, random_state=random_state)
-        pca_train.fit(X_train)
-        emb_test_proj = pca_train.transform(X_test)
+        pca_train = PCA(n_components=n_comp, random_state=random_state).fit(X_train)
+        emb_proj = pca_train.transform(X_test)
 
         pca_test = PCA(n_components=n_comp, random_state=random_state)
         emb_test = pca_test.fit_transform(X_test)
 
-        pca_axis_scores.append(
-            _axis_similarity(pca_train.components_, pca_test.components_)
-        )
-        pca_dist_scores.append(
-            _distance_discrepancy(emb_test_proj, emb_test)
-        )
+        pca_axis_scores.append(_axis_similarity(pca_train.components_, pca_test.components_))
+        pca_dist_scores.append(_distance_discrepancy(emb_proj, emb_test))
 
-        # UMAP
         try:
             import umap  # type: ignore
         except Exception as exc:  # pragma: no cover - optional dependency
@@ -151,19 +145,20 @@ def unsupervised_cv_and_temporal_tests(
             emb_umap_proj = reducer_train.transform(X_test)
             reducer_test = umap.UMAP(n_components=2, random_state=random_state)
             emb_umap_test = reducer_test.fit_transform(X_test)
-            umap_dist_scores.append(
-                _distance_discrepancy(emb_umap_proj, emb_umap_test)
-            )
+            umap_dist_scores.append(_distance_discrepancy(emb_umap_proj, emb_umap_test))
 
-    pca_axis_cv = float(np.nanmean(pca_axis_scores)) if pca_axis_scores else float("nan")
-    pca_dist_cv = float(np.mean(pca_dist_scores)) if pca_dist_scores else float("nan")
-    umap_dist_cv = float(np.mean(umap_dist_scores)) if umap_dist_scores else float("nan")
+    cv_stability = {
+        "pca_axis_corr_mean": float(np.nanmean(pca_axis_scores)) if pca_axis_scores else float("nan"),
+        "pca_axis_corr_std": float(np.nanstd(pca_axis_scores)) if pca_axis_scores else float("nan"),
+        "pca_distance_mse_mean": float(np.mean(pca_dist_scores)) if pca_dist_scores else float("nan"),
+        "pca_distance_mse_std": float(np.std(pca_dist_scores)) if pca_dist_scores else float("nan"),
+        "umap_distance_mse_mean": float(np.mean(umap_dist_scores)) if umap_dist_scores else float("nan"),
+        "umap_distance_mse_std": float(np.std(umap_dist_scores)) if umap_dist_scores else float("nan"),
+    }
 
-    # Temporal robustness
+    # Temporal robustness -------------------------------------------------
     date_col = _find_date_column(df_active)
-    pca_axis_temp = float("nan")
-    pca_dist_temp = float("nan")
-    umap_dist_temp = float("nan")
+    temporal_shift: Optional[Dict[str, float]] = None
     if date_col:
         df_sorted = df_active.sort_values(date_col)
         split_point = len(df_sorted) // 2
@@ -174,43 +169,31 @@ def unsupervised_cv_and_temporal_tests(
         X_new = _transform(df_new, quant_vars, qual_vars, scaler, encoder)
 
         n_comp = min(2, X_old.shape[1]) or 1
-        pca_old = PCA(n_components=n_comp, random_state=random_state)
-        pca_old.fit(X_old)
-        emb_new_proj = pca_old.transform(X_new)
+        pca_old = PCA(n_components=n_comp, random_state=random_state).fit(X_old)
+        emb_proj = pca_old.transform(X_new)
 
         pca_new = PCA(n_components=n_comp, random_state=random_state)
         emb_new = pca_new.fit_transform(X_new)
 
-        pca_axis_temp = _axis_similarity(pca_old.components_, pca_new.components_)
-        pca_dist_temp = _distance_discrepancy(emb_new_proj, emb_new)
+        axis_corr = _axis_similarity(pca_old.components_, pca_new.components_)
+        dist_diff = _distance_discrepancy(emb_proj, emb_new)
+        mean_shift = float(np.linalg.norm(emb_proj.mean(axis=0) - pca_old.transform(X_old).mean(axis=0)))
 
-        try:
-            import umap  # type: ignore
-        except Exception:  # pragma: no cover - optional dependency
-            umap = None  # type: ignore
+        umap_dist = float("nan")
         if umap is not None:
             reducer_old = umap.UMAP(n_components=2, random_state=random_state)
             reducer_old.fit(X_old)
-            emb_proj = reducer_old.transform(X_new)
+            emb_old_umap = reducer_old.transform(X_old)
+            emb_proj_umap = reducer_old.transform(X_new)
             reducer_new = umap.UMAP(n_components=2, random_state=random_state)
             emb_new_umap = reducer_new.fit_transform(X_new)
-            umap_dist_temp = _distance_discrepancy(emb_proj, emb_new_umap)
+            umap_dist = _distance_discrepancy(emb_proj_umap, emb_new_umap)
 
-    rows = [
-        {
-            "method": "pca",
-            "cv_axis_similarity": pca_axis_cv,
-            "cv_distance_diff": pca_dist_cv,
-            "temporal_axis_similarity": pca_axis_temp,
-            "temporal_distance_diff": pca_dist_temp,
-        },
-        {
-            "method": "umap",
-            "cv_axis_similarity": float("nan"),
-            "cv_distance_diff": umap_dist_cv,
-            "temporal_axis_similarity": float("nan"),
-            "temporal_distance_diff": umap_dist_temp,
-        },
-    ]
+        temporal_shift = {
+            "pca_axis_corr": axis_corr,
+            "pca_distance_mse": dist_diff,
+            "pca_mean_shift": mean_shift,
+            "umap_distance_mse": umap_dist,
+        }
 
-    return pd.DataFrame(rows).set_index("method")
+    return {"cv_stability": cv_stability, "temporal_shift": temporal_shift}
