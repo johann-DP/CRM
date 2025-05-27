@@ -55,6 +55,10 @@ except Exception:  # pragma: no cover - optional dependency may not be present
 
 from best_params import BEST_PARAMS
 
+# Global configuration loaded via ``main``. Functions default to this
+# dictionary when no explicit configuration is provided.
+CONFIG: Dict[str, Any] = {}
+
 
 # ---------------------------------------------------------------------------
 # Data Loading & Preparation
@@ -99,27 +103,35 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
     return mapping
 
 
-def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
-    """Load raw and cleaned datasets specified in ``config``."""
+def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.DataFrame]:
+    """Load raw and cleaned datasets specified in ``config``.
+
+    If ``config`` is ``None``, the global :data:`CONFIG` dictionary is used.
+    """
     logger = logging.getLogger(__name__)
-    if "input_file" not in config:
+    cfg = CONFIG if config is None else config
+    if not isinstance(cfg, Mapping):
+        raise TypeError("config must be a mapping")
+    if "input_file" not in cfg:
         raise ValueError("'input_file' missing from config")
+
+    mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
+
+    def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
+        if mapping:
+            df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+        return df
+
     datasets: Dict[str, pd.DataFrame] = {}
-    raw_path = Path(config["input_file"])
-    datasets["raw"] = _read_dataset(raw_path)
+    raw_path = Path(cfg["input_file"])
+    raw_df = _read_dataset(raw_path)
+    datasets["raw"] = _apply_mapping(raw_df)
     logger.info(
         "Raw dataset loaded from %s [%d rows, %d cols]",
         raw_path,
         datasets["raw"].shape[0],
         datasets["raw"].shape[1],
     )
-
-    mapping = _load_data_dictionary(Path(config.get("data_dictionary", "")))
-
-    def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
-        if mapping:
-            df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
-        return df
 
     for key, cfg_key in [
         ("phase1", "phase1_file"),
@@ -128,7 +140,7 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
         ("phase3_multi", "phase3_multi_file"),
         ("phase3_univ", "phase3_univ_file"),
     ]:
-        path_str = config.get(cfg_key)
+        path_str = cfg.get(cfg_key)
         if not path_str:
             continue
         path = Path(path_str)
