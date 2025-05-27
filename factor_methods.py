@@ -13,6 +13,8 @@ import logging
 import time
 from typing import Dict, List, Optional
 
+from pandas.api.types import is_object_dtype, is_categorical_dtype
+
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
@@ -211,7 +213,16 @@ def run_mfa(df_active: pd.DataFrame, groups: List[List[str]], n_components: Opti
     logger = logging.getLogger(__name__)
 
     # one-hot encode qualitative variables that appear in groups
-    qual_cols = [col for group in groups for col in group if col in df_active.columns and df_active[col].dtype == object]
+    qual_cols = []
+    for group in groups:
+        for col in group:
+            if col in df_active.columns and (
+                is_object_dtype(df_active[col]) or is_categorical_dtype(df_active[col])
+            ):
+                qual_cols.append(col)
+    # remove duplicates while preserving order
+    seen = set()
+    qual_cols = [c for c in qual_cols if not (c in seen or seen.add(c))]
     if qual_cols:
         enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         encoded = enc.fit_transform(df_active[qual_cols])
