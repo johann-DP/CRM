@@ -25,6 +25,9 @@ from dataset_comparison import handle_missing_values
 from visualization import generate_figures
 from best_params import BEST_PARAMS
 
+# Global configuration loaded by ``main`` when running as a script.
+CONFIG: Dict[str, Any] = {}
+
 # Optional tuned versions of the main methods
 try:
     from fine_tune_pca import run_pca as tune_pca  # type: ignore
@@ -134,12 +137,12 @@ def _filter_kwargs(func: Any, params: Dict[str, Any]) -> Dict[str, Any]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def load_datasets(config: Dict[str, str]) -> Dict[str, pd.DataFrame]:
+def load_datasets(config: Optional[Dict[str, str]] = None) -> Dict[str, pd.DataFrame]:
     """Load raw and cleaned datasets for phase 4.
 
     Parameters
     ----------
-    config : dict
+    config : dict, optional
         Configuration dictionary with at least ``input_file``. Optional keys are
         ``phase1_file``, ``phase2_file``, ``phase3_file`` (or ``phase3_multi_file`` and
         ``phase3_univ_file``) and ``data_dictionary``.
@@ -150,6 +153,11 @@ def load_datasets(config: Dict[str, str]) -> Dict[str, pd.DataFrame]:
         Mapping of dataset name to ``DataFrame``. Keys include ``raw`` and the
         phases present in ``config``.
     """
+    if config is None:
+        config = CONFIG
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary")
+
     logger = logging.getLogger(__name__)
     if "input_file" not in config:
         raise ValueError("'input_file' missing from config")
@@ -158,7 +166,12 @@ def load_datasets(config: Dict[str, str]) -> Dict[str, pd.DataFrame]:
 
     raw_path = Path(config["input_file"])
     datasets["raw"] = _read_dataset(raw_path)
-    logger.info("Raw dataset loaded from %s", raw_path)
+    logger.info(
+        "Raw dataset loaded from %s [%d rows, %d cols]",
+        raw_path,
+        datasets["raw"].shape[0],
+        datasets["raw"].shape[1],
+    )
 
     mapping = _load_data_dictionary(Path(config.get("data_dictionary", "")))
 
@@ -181,9 +194,15 @@ def load_datasets(config: Dict[str, str]) -> Dict[str, pd.DataFrame]:
         if not path.exists():
             logger.warning("Dataset %s not found: %s", key, path)
             continue
-        df = _read_dataset(path) if path.suffix.lower() != ".csv" else pd.read_csv(path)
+        df = _read_dataset(path)
         datasets[key] = _apply_mapping(df)
-        logger.info("Loaded %s dataset from %s", key, path)
+        logger.info(
+            "Loaded %s dataset from %s [%d rows, %d cols]",
+            key,
+            path,
+            df.shape[0],
+            df.shape[1],
+        )
 
     # Basic coherence check: try to align column names with raw data when possible
     ref_cols = set(datasets["raw"].columns)
@@ -394,6 +413,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     args = parser.parse_args(argv)
 
     cfg = _load_config(Path(args.config))
+    CONFIG.update(cfg)
     run_pipeline(cfg)
 
 
