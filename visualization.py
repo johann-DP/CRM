@@ -121,6 +121,12 @@ def plot_scatter_3d(
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]
+    if len(cols) < 2:
+        # fall back to the first available columns
+        extra = [c for c in coords.columns if c not in cols][: 2 - len(cols)]
+        cols.extend(extra)
+    if len(cols) < 2:
+        return pd.DataFrame(columns=["F1", "F2"])
     subset = coords.loc[[v for v in quant_vars if v in coords.index], cols]
     subset = subset.rename(columns={cols[0]: "F1", cols[1]: "F2"})
     return subset
