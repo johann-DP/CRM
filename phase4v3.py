@@ -106,20 +106,20 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
         raise ValueError("'input_file' missing from config")
     datasets: Dict[str, pd.DataFrame] = {}
     raw_path = Path(config["input_file"])
-    datasets["raw"] = _read_dataset(raw_path)
-    logger.info(
-        "Raw dataset loaded from %s [%d rows, %d cols]",
-        raw_path,
-        datasets["raw"].shape[0],
-        datasets["raw"].shape[1],
-    )
-
     mapping = _load_data_dictionary(Path(config.get("data_dictionary", "")))
 
     def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
         if mapping:
             df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
         return df
+
+    datasets["raw"] = _apply_mapping(_read_dataset(raw_path))
+    logger.info(
+        "Raw dataset loaded from %s [%d rows, %d cols]",
+        raw_path,
+        datasets["raw"].shape[0],
+        datasets["raw"].shape[1],
+    )
 
     for key, cfg_key in [
         ("phase1", "phase1_file"),

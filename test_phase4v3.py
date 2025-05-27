@@ -1,12 +1,12 @@
 import importlib
 from pathlib import Path
+from typing import Dict
 import pandas as pd
 
 import pytest
 
 
-@pytest.fixture()
-def sample_files(tmp_path: Path):
+def _make_sample_config(tmp_path: Path) -> Dict[str, str]:
     raw = pd.DataFrame({
         "Date Op": ["2024-01-01", "2024-02-01"],
         "Total recette realise": ["1 000", "2 500"],
@@ -35,6 +35,26 @@ def sample_files(tmp_path: Path):
     }
 
 
+@pytest.fixture()
+def sample_files(tmp_path: Path) -> Dict[str, str]:
+    return _make_sample_config(tmp_path)
+
+
+@pytest.fixture()
+def sample_files_with_dict(tmp_path: Path) -> Dict[str, str]:
+    cfg = _make_sample_config(tmp_path)
+    mapping = pd.DataFrame(
+        {
+            "original": ["Date Op", "Total recette realise", "Categorie"],
+            "clean": ["date", "total", "cat"],
+        }
+    )
+    dict_path = tmp_path / "dict.xlsx"
+    mapping.to_excel(dict_path, index=False)
+    cfg["data_dictionary"] = str(dict_path)
+    return cfg
+
+
 def test_load_datasets_types(sample_files):
     mod = importlib.import_module("phase4v3")
     datasets = mod.load_datasets(sample_files)
@@ -58,6 +78,15 @@ def test_load_datasets_structure(sample_files):
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == expected_cols
         assert df.shape[0] == rows
+
+
+def test_load_datasets_mapping(sample_files_with_dict):
+    mod = importlib.import_module("phase4v3")
+    datasets = mod.load_datasets(sample_files_with_dict)
+
+    expected_cols = ["date", "total", "cat"]
+    for df in datasets.values():
+        assert list(df.columns) == expected_cols
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):
