@@ -64,8 +64,17 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
                 remaining,
             )
             df.dropna(inplace=True)
+        # After dropping rows, remove categories that may no longer be present
+        for col in qual_vars:
+            if df[col].dtype.name == "category":
+                df[col] = df[col].cat.remove_unused_categories()
     else:
         logger.info("Aucune valeur manquante détectée après sanity_check")
+
+    # Ensure no stray unused categories remain even if no imputation occurred
+    for col in qual_vars:
+        if df[col].dtype.name == "category":
+            df[col] = df[col].cat.remove_unused_categories()
 
     if df.isna().any().any():
         logger.error("Des NA demeurent dans df après traitement")
