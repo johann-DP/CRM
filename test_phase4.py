@@ -91,7 +91,7 @@ def sample_files_with_dict(tmp_path: Path, sample_files):
 
 
 def test_load_datasets_types(sample_files):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     datasets = mod.load_datasets(sample_files)
 
     assert set(datasets) >= {"raw", "phase1", "phase2", "phase3"}
@@ -102,7 +102,7 @@ def test_load_datasets_types(sample_files):
 
 
 def test_load_datasets_structure(sample_files):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     datasets = mod.load_datasets(sample_files)
 
     expected_cols = ["Date Op", "Total recette realise", "Categorie"]
@@ -116,7 +116,7 @@ def test_load_datasets_structure(sample_files):
 
 
 def test_column_mapping(sample_files_with_dict):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     datasets = mod.load_datasets(sample_files_with_dict)
 
     assert list(datasets["raw"].columns) == ["Date", "Recette", "Cat"]
@@ -125,7 +125,7 @@ def test_column_mapping(sample_files_with_dict):
 
 
 def test_default_config_usage(sample_files):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     mod.CONFIG.clear()
     mod.CONFIG.update(sample_files)
     datasets = mod.load_datasets()
@@ -133,9 +133,9 @@ def test_default_config_usage(sample_files):
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("phase4")
     cfg = dict(sample_files)
-    cfg.update({"output_dir": str(tmp_path), "dataset": "raw"})
+    cfg.update({"output_dir": str(tmp_path), "dataset": "raw", "methods": ["pca"]})
 
     out = mod.run_pipeline(cfg)
 
@@ -145,7 +145,7 @@ def test_run_pipeline(tmp_path: Path, sample_files):
 
 
 def test_load_datasets_mapping(sample_files_with_dict):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     datasets = mod.load_datasets(sample_files_with_dict)
 
     for df in datasets.values():
@@ -153,7 +153,7 @@ def test_load_datasets_mapping(sample_files_with_dict):
 
 
 def test_load_datasets_global_config(sample_files):
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("data_loader")
     mod.CONFIG.clear()
     mod.CONFIG.update(sample_files)
 

@@ -28,39 +28,41 @@ def assert_returncode_zero(proc: subprocess.CompletedProcess, msg: str) -> None:
 
 def check_importability() -> None:
     try:
-        importlib.import_module("phase4v3")
+        importlib.import_module("phase4")
+        importlib.import_module("data_loader")
     except Exception as exc:
-        raise AssertionError(f"Import phase4v3 failed: {exc}") from exc
+        raise AssertionError(f"Import failed: {exc}") from exc
 
 
 def check_functions() -> None:
-    mod = importlib.import_module("phase4v3")
-    required = [
-        "load_datasets",
-        "prepare_data",
-        "select_variables",
-        "run_pca",
-        "run_famd",
-        "run_umap",
-        "generate_figures",
-        "evaluate_methods",
-        "export_report_to_pdf",
-    ]
-    missing = [f for f in required if not callable(getattr(mod, f, None))]
-    if missing:
-        raise AssertionError(f"Fonctions manquantes/non callables: {', '.join(missing)}")
+    modules = {
+        "data_loader": ["load_datasets"],
+        "data_preparation": ["prepare_data"],
+        "variable_selection": ["select_variables"],
+        "factor_methods": ["run_pca", "run_famd"],
+        "nonlinear_methods": ["run_umap"],
+        "visualization": ["generate_figures"],
+        "evaluate_methods": ["evaluate_methods"],
+        "pdf_report": ["export_report_to_pdf"],
+    }
+    for mod_name, funcs in modules.items():
+        mod = importlib.import_module(mod_name)
+        for func in funcs:
+            if not callable(getattr(mod, func, None)):
+                raise AssertionError(f"Function {func} missing in {mod_name}")
 
 
 def check_lint(repo: Path) -> None:
-    proc = run([sys.executable, "-m", "py_compile", "phase4v3.py"], cwd=repo)
-    assert_returncode_zero(proc, "py_compile failed")
-    proc = run([
-        "flake8",
-        "phase4v3.py",
-        "--ignore=E203,W503",
-        "--max-line-length=125",
-    ], cwd=repo)
-    assert_returncode_zero(proc, "flake8 failed")
+    for file in ["phase4.py", "data_loader.py"]:
+        proc = run([sys.executable, "-m", "py_compile", file], cwd=repo)
+        assert_returncode_zero(proc, f"py_compile failed for {file}")
+        proc = run([
+            "flake8",
+            file,
+            "--ignore=E203,W503",
+            "--max-line-length=125",
+        ], cwd=repo)
+        assert_returncode_zero(proc, f"flake8 failed for {file}")
 
 
 def check_pytest(repo: Path) -> None:
@@ -123,7 +125,7 @@ def make_config(paths: dict[str, Path], tmpdir: Path) -> Path:
 
 
 def run_pipeline(repo: Path, config_path: Path) -> subprocess.CompletedProcess:
-    return run([sys.executable, "phase4v3.py", "--config", str(config_path)], cwd=repo)
+    return run([sys.executable, "phase4.py", "--config", str(config_path)], cwd=repo)
 
 
 def md5sum(path: Path) -> str:
@@ -158,7 +160,7 @@ def validate_output(tmpdir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate phase4v3 pipeline")
+    parser = argparse.ArgumentParser(description="Validate phase4 pipeline")
     parser.add_argument("--tmpdir", required=True)
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()

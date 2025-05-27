@@ -24,7 +24,7 @@ import pandas as pd
 import yaml
 
 # Import helper modules -------------------------------------------------------
-from phase4v3 import load_datasets  # reuse the autonomous loader
+from data_loader import load_datasets
 from data_preparation import prepare_data
 from variable_selection import select_variables
 from dataset_comparison import handle_missing_values, compare_datasets_versions
@@ -104,6 +104,10 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     factor_results: Dict[str, Any] = {}
     if "pca" in methods and quant_vars:
         params = _method_params("pca", config)
+        if "n_components" in params:
+            params["n_components"] = min(
+                params["n_components"], len(quant_vars), len(df_active)
+            )
         factor_results["pca"] = run_pca(
             df_active,
             quant_vars,
@@ -114,6 +118,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if "mca" in methods and qual_vars:
         params = _method_params("mca", config)
+        if "n_components" in params:
+            max_dim = sum(df_active[q].nunique() - 1 for q in qual_vars)
+            params["n_components"] = min(params["n_components"], max_dim)
         factor_results["mca"] = run_mca(
             df_active,
             qual_vars,
@@ -125,6 +132,8 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if "famd" in methods and quant_vars and qual_vars:
         params = _method_params("famd", config)
         try:
+            if "n_components" in params:
+                params["n_components"] = min(params["n_components"], df_active.shape[1])
             factor_results["famd"] = run_famd(
                 df_active,
                 quant_vars,
@@ -146,6 +155,8 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         cfg_groups = params.pop("groups", None)
         if cfg_groups:
             groups = cfg_groups
+        if "n_components" in params:
+            params["n_components"] = min(params["n_components"], df_active.shape[1])
         factor_results["mfa"] = run_mfa(
             df_active,
             groups,
