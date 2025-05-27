@@ -35,6 +35,12 @@ def _make_sample_config(tmp_path: Path) -> dict[str, str]:
 
 
 @pytest.fixture()
+def sample_files(tmp_path: Path) -> Dict[str, str]:
+    """Return a minimal configuration with paths to sample CSV files."""
+    return _make_sample_config(tmp_path)
+
+
+@pytest.fixture()
 def sample_files_with_dict(tmp_path: Path):
     raw = pd.DataFrame(
         {

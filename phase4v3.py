@@ -43,6 +43,8 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import prince
 import umap
 
+from scipy.spatial.distance import pdist, squareform
+
 try:  # optional dependencies
     import phate  # type: ignore
 except Exception:  # pragma: no cover - optional dependency may not be present
@@ -134,13 +136,6 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         datasets["raw"].shape[0],
         datasets["raw"].shape[1],
     )
-
-    mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
-
-    def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
-        if mapping:
-            df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
-        return df
 
     datasets["raw"] = _apply_mapping(datasets["raw"])
 
@@ -920,7 +915,6 @@ def generate_figures(
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
-    from scipy.spatial.distance import pdist, squareform
     if len(np.unique(labels)) < 2:
         return float("nan")
     dist = squareform(pdist(X))
@@ -1440,15 +1434,15 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         empty = pd.DataFrame()
         empty.to_csv(output_dir / "metrics.csv")
         return {"metrics": empty, "figures": {}}
-    metrics = evaluate_methods({**factor_results, **valid_nonlin}, 
-                               df_active, quant_vars, 
-                               qual_vars, 
+    metrics = evaluate_methods({**factor_results, **valid_nonlin},
+                               df_active, quant_vars,
+                               qual_vars,
                                n_clusters=3 if len(df_active) > 3 else 2)
     plot_methods_heatmap(metrics, output_dir)
     metrics.to_csv(output_dir / "metrics.csv")
-    figures = generate_figures(factor_results, 
-                               nonlin_results, 
-                               df_active, quant_vars, 
+    figures = generate_figures(factor_results,
+                               nonlin_results,
+                               df_active, quant_vars,
                                qual_vars)
     for name, fig in figures.items():
         fig.savefig(output_dir / f"{name}.png")
