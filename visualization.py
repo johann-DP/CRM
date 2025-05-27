@@ -266,6 +266,7 @@ def generate_figures(
         sub = out / method.lower()
         sub.mkdir(parents=True, exist_ok=True)
         fig.savefig(sub / f"{name}.png")
+        plt.close(fig)
 
     for method, res in factor_results.items():
         emb = res.get("embeddings")
