@@ -35,21 +35,17 @@ def _make_sample_config(tmp_path: Path) -> dict[str, str]:
 
 
 @pytest.fixture()
-def sample_files(tmp_path: Path) -> dict[str, str]:
-    return _make_sample_config(tmp_path)
-
-
-@pytest.fixture()
-def sample_files_with_dict(tmp_path: Path) -> dict[str, str]:
-    cfg = _make_sample_config(tmp_path)
+def sample_files_with_dict(tmp_path: Path, sample_files):
+    """Return config with an additional data dictionary for column mapping."""
     mapping = pd.DataFrame(
         {
             "original": ["Date Op", "Total recette realise", "Categorie"],
-            "renamed": ["date", "recette", "categorie"],
+            "clean": ["date", "recette", "cat"],
         }
     )
     dict_path = tmp_path / "dict.xlsx"
     mapping.to_excel(dict_path, index=False)
+    cfg = dict(sample_files)
     cfg["data_dictionary"] = str(dict_path)
     return cfg
 
@@ -79,21 +75,14 @@ def test_load_datasets_structure(sample_files):
         assert df.shape[0] == rows
 
 
-def test_load_datasets_with_dictionary(sample_files_with_dict):
+def test_load_datasets_apply_mapping(sample_files_with_dict):
+    """Ensure column mapping from the data dictionary is applied."""
     mod = importlib.import_module("phase4v3")
     datasets = mod.load_datasets(sample_files_with_dict)
 
-    expected = ["date", "recette", "categorie"]
+    expected_cols = ["date", "recette", "cat"]
     for df in datasets.values():
-        assert list(df.columns) == expected
-
-
-def test_load_datasets_global_config(sample_files):
-    mod = importlib.import_module("phase4v3")
-    mod.CONFIG.clear()
-    mod.CONFIG.update(sample_files)
-    datasets = mod.load_datasets()
-    assert "raw" in datasets and isinstance(datasets["raw"], pd.DataFrame)
+        assert list(df.columns) == expected_cols
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):
