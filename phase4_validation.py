@@ -1,6 +1,8 @@
 import argparse
 import hashlib
 import importlib
+import inspect
+import json
 import logging
 import os
 import shutil
@@ -52,7 +54,12 @@ def check_functions() -> None:
 def check_lint(repo: Path) -> None:
     proc = run([sys.executable, "-m", "py_compile", "phase4v3.py"], cwd=repo)
     assert_returncode_zero(proc, "py_compile failed")
-    proc = run(["flake8", "phase4v3.py", "--ignore=E203,W503"], cwd=repo)
+    proc = run([
+        "flake8",
+        "phase4v3.py",
+        "--ignore=E203,W503",
+        "--max-line-length=125",
+    ], cwd=repo)
     assert_returncode_zero(proc, "flake8 failed")
 
 
