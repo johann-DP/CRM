@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
+import logging
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -100,6 +102,26 @@ def evaluate_methods(
         if isinstance(inertias, pd.Series):
             inertias = inertias.tolist()
         inertias = list(inertias)
+
+        logger = logging.getLogger(__name__)
+        if inertias and inertias[0] > 0.5:
+            logger.warning(
+                "Attention : l'axe F1 de %s explique %.1f%% de la variance",
+                method.upper(),
+                inertias[0] * 100,
+            )
+
+        contrib = info.get("contributions")
+        if isinstance(contrib, pd.DataFrame) and "F1" in contrib:
+            top = float(contrib["F1"].max())
+            if top > 50:
+                dom_var = contrib["F1"].idxmax()
+                logger.warning(
+                    "Attention : la variable %s domine l’axe F1 de la %s avec %.1f%% de contribution, risque de projection biaisée.",
+                    dom_var,
+                    method.upper(),
+                    top,
+                )
 
         kaiser = int(sum(1 for eig in np.array(inertias) * n_features if eig > 1))
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan

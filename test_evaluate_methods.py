@@ -1,38 +1,50 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
-from factor_methods import run_pca
-from evaluate_methods import evaluate_methods, plot_methods_heatmap
+import evaluate_methods as em
 
 
 def sample_df() -> pd.DataFrame:
     return pd.DataFrame({
-        "num1": [1, 2, 3, 4, 5],
-        "num2": [5, 4, 3, 2, 1],
-        "cat": ["a", "b", "a", "b", "a"],
+        "num1": [0, 1, 2, 3],
+        "num2": [3, 2, 1, 0],
+        "cat": ["a", "b", "a", "b"],
     })
 
 
-def test_evaluate_and_plot(tmp_path):
+def test_evaluate_and_plot(tmp_path, monkeypatch):
     df = sample_df()
     quant_vars = ["num1", "num2"]
     qual_vars = ["cat"]
-    pca_res = run_pca(df, quant_vars, n_components=2)
-    dummy_emb = pd.DataFrame(
-        np.linspace(0, 1, 10).reshape(5, 2), index=df.index, columns=["d1", "d2"]
+
+    emb_a = pd.DataFrame(
+        [[0, 0], [1, 0], [0, 1], [1, 1]],
+        index=df.index,
+        columns=["d1", "d2"],
     )
+    emb_b = pd.DataFrame(
+        [[0, 0], [1, 1], [2, 0], [0, 2]],
+        index=df.index,
+        columns=["d1", "d2"],
+    )
+
     results = {
-        "pca": {
-            "embeddings": pca_res["embeddings"],
-            "inertia": pca_res["inertia"],
+        "A": {
+            "embeddings": emb_a,
+            "inertia": [2 / 3, 1 / 3],
             "runtime_s": 0.1,
         },
-        "dummy": {
-            "embeddings": dummy_emb,
+        "B": {
+            "embeddings": emb_b,
+            "inertia": [1 / 3, 1 / 6],
             "runtime_s": 0.2,
         },
     }
-    metrics = evaluate_methods(results, df, quant_vars, qual_vars, n_clusters=2)
+
+    monkeypatch.setattr(em, "trustworthiness", lambda *args, **kwargs: 0.5)
+
+    metrics = em.evaluate_methods(results, df, quant_vars, qual_vars, n_clusters=2)
 
     assert set(metrics.columns) == {
         "variance_cumulee_%",
@@ -43,8 +55,11 @@ def test_evaluate_and_plot(tmp_path):
         "continuity",
         "runtime_seconds",
     }
-    assert "pca" in metrics.index
+    assert list(metrics.index) == ["A", "B"]
+    assert metrics.loc["A", "variance_cumulee_%"] == pytest.approx(100.0)
+    assert metrics.loc["B", "variance_cumulee_%"] == pytest.approx(50.0)
+    assert metrics["silhouette"].between(-1, 1).all()
 
-    plot_methods_heatmap(metrics, tmp_path)
+    em.plot_methods_heatmap(metrics, tmp_path)
     assert (tmp_path / "methods_heatmap.png").exists()
 
