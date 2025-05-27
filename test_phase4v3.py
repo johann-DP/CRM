@@ -35,40 +35,9 @@ def _make_sample_config(tmp_path: Path) -> dict[str, str]:
 
 
 @pytest.fixture()
-def sample_files_with_dict(tmp_path: Path):
-    raw = pd.DataFrame(
-        {
-            "Date Op": ["2024-01-01"],
-            "Total recette realise": ["1 000"],
-            "Categorie": ["A"],
-        }
-    )
-    raw_path = tmp_path / "raw.csv"
-    raw.to_csv(raw_path, index=False)
-
-    phase1_path = tmp_path / "phase1.csv"
-    raw.to_csv(phase1_path, index=False)
-    phase2_path = tmp_path / "phase2.csv"
-    raw.iloc[:0].to_csv(phase2_path, index=False)
-    phase3_path = tmp_path / "phase3.csv"
-    raw.to_csv(phase3_path, index=False)
-
-    mapping = pd.DataFrame(
-        {
-            "original": ["Date Op", "Total recette realise", "Categorie"],
-            "renamed": ["Date", "Recette", "Cat"],
-        }
-    )
-    dict_path = tmp_path / "dict.xlsx"
-    mapping.to_excel(dict_path, index=False)
-
-    return {
-        "input_file": str(raw_path),
-        "phase1_file": str(phase1_path),
-        "phase2_file": str(phase2_path),
-        "phase3_file": str(phase3_path),
-        "data_dictionary": str(dict_path),
-    }
+def sample_files(tmp_path: Path) -> Dict[str, str]:
+    """Return a minimal configuration with paths to sample CSV files."""
+    return _make_sample_config(tmp_path)
 
 
 @pytest.fixture()
