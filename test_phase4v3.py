@@ -44,3 +44,15 @@ def test_load_datasets_types(sample_files):
     assert pd.api.types.is_datetime64_any_dtype(raw_df["Date Op"])
     assert pd.api.types.is_numeric_dtype(raw_df["Total recette realise"])
     assert datasets["phase1"].shape[0] == 2
+
+
+def test_run_pipeline(tmp_path: Path, sample_files):
+    mod = importlib.import_module("phase4v3")
+    cfg = dict(sample_files)
+    cfg.update({"output_dir": str(tmp_path), "random_state": 0, "dataset": "raw"})
+
+    out = mod.run_pipeline(cfg)
+
+    assert "metrics" in out
+    assert isinstance(out["metrics"], pd.DataFrame)
+    assert (tmp_path / "metrics.csv").exists()
