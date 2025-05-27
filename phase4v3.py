@@ -165,10 +165,9 @@ def _run_single_dataset(
     *,
     exclude_lost: bool = True,
     min_modalite_freq: int = 5,
-    random_state: int = 0,
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Execute the analysis pipeline on a single dataframe."""
-    import numpy as np
     import matplotlib.pyplot as plt
 
     df_prep = prepare_data(df, exclude_lost=exclude_lost)
@@ -242,13 +241,10 @@ def _run_single_dataset(
 
 def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     """Run the complete phase 4 pipeline based on ``config``."""
-    random_state = int(config.get("random_state", 0))
+    rs = config.get("random_state")
+    random_state = int(rs) if rs is not None else None
     output_dir = Path(config.get("output_dir", "phase4_output"))
     _setup_logging(output_dir)
-
-    import numpy as np
-
-    np.random.seed(random_state)
 
     datasets = load_datasets(config)
     data_key = config.get("dataset", "raw")

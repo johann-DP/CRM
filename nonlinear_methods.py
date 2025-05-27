@@ -74,7 +74,7 @@ def run_umap(
     min_dist: float = 0.1,
     *,
     metric: str = "euclidean",
-    random_state: Optional[int] = 42,
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run UMAP on ``df_active`` and return model and embeddings."""
     start = time.perf_counter()
@@ -114,7 +114,7 @@ def run_phate(
     a: int = 40,
     *,
     t: str | int = "auto",
-    random_state: Optional[int] = 42,
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active``.
 
@@ -154,7 +154,7 @@ def run_pacmap(
     MN_ratio: float = 0.5,
     FP_ratio: float = 2.0,
     num_iters: Tuple[int, int, int] = (10, 10, 10),
-    random_state: Optional[int] = 42,
+    random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run PaCMAP on ``df_active``.
 

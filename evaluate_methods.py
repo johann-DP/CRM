@@ -105,7 +105,7 @@ def evaluate_methods(
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
         X_low = info["embeddings"].values
-        labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X_low)
+        labels = KMeans(n_clusters=n_clusters, random_state=None).fit_predict(X_low)
         sil = float(silhouette_score(X_low, labels))
         dunn = dunn_index(X_low, labels)
 

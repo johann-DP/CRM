@@ -121,7 +121,7 @@ def main() -> None:
             t=tt,
             decay=dc,
             n_jobs=-1,
-            random_state=42,
+            random_state=None,
         )
         emb = model.fit_transform(X)
         runtime = time.time() - start
@@ -181,7 +181,7 @@ def main() -> None:
             t=tt,
             decay=dc,
             n_jobs=-1,
-            random_state=42,
+            random_state=None,
         )
         embedding = model.fit_transform(X)
 

@@ -32,7 +32,7 @@ def evaluate_embedding(emb: pd.DataFrame, k_range=range(2, 7)) -> tuple[float, f
     best_sil = -1.0
     best_ch = -1.0
     for k in k_range:
-        labels = KMeans(n_clusters=k, random_state=0).fit_predict(emb.values)
+        labels = KMeans(n_clusters=k, random_state=None).fit_predict(emb.values)
         sil = silhouette_score(emb.values, labels)
         ch = calinski_harabasz_score(emb.values, labels)
         if sil > best_sil:

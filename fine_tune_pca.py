@@ -72,7 +72,7 @@ def run_pca_grid(X: np.ndarray, columns: list[str]):
             continue
         logging.info("PCA n_components=%d solver=%s whiten=%s", n_comp, solver, whiten)
         try:
-            pca = PCA(n_components=n_comp, svd_solver=solver, whiten=whiten, random_state=0)
+            pca = PCA(n_components=n_comp, svd_solver=solver, whiten=whiten, random_state=None)
             X_pca = pca.fit_transform(X)
         except ValueError:
             continue
@@ -115,7 +115,7 @@ def run_pca_grid(X: np.ndarray, columns: list[str]):
                 })
 
         for k in range(2, 11):
-            km = KMeans(n_clusters=k, n_init=10, random_state=0)
+            km = KMeans(n_clusters=k, n_init=10, random_state=None)
             labels = km.fit_predict(X_pca)
             sil = silhouette_score(X_pca, labels)
             sil_rows.append({
@@ -224,7 +224,7 @@ def plot_silhouette_curves(out_dir: Path, sil_df: pd.DataFrame) -> None:
 def plot_best_clusters(out_dir: Path, scores: np.ndarray, n_clusters: int) -> None:
     if scores.shape[1] < 2:
         return
-    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
+    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=None)
     labels = km.fit_predict(scores[:, :2])
     plt.figure()
     sns.scatterplot(x=scores[:, 0], y=scores[:, 1], hue=labels, palette="tab10", s=10)

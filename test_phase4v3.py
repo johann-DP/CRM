@@ -49,7 +49,7 @@ def test_load_datasets_types(sample_files):
 def test_run_pipeline(tmp_path: Path, sample_files):
     mod = importlib.import_module("phase4v3")
     cfg = dict(sample_files)
-    cfg.update({"output_dir": str(tmp_path), "random_state": 0, "dataset": "raw"})
+    cfg.update({"output_dir": str(tmp_path), "dataset": "raw"})
 
     out = mod.run_pipeline(cfg)
 

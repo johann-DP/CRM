@@ -92,16 +92,16 @@ def run_random_search(X: np.ndarray, n_trials: int = 20) -> tuple[Dict[str, int 
         logging.info("t-SNE trial %d/%d with params %s", i + 1, n_trials, params)
 
         tsne = TSNE(
-            random_state=42,
+            random_state=None,
             init="pca",
             perplexity=params["perplexity"],
             learning_rate=params["learning_rate"],
             n_iter=params["n_iter"],
             metric=params["metric"],
-            n_jobs=1,
+            n_jobs=-1,
         )
         emb = tsne.fit_transform(X)
-        labels = KMeans(n_clusters=6, random_state=42).fit_predict(emb)
+        labels = KMeans(n_clusters=6, random_state=None).fit_predict(emb)
         sil = silhouette_score(emb, labels)
         results.append({
             **params,
@@ -131,7 +131,7 @@ def export_results(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save model
-    tsne_model = TSNE(random_state=42, init="pca", **params)
+    tsne_model = TSNE(random_state=None, init="pca", **params)
     tsne_model.fit(embedding)
     with open(output_dir / "tsne_model.pkl", "wb") as fh:
         pickle.dump(tsne_model, fh)
@@ -191,14 +191,14 @@ def main() -> None:
 
     logging.info("Running PCA for initialization")
     n_components = min(50, X_all.shape[1])
-    X_pca = PCA(n_components=n_components, random_state=42).fit_transform(X_all)
+    X_pca = PCA(n_components=n_components, random_state=None).fit_transform(X_all)
 
     logging.info("Starting t-SNE random search")
     best_params, best_emb, metrics_df = run_random_search(X_pca, n_trials=args.n_trials)
     logging.info("Best params: %s", best_params)
 
     logging.info("Refitting t-SNE with best parameters")
-    final_tsne = TSNE(random_state=42, init="pca", **best_params)
+    final_tsne = TSNE(random_state=None, init="pca", **best_params)
     final_emb = final_tsne.fit_transform(X_pca)
 
     export_results(df, final_emb, best_params, metrics_df, out_dir)
