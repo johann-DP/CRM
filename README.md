@@ -118,3 +118,16 @@ python fine_tune_mfa.py --config config_mfa.yaml
 The script exports metrics for each configuration and saves the best model (by
 silhouette and Calinski–Harabasz indices) in the configured output directory.
 
+## Consolidated PDF report
+
+The function `export_report_to_pdf` combines the main figures and tables from
+phase 4 into a single PDF file. It uses the optional `fpdf` package when
+available for better layout. Install it with:
+
+```bash
+python -m pip install fpdf
+```
+
+If `fpdf` is not installed, the code falls back to Matplotlib's `PdfPages`,
+producing a simpler layout.
+

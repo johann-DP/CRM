@@ -6,8 +6,9 @@ import datetime
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Union
 
 import matplotlib
 matplotlib.use("Agg")
@@ -48,8 +49,8 @@ def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
 
 
 def export_report_to_pdf(
-    figures: Mapping[str, plt.Figure],
-    tables: Mapping[str, pd.DataFrame],
+    figures: Mapping[str, Union[plt.Figure, str, Path]],
+    tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
 ) -> Path:
     """Create a structured PDF gathering all figures and tables from phase 4.
@@ -61,11 +62,14 @@ def export_report_to_pdf(
     Parameters
     ----------
     figures : mapping
-        Mapping from figure name to Matplotlib :class:`~matplotlib.figure.Figure`.
+        Mapping from figure name to either a Matplotlib :class:`~matplotlib.figure.Figure`
+        or a path to an existing image file.
     tables : mapping
-        Mapping from table name to :class:`pandas.DataFrame`.
+        Mapping from table name to a :class:`pandas.DataFrame` or a CSV file path.
     output_path : str or :class:`pathlib.Path`
         Destination path of the PDF file.
+        Pages are added in portrait mode by default but switch to landscape when
+        a table has many columns.
 
     Returns
     -------
@@ -80,6 +84,9 @@ def export_report_to_pdf(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info("Exporting PDF report to %s", out)
+
+    # Ensure previous figures do not accumulate and trigger warnings
+    plt.close("all")
 
     try:
         from fpdf import FPDF  # type: ignore
@@ -100,9 +107,15 @@ def export_report_to_pdf(
 
         # Tables first (comparatif des méthodes, etc.)
         for name, table in tables.items():
+            if isinstance(table, (str, Path)):
+                try:
+                    table = pd.read_csv(table)
+                except Exception:
+                    continue
             if not isinstance(table, pd.DataFrame):
                 continue
-            pdf.add_page()
+            orientation = "L" if len(table.columns) > 6 else "P"
+            pdf.add_page(orientation=orientation)
             _add_title(name)
             pdf.set_font("Courier", size=8)
             table_str = table.to_string()
@@ -111,24 +124,28 @@ def export_report_to_pdf(
 
         # Figures
         tmp_paths: list[str] = []
-        for name, fig in figures.items():
-            if fig is None:
+        for name, figure in figures.items():
+            if figure is None:
                 continue
             pdf.add_page()
             _add_title(name)
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
-            plt.close(fig)
-            pdf.image(tmp.name, w=180)
-            tmp_paths.append(tmp.name)
+            if isinstance(figure, (str, Path)):
+                img_path = str(figure)
+            else:
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                figure.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                plt.close(figure)
+                img_path = tmp.name
+                tmp_paths.append(tmp.name)
+            pdf.image(img_path, w=180)
 
         pdf.output(str(out))
 
         for p in tmp_paths:
-            try:
+            with suppress(OSError):
                 os.remove(p)
-            except OSError:
-                pass
+
+        plt.close("all")
 
     except Exception:  # pragma: no cover - fallback when FPDF not installed
         logger.info("FPDF not available, falling back to PdfPages")
@@ -142,20 +159,45 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
-            for name, fig in figures.items():
-                if fig is None:
+            for name, figure in figures.items():
+                if figure is None:
+                    continue
+                if isinstance(figure, (str, Path)):
+                    img = plt.imread(figure)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                    continue
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
                     continue
                 try:
-                    fig.suptitle(name, fontsize=12)
-                    pdf_backend.savefig(fig, dpi=300)
+                    figure.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(figure, dpi=300)
                 finally:
-                    plt.close(fig)
+                    plt.close(figure)
 
             for name, table in tables.items():
+                if isinstance(table, (str, Path)):
+                    try:
+                        table = pd.read_csv(table)
+                    except Exception:
+                        continue
                 if not isinstance(table, pd.DataFrame):
                     continue
                 fig = _table_to_figure(table, name)
                 pdf_backend.savefig(fig, dpi=300)
                 plt.close(fig)
+
+        plt.close("all")
 
     return out
