@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 
@@ -93,22 +94,33 @@ def test_generate_figures_missing_f2(tmp_path):
     assert "pca_correlation" in figs
 
 
-def test_generate_figures_clusters(tmp_path):
+def test_generate_figures_clusters(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "num1": [1, 2, 3, 4],
         "num2": [4, 3, 2, 1],
         "cat": ["a", "b", "a", "b"],
     })
 
+    labels = np.array([0, 0, 1, 1])
     factor_results = {
         "pca": {
             "embeddings": pd.DataFrame(
                 [[0.1, 0.2], [0.0, -0.1], [0.2, 0.1], [-0.2, -0.1]],
                 index=df.index,
                 columns=["F1", "F2"],
-            )
+            ),
+            "cluster_labels": labels,
         }
     }
+
+    class DummyKM:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit_predict(self, *args, **kwargs):
+            raise AssertionError("KMeans should not be called")
+
+    monkeypatch.setattr("visualization.KMeans", DummyKM)
 
     figs = generate_figures(
         factor_results,

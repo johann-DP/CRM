@@ -45,6 +45,10 @@ def test_evaluate_and_plot(tmp_path, monkeypatch):
     monkeypatch.setattr(em, "trustworthiness", lambda *args, **kwargs: 0.5)
 
     metrics = em.evaluate_methods(results, df, quant_vars, qual_vars, n_clusters=2)
+    assert "cluster_labels" in results["A"]
+    assert len(results["A"]["cluster_labels"]) == len(df)
+    assert "cluster_labels" in results["B"]
+    assert len(results["B"]["cluster_labels"]) == len(df)
 
     for method, info in results.items():
         assert "cluster_labels" in info
