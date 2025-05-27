@@ -2,6 +2,20 @@
 
 This repository contains scripts for various phases of data analysis.
 
+## Preparing the environment
+
+Set up a dedicated Python environment before running the code. If an
+``environment.yaml`` file is available you can create it with::
+
+    conda env create -f environment.yaml
+
+Otherwise install the pinned dependencies from ``requirements.txt``::
+
+    python -m pip install -r requirements.txt
+
+Using a clean environment avoids binary incompatibilities between NumPy,
+pandas and the plotting libraries.
+
 ## Running `phase4v2.py`
 
 The script requires a configuration file in YAML (or JSON) format. A template

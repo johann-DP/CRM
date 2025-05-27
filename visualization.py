@@ -22,7 +22,7 @@ def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
     title : str
         Title of the figure.
     """
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
@@ -63,7 +63,7 @@ def plot_scatter_2d(
     emb_df: pd.DataFrame, df_active: pd.DataFrame, color_var: Optional[str], title: str
 ) -> plt.Figure:
     """Return a 2D scatter plot figure coloured by ``color_var``."""
-    fig, ax = plt.subplots(figsize=(8, 6), dpi=200)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     if color_var is None or color_var not in df_active.columns:
         ax.scatter(emb_df.iloc[:, 0], emb_df.iloc[:, 1], s=10, alpha=0.7)
     else:
@@ -91,7 +91,7 @@ def plot_scatter_3d(
     emb_df: pd.DataFrame, df_active: pd.DataFrame, color_var: Optional[str], title: str
 ) -> plt.Figure:
     """Return a 3D scatter plot figure coloured by ``color_var``."""
-    fig = plt.figure(figsize=(8, 6), dpi=200)
+    fig = plt.figure(figsize=(12, 6), dpi=200)
     ax = fig.add_subplot(111, projection="3d")
     if color_var is None or color_var not in df_active.columns:
         ax.scatter(emb_df.iloc[:, 0], emb_df.iloc[:, 1], emb_df.iloc[:, 2], s=10, alpha=0.7)

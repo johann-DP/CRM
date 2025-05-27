@@ -220,7 +220,7 @@ def plot_na_dashboard(na_df: pd.DataFrame, output_path: Path):
     plt.xlabel('% Missing')
     plt.title("Top 30 variables par taux de NA (Phases 1–3)")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -560,7 +560,7 @@ def segment_data(
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
         png_path = seg_dir / f"segment_{col}.png"
-        plt.savefig(png_path, dpi=200)
+        plt.savefig(png_path, dpi=300, bbox_inches="tight")
         plt.close()
 
         logger.info(f"Rapport segmentation '{col}' → {csv_path.name}, {png_path.name}")
@@ -613,7 +613,7 @@ def scatter_all_segments(
         plt.legend(title=col, bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fname = f"{prefix.lower()}_{col}.png"
-        plt.savefig(output_dir / fname)
+        plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
         plt.close()
 
         # Version clustered with k equal to number of modalities
@@ -640,7 +640,7 @@ def scatter_all_segments(
             plt.colorbar(sc, label="cluster")
             plt.tight_layout()
             fname = f"{prefix.lower()}_{col}_clusters.png"
-            plt.savefig(output_dir / fname)
+            plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
             plt.close()
 
 
@@ -675,7 +675,7 @@ def scatter_cluster_variants(
         plt.colorbar(sc, label="cluster")
         plt.tight_layout()
         fname = f"{prefix.lower()}_k{k}.png"
-        plt.savefig(output_dir / fname)
+        plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
         plt.close()
 
 
@@ -804,7 +804,7 @@ def run_mfa(
     plt.xticks(axes)
     plt.tight_layout()
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "mfa_scree_plot.png")
+    plt.savefig(output_dir / "mfa_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     return mfa, row_coords
@@ -903,7 +903,7 @@ def run_pcamix(
     plt.xticks(axes)
     plt.tight_layout()
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "pcamix_scree_plot.png")
+    plt.savefig(output_dir / "pcamix_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     row_coords = md_pca.row_coordinates(df_mix)
@@ -985,7 +985,7 @@ def run_pca(
     plt.xticks(axes)
     plt.tight_layout()
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "pca_scree_plot.png")
+    plt.savefig(output_dir / "pca_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     return pca, inertia, row_coords, col_coords, contrib
@@ -1049,7 +1049,7 @@ def run_mca(
     plt.xticks(axes)
     plt.tight_layout()
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "mca_scree_plot.png")
+    plt.savefig(output_dir / "mca_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     return mca, inertia, row_coords, col_coords, contrib
@@ -1183,7 +1183,7 @@ def export_tsne_results(
         plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig_path = output_dir / "tsne_scatter.png"
-        plt.savefig(fig_path)
+        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
         plt.close()
         logger.info(f"Export t-SNE -> {fig_path}")
 
@@ -1217,7 +1217,7 @@ def export_tsne_results(
         ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig3d_path = output_dir / "tsne_scatter_3D.png"
-        plt.savefig(fig3d_path)
+        plt.savefig(fig3d_path, dpi=300, bbox_inches="tight")
         plt.close()
         logger.info(f"Export t-SNE -> {fig3d_path}")
 
@@ -1384,7 +1384,7 @@ def export_umap_results(
         plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig_path = output_dir / "umap_scatter.png"
-        plt.savefig(fig_path)
+        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection UMAP 2D enregistrée: %s", fig_path)
 
@@ -1419,7 +1419,7 @@ def export_umap_results(
         ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
         fig3d_path = output_dir / "umap_scatter_3D.png"
-        plt.savefig(fig3d_path)
+        plt.savefig(fig3d_path, dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection UMAP 3D enregistrée: %s", fig3d_path)
 
@@ -1555,7 +1555,7 @@ def export_pacmap_results(
         plt.title("PaCMAP \u2013 individus (dim 1 vs dim 2)")
         plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
-        plt.savefig(output_dir / "pacmap_scatter.png")
+        plt.savefig(output_dir / "pacmap_scatter.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection PaCMAP 2D enregistr\u00e9e")
 
@@ -1588,7 +1588,7 @@ def export_pacmap_results(
         ax.set_title("PaCMAP \u2013 individus (3D)")
         ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
-        plt.savefig(output_dir / "pacmap_scatter_3D.png")
+        plt.savefig(output_dir / "pacmap_scatter_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection PaCMAP 3D enregistr\u00e9e")
 
@@ -1777,7 +1777,7 @@ def export_phate_results(
         plt.title("Projection PHATE des individus")
         plt.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
-        plt.savefig(output_dir / "phate_scatter.png")
+        plt.savefig(output_dir / "phate_scatter.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection PHATE 2D enregistrée")
 
@@ -1820,7 +1820,7 @@ def export_phate_results(
         ax.set_title("Projection PHATE des individus (3D)")
         ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
         plt.tight_layout()
-        plt.savefig(output_dir / "phate_scatter_3D.png")
+        plt.savefig(output_dir / "phate_scatter_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection PHATE 3D enregistrée")
 
@@ -2129,7 +2129,7 @@ def plot_multimethod_results(
             ax.set_ylabel("% inertie")
             ax.set_xticks(axes_idx)
         plt.tight_layout()
-        plt.savefig(output_dir / "multi_scree.png")
+        plt.savefig(output_dir / "multi_scree.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # ─── Scatter F1–F2 comparés ─────────────────────────────────
@@ -2156,7 +2156,7 @@ def plot_multimethod_results(
         for j in range(len(emb_methods), len(axes)):
             axes[j].axis("off")
         plt.tight_layout()
-        plt.savefig(output_dir / "multi_scatter.png")
+        plt.savefig(output_dir / "multi_scatter.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # ─── Heatmap d'évaluation ──────────────────────────────────
@@ -2227,7 +2227,7 @@ def export_famd_results(
     plt.xticks(ax_idx, [f"F{i}" for i in ax_idx])
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / "famd_scree_plot.png")
+    plt.savefig(output_dir / "famd_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
     logger.info("Scree plot enregistré")
 
@@ -2255,7 +2255,7 @@ def export_famd_results(
         plt.ylabel(f"F2 ({inertia[1]*100:.1f}% inertie)")
         plt.title("FAMD – individus (F1 vs F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "famd_indiv_plot.png")
+        plt.savefig(output_dir / "famd_indiv_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection F1-F2 enregistrée")
 
@@ -2293,7 +2293,7 @@ def export_famd_results(
         ax.set_zlabel("F3")
         ax.set_title("FAMD – individus (3D)")
         plt.tight_layout()
-        plt.savefig(output_dir / "famd_indiv_plot_3D.png")
+        plt.savefig(output_dir / "famd_indiv_plot_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection 3D enregistrée")
 
@@ -2304,7 +2304,7 @@ def export_famd_results(
         ax = plt.gca()
         plot_correlation_circle(ax, qcoords, "FAMD – cercle des corrélations (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "famd_correlation_circle.png")
+        plt.savefig(output_dir / "famd_correlation_circle.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Cercle des corrélations enregistré")
 
@@ -2339,7 +2339,7 @@ def export_famd_results(
         plt.ylabel("F2")
         plt.title("FAMD – modalités (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "famd_modalities_plot.png")
+        plt.savefig(output_dir / "famd_modalities_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Modalités enregistrées")
 
@@ -2358,7 +2358,7 @@ def export_famd_results(
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
-    plt.savefig(output_dir / "famd_contributions.png")
+    plt.savefig(output_dir / "famd_contributions.png", dpi=300, bbox_inches="tight")
     plt.close()
     logger.info("Contributions enregistrées")
 
@@ -2459,7 +2459,7 @@ def export_mfa_results(
         plt.ylabel("F2")
         plt.title("MFA – individus (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "mfa_indiv_plot.png")
+        plt.savefig(output_dir / "mfa_indiv_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection MFA F1-F2 enregistrée")
 
@@ -2496,7 +2496,7 @@ def export_mfa_results(
         ax.set_zlabel("F3")
         ax.set_title("MFA – individus (3D)")
         plt.tight_layout()
-        plt.savefig(output_dir / "mfa_indiv_plot_3D.png")
+        plt.savefig(output_dir / "mfa_indiv_plot_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection MFA 3D enregistrée")
 
@@ -2509,7 +2509,7 @@ def export_mfa_results(
             colors = {v: group_colors.get(group_map.get(v, "")) for v in qcoords.index}
             plot_correlation_circle(ax, qcoords, "MFA – cercle des corrélations", colors)
             plt.tight_layout()
-            plt.savefig(output_dir / "mfa_correlation_circle.png")
+            plt.savefig(output_dir / "mfa_correlation_circle.png", dpi=300, bbox_inches="tight")
             plt.close()
             logger.info("Cercle des corrélations MFA enregistré")
 
@@ -2558,7 +2558,7 @@ def export_mfa_results(
             plt.ylabel("F2")
             plt.title("MFA – modalités (F1–F2)")
             plt.tight_layout()
-            plt.savefig(output_dir / "mfa_modalities_plot.png")
+            plt.savefig(output_dir / "mfa_modalities_plot.png", dpi=300, bbox_inches="tight")
             plt.close()
             logger.info("Modalités MFA enregistrées")
 
@@ -2587,7 +2587,7 @@ def export_mfa_results(
                 plt.ylabel("F2")
                 plt.title("MFA – modalités proches (zoom)")
                 plt.tight_layout()
-                plt.savefig(output_dir / "mfa_modalities_zoom.png")
+                plt.savefig(output_dir / "mfa_modalities_zoom.png", dpi=300, bbox_inches="tight")
                 plt.close()
 
     # ─── Contributions ───────────────────────────────────────────────
@@ -2606,7 +2606,7 @@ def export_mfa_results(
             else:
                 axes_plot[i].axis("off")
         plt.tight_layout()
-        plt.savefig(output_dir / "mfa_contributions.png")
+        plt.savefig(output_dir / "mfa_contributions.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Contributions MFA enregistrées")
 
@@ -2617,11 +2617,11 @@ def export_mfa_results(
         if group_contrib:
             df_gc = pd.DataFrame(group_contrib).T
             df_gc = df_gc[contrib.columns]
-            df_gc.plot(kind="bar", stacked=True, figsize=(8, 6), colormap="tab20")
+            df_gc.plot(kind="bar", stacked=True, figsize=(12, 6), colormap="tab20")
             plt.ylabel("% contribution")
             plt.title("Contribution par groupe")
             plt.tight_layout()
-            plt.savefig(output_dir / "mfa_group_contributions.png")
+            plt.savefig(output_dir / "mfa_group_contributions.png", dpi=300, bbox_inches="tight")
             plt.close()
             df_gc.to_csv(output_dir / "mfa_group_contributions.csv", index=True)
             logger.info("CSV contributions groupes MFA enregistré")
@@ -2693,7 +2693,7 @@ def export_pca_results(
     plt.title("Éboulis PCA")
     plt.xticks(ax_idx)
     plt.tight_layout()
-    plt.savefig(output_dir / "pca_scree_plot.png")
+    plt.savefig(output_dir / "pca_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     # Individuals 2D
@@ -2718,7 +2718,7 @@ def export_pca_results(
         plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("PCA – individus (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "pca_indiv_plot.png")
+        plt.savefig(output_dir / "pca_indiv_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
 
         scatter_all_segments(
@@ -2752,7 +2752,7 @@ def export_pca_results(
         ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
         ax.set_title("PCA – individus (3D)")
         plt.tight_layout()
-        plt.savefig(output_dir / "pca_indiv_plot_3D.png")
+        plt.savefig(output_dir / "pca_indiv_plot_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # Correlation circle
@@ -2761,7 +2761,7 @@ def export_pca_results(
         ax = plt.gca()
         plot_correlation_circle(ax, col_coords, "PCA – cercle des corrélations (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "pca_correlation_circle.png")
+        plt.savefig(output_dir / "pca_correlation_circle.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # Contributions
@@ -2776,7 +2776,7 @@ def export_pca_results(
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
-    plt.savefig(output_dir / "pca_contributions.png")
+    plt.savefig(output_dir / "pca_contributions.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     # CSV exports
@@ -2820,7 +2820,7 @@ def export_mca_results(
     plt.title("Éboulis MCA")
     plt.xticks(ax_idx)
     plt.tight_layout()
-    plt.savefig(output_dir / "mca_scree_plot.png")
+    plt.savefig(output_dir / "mca_scree_plot.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     # Individuals 2D
@@ -2845,7 +2845,7 @@ def export_mca_results(
         plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – individus (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "mca_indiv_plot.png")
+        plt.savefig(output_dir / "mca_indiv_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # Individuals 3D
@@ -2872,7 +2872,7 @@ def export_mca_results(
         ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
         ax.set_title("MCA – individus (3D)")
         plt.tight_layout()
-        plt.savefig(output_dir / "mca_indiv_plot_3D.png")
+        plt.savefig(output_dir / "mca_indiv_plot_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     # Modalities
@@ -2918,7 +2918,7 @@ def export_mca_results(
         plt.xlabel("F1"); plt.ylabel("F2")
         plt.title("MCA – modalités (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "mca_modalities_plot.png")
+        plt.savefig(output_dir / "mca_modalities_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
 
         # Zoom on modalities near the origin
@@ -2945,7 +2945,7 @@ def export_mca_results(
             plt.ylabel("F2")
             plt.title("MCA – modalités proches (zoom)")
             plt.tight_layout()
-            plt.savefig(output_dir / "mca_modalities_zoom.png")
+            plt.savefig(output_dir / "mca_modalities_zoom.png", dpi=300, bbox_inches="tight")
             plt.close()
 
     # Contributions
@@ -2963,7 +2963,7 @@ def export_mca_results(
             axes_plot[i].axis("off")
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.25)
-    plt.savefig(output_dir / "mca_contributions.png")
+    plt.savefig(output_dir / "mca_contributions.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     # CSV
@@ -3022,7 +3022,7 @@ def export_pcamix_results(
         plt.ylabel("F2")
         plt.title("PCAmix – individus (F1–F2)")
         plt.tight_layout()
-        plt.savefig(output_dir / "pcamix_indiv_plot.png")
+        plt.savefig(output_dir / "pcamix_indiv_plot.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection individus PCAmix F1-F2 enregistrée")
 
@@ -3059,7 +3059,7 @@ def export_pcamix_results(
         ax.set_zlabel("F3")
         ax.set_title("PCAmix – individus (3D)")
         plt.tight_layout()
-        plt.savefig(output_dir / "pcamix_indiv_plot_3D.png")
+        plt.savefig(output_dir / "pcamix_indiv_plot_3D.png", dpi=300, bbox_inches="tight")
         plt.close()
         logger.info("Projection individus PCAmix 3D enregistrée")
 
@@ -3071,7 +3071,7 @@ def export_pcamix_results(
             ax = plt.gca()
             plot_correlation_circle(ax, qcoords, "PCAmix – cercle des corrélations")
             plt.tight_layout()
-            plt.savefig(output_dir / "pcamix_correlation_circle.png")
+            plt.savefig(output_dir / "pcamix_correlation_circle.png", dpi=300, bbox_inches="tight")
             plt.close()
             logger.info("Cercle des corrélations PCAmix enregistré")
 
@@ -3091,7 +3091,7 @@ def export_pcamix_results(
             plt.ylabel("F2")
             plt.title("PCAmix – modalités (F1–F2)")
             plt.tight_layout()
-            plt.savefig(output_dir / "pcamix_modalities_plot.png")
+            plt.savefig(output_dir / "pcamix_modalities_plot.png", dpi=300, bbox_inches="tight")
             plt.close()
             logger.info("Modalités PCAmix enregistrées")
 
@@ -3109,7 +3109,7 @@ def export_pcamix_results(
         else:
             axes_plot[i].axis("off")
     plt.tight_layout()
-    plt.savefig(output_dir / "pcamix_contributions.png")
+    plt.savefig(output_dir / "pcamix_contributions.png", dpi=300, bbox_inches="tight")
     plt.close()
     logger.info("Contributions PCAmix enregistrées")
 
@@ -3300,7 +3300,7 @@ def evaluate_methods(
     plt.yticks(rotation=0)
     plt.tight_layout()
     (output_dir / "methods_heatmap.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / "methods_heatmap.png")
+    plt.savefig(output_dir / "methods_heatmap.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     return df_comp
@@ -3345,7 +3345,7 @@ def compare_method_clusters(
     ax.set_title("Corrélations entre méthodes")
     plt.yticks(rotation=0)
     fig.tight_layout()
-    plt.savefig(output_dir / "methods_similarity_heatmap.png")
+    plt.savefig(output_dir / "methods_similarity_heatmap.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
     return ari
