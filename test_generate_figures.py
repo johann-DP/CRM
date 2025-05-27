@@ -44,3 +44,33 @@ def test_generate_figures_basic():
     assert "umap_scatter_2d" in figs
     for f in figs.values():
         assert hasattr(f, "savefig")
+
+
+def test_generate_figures_missing_f2():
+    df = pd.DataFrame({
+        "num1": [1, 2, 3],
+        "num2": [4, 5, 6],
+        "cat": ["a", "b", "a"],
+    })
+
+    factor_results = {
+        "pca": {
+            "embeddings": pd.DataFrame(
+                [[0.1, 0.2], [0.0, -0.1], [0.2, 0.1]],
+                index=df.index,
+                columns=["F1", "F2"],
+            ),
+            "loadings": pd.DataFrame(
+                [[0.7], [0.1]],
+                index=["num1", "num2"],
+                columns=["F1"],
+            ),
+            "inertia": pd.Series([1.0], index=["F1"]),
+        }
+    }
+
+    figs = generate_figures(factor_results, {}, df, ["num1", "num2"], ["cat"])
+    # scatter plot should still be produced
+    assert "pca_scatter_2d" in figs
+    # correlation plot cannot be generated with a single axis
+    assert "pca_correlation" not in figs
