@@ -50,9 +50,17 @@ def _select_n_components(eigenvalues: np.ndarray, threshold: float = 0.8) -> int
     return max(n_kaiser, n_inertia)
 
 
-def run_pca(df_active: pd.DataFrame, quant_vars: List[str], n_components: Optional[int] = None,
-            *, optimize: bool = False, variance_threshold: float = 0.8,
-            random_state: Optional[int] = None) -> Dict[str, object]:
+def run_pca(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    n_components: Optional[int] = None,
+    *,
+    optimize: bool = False,
+    variance_threshold: float = 0.8,
+    random_state: Optional[int] = None,
+    whiten: Optional[bool] = None,
+    svd_solver: Optional[str] = None,
+) -> Dict[str, object]:
     """Run a Principal Component Analysis on quantitative variables.
 
     Parameters
@@ -71,6 +79,10 @@ def run_pca(df_active: pd.DataFrame, quant_vars: List[str], n_components: Option
         Cumulative explained variance ratio threshold when ``optimize`` is true.
     random_state : int, optional
         Random state forwarded to :class:`sklearn.decomposition.PCA`.
+    whiten : bool, optional
+        If provided, sets the ``whiten`` parameter of :class:`~sklearn.decomposition.PCA`.
+    svd_solver : str, optional
+        If provided, sets the ``svd_solver`` parameter of :class:`~sklearn.decomposition.PCA`.
 
     Returns
     -------
@@ -89,7 +101,12 @@ def run_pca(df_active: pd.DataFrame, quant_vars: List[str], n_components: Option
         logger.info("PCA: selected %d components automatically", n_components)
 
     n_components = n_components or max_dim
-    pca = PCA(n_components=n_components, random_state=random_state)
+    kwargs = {}
+    if whiten is not None:
+        kwargs["whiten"] = whiten
+    if svd_solver is not None:
+        kwargs["svd_solver"] = svd_solver
+    pca = PCA(n_components=n_components, random_state=random_state, **kwargs)
     emb = pca.fit_transform(X)
 
     inertia = pd.Series(pca.explained_variance_ratio_,
@@ -109,10 +126,39 @@ def run_pca(df_active: pd.DataFrame, quant_vars: List[str], n_components: Option
     }
 
 
-def run_mca(df_active: pd.DataFrame, qual_vars: List[str], n_components: Optional[int] = None,
-            *, optimize: bool = False, variance_threshold: float = 0.8,
-            random_state: Optional[int] = None) -> Dict[str, object]:
-    """Run Multiple Correspondence Analysis on qualitative variables."""
+def run_mca(
+    df_active: pd.DataFrame,
+    qual_vars: List[str],
+    n_components: Optional[int] = None,
+    *,
+    optimize: bool = False,
+    variance_threshold: float = 0.8,
+    random_state: Optional[int] = None,
+    normalize: bool = True,
+    n_iter: int = 3,
+) -> Dict[str, object]:
+    """Run Multiple Correspondence Analysis on qualitative variables.
+
+    Parameters
+    ----------
+    df_active : pandas.DataFrame
+        Input data with qualitative variables.
+    qual_vars : list of str
+        Names of the qualitative columns to use.
+    n_components : int, optional
+        Number of dimensions to compute. If ``None`` and ``optimize`` is
+        ``True`` the value is selected automatically.
+    optimize : bool, default ``False``
+        Activate automatic selection of ``n_components`` when not provided.
+    variance_threshold : float, default ``0.8``
+        Cumulative inertia threshold when ``optimize`` is enabled.
+    random_state : int, optional
+        Random state passed to :class:`prince.MCA`.
+    normalize : bool, default ``True``
+        If ``True`` applies the Benzecri correction (``correction='benzecri'``).
+    n_iter : int, default ``3``
+        Number of iterations for the underlying algorithm.
+    """
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
 
@@ -128,7 +174,13 @@ def run_mca(df_active: pd.DataFrame, qual_vars: List[str], n_components: Optiona
         logger.info("MCA: selected %d components automatically", n_components)
 
     n_components = n_components or 5
-    mca = prince.MCA(n_components=n_components, random_state=random_state)
+    corr = "benzecri" if normalize else None
+    mca = prince.MCA(
+        n_components=n_components,
+        n_iter=n_iter,
+        correction=corr,
+        random_state=random_state,
+    )
     mca = mca.fit(df_cat)
 
     inertia = pd.Series(_get_explained_inertia(mca),

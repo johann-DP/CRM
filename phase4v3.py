@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import inspect
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -22,6 +23,7 @@ from nonlinear_methods import run_umap, run_phate, run_pacmap
 from evaluate_methods import evaluate_methods, plot_methods_heatmap
 from dataset_comparison import handle_missing_values
 from visualization import generate_figures
+from best_params import BEST_PARAMS
 
 # Optional tuned versions of the main methods
 try:
@@ -115,6 +117,17 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
         return {}
     mapping = dict(zip(df[src].astype(str), df[dst].astype(str)))
     return mapping
+
+
+def _params_for(method: str) -> Dict[str, Any]:
+    """Return best parameters for ``method`` if available."""
+    return BEST_PARAMS.get(method.upper(), {}).copy()
+
+
+def _filter_kwargs(func: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only parameters accepted by ``func``."""
+    sig = inspect.signature(func)
+    return {k: v for k, v in params.items() if k in sig.parameters}
 
 
 # ---------------------------------------------------------------------------
@@ -222,23 +235,47 @@ def _run_single_dataset(
     factor_results: Dict[str, Any] = {}
     if quant_vars:
         pca_fn = tune_pca or run_pca
+        pca_params = _filter_kwargs(pca_fn, _params_for("PCA"))
+        if "n_components" in pca_params:
+            pca_params["n_components"] = min(
+                pca_params["n_components"], len(quant_vars), len(df_active)
+            )
         factor_results["pca"] = pca_fn(
-            df_active, quant_vars, optimize=True, random_state=random_state
+            df_active,
+            quant_vars,
+            optimize=True,
+            random_state=random_state,
+            **pca_params,
         )
     if qual_vars:
         mca_fn = tune_mca or run_mca
+        mca_params = _filter_kwargs(mca_fn, _params_for("MCA"))
+        if "n_components" in mca_params:
+            mca_params["n_components"] = min(
+                mca_params["n_components"], sum(df_active[q].nunique() - 1 for q in qual_vars)
+            )
         factor_results["mca"] = mca_fn(
-            df_active, qual_vars, optimize=True, random_state=random_state
+            df_active,
+            qual_vars,
+            optimize=True,
+            random_state=random_state,
+            **mca_params,
         )
     if quant_vars and qual_vars:
         try:
             famd_fn = tune_famd or run_famd
+            famd_params = _filter_kwargs(famd_fn, _params_for("FAMD"))
+            if "n_components" in famd_params:
+                famd_params["n_components"] = min(
+                    famd_params["n_components"], df_active.shape[1]
+                )
             factor_results["famd"] = famd_fn(
                 df_active,
                 quant_vars,
                 qual_vars,
                 optimize=True,
                 random_state=random_state,
+                **famd_params,
             )
         except ValueError as exc:
             logging.getLogger(__name__).warning("FAMD skipped: %s", exc)
@@ -250,28 +287,40 @@ def _run_single_dataset(
         groups.append(qual_vars)
     if len(groups) > 1:
         mfa_fn = tune_mfa or run_mfa
+        mfa_params = _filter_kwargs(mfa_fn, _params_for("MFA"))
+        if "n_components" in mfa_params:
+            mfa_params["n_components"] = min(
+                mfa_params["n_components"], df_active.shape[1]
+            )
         factor_results["mfa"] = mfa_fn(
-            df_active, groups, optimize=True, random_state=random_state
+            df_active,
+            groups,
+            optimize=True,
+            random_state=random_state,
+            **mfa_params,
         )
 
     nonlin_results: Dict[str, Any] = {}
     umap_fn = tune_umap or run_umap
     try:
-        nonlin_results["umap"] = umap_fn(df_active)
+        umap_params = _filter_kwargs(umap_fn, _params_for("UMAP"))
+        nonlin_results["umap"] = umap_fn(df_active, **umap_params)
     except Exception as exc:  # pragma: no cover - unexpected runtime failure
         logging.getLogger(__name__).warning("UMAP failed: %s", exc)
         nonlin_results["umap"] = {"error": str(exc)}
 
     phate_fn = tune_phate or run_phate
     try:
-        nonlin_results["phate"] = phate_fn(df_active)
+        phate_params = _filter_kwargs(phate_fn, _params_for("PHATE"))
+        nonlin_results["phate"] = phate_fn(df_active, **phate_params)
     except Exception as exc:  # pragma: no cover - unexpected runtime failure
         logging.getLogger(__name__).warning("PHATE failed: %s", exc)
         nonlin_results["phate"] = {"error": str(exc)}
 
     pacmap_fn = tune_pacmap or run_pacmap
     try:
-        nonlin_results["pacmap"] = pacmap_fn(df_active)
+        pacmap_params = _filter_kwargs(pacmap_fn, _params_for("PACMAP"))
+        nonlin_results["pacmap"] = pacmap_fn(df_active, **pacmap_params)
     except Exception as exc:  # pragma: no cover - unexpected runtime failure
         logging.getLogger(__name__).warning("PaCMAP failed: %s", exc)
         nonlin_results["pacmap"] = {"error": str(exc)}
