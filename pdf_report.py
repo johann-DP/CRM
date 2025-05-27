@@ -7,7 +7,7 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Union
 
 import matplotlib
 matplotlib.use("Agg")
@@ -48,8 +48,8 @@ def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
 
 
 def export_report_to_pdf(
-    figures: Mapping[str, plt.Figure],
-    tables: Mapping[str, pd.DataFrame],
+    figures: Mapping[str, Union[plt.Figure, str, Path]],
+    tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
 ) -> Path:
     """Create a structured PDF gathering all figures and tables from phase 4.
@@ -61,11 +61,14 @@ def export_report_to_pdf(
     Parameters
     ----------
     figures : mapping
-        Mapping from figure name to Matplotlib :class:`~matplotlib.figure.Figure`.
+        Mapping from figure name to either a Matplotlib :class:`~matplotlib.figure.Figure`
+        or a path to an existing image file.
     tables : mapping
-        Mapping from table name to :class:`pandas.DataFrame`.
+        Mapping from table name to a :class:`pandas.DataFrame` or a CSV file path.
     output_path : str or :class:`pathlib.Path`
         Destination path of the PDF file.
+        Pages are added in portrait mode by default but switch to landscape when
+        a table has many columns.
 
     Returns
     -------
@@ -100,9 +103,15 @@ def export_report_to_pdf(
 
         # Tables first (comparatif des méthodes, etc.)
         for name, table in tables.items():
+            if isinstance(table, (str, Path)):
+                try:
+                    table = pd.read_csv(table)
+                except Exception:
+                    continue
             if not isinstance(table, pd.DataFrame):
                 continue
-            pdf.add_page()
+            orientation = "L" if len(table.columns) > 6 else "P"
+            pdf.add_page(orientation=orientation)
             _add_title(name)
             pdf.set_font("Courier", size=8)
             table_str = table.to_string()
@@ -116,11 +125,15 @@ def export_report_to_pdf(
                 continue
             pdf.add_page()
             _add_title(name)
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
-            plt.close(fig)
-            pdf.image(tmp.name, w=180)
-            tmp_paths.append(tmp.name)
+            if isinstance(fig, (str, Path)):
+                img_path = str(fig)
+            else:
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                plt.close(fig)
+                img_path = tmp.name
+                tmp_paths.append(tmp.name)
+            pdf.image(img_path, w=180)
 
         pdf.output(str(out))
 
@@ -145,6 +158,15 @@ def export_report_to_pdf(
             for name, fig in figures.items():
                 if fig is None:
                     continue
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                    continue
                 try:
                     fig.suptitle(name, fontsize=12)
                     pdf_backend.savefig(fig, dpi=300)
@@ -152,6 +174,11 @@ def export_report_to_pdf(
                     plt.close(fig)
 
             for name, table in tables.items():
+                if isinstance(table, (str, Path)):
+                    try:
+                        table = pd.read_csv(table)
+                    except Exception:
+                        continue
                 if not isinstance(table, pd.DataFrame):
                     continue
                 fig = _table_to_figure(table, name)
