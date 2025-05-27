@@ -124,20 +124,17 @@ def export_report_to_pdf(
 
         # Figures
         tmp_paths: list[str] = []
-        for name, fig in figures.items():
-            if fig is None:
+        for name, figure in figures.items():
+            if figure is None:
                 continue
             pdf.add_page()
             _add_title(name)
-            if isinstance(fig, (str, Path)):
-                img_path = str(fig)
+            if isinstance(figure, (str, Path)):
+                img_path = str(figure)
             else:
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                try:
-                    fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
-                finally:
-                    tmp.close()
-                    plt.close(fig)
+                figure.savefig(tmp.name, dpi=200, bbox_inches="tight")
+                plt.close(figure)
                 img_path = tmp.name
                 tmp_paths.append(tmp.name)
             pdf.image(img_path, w=180)
@@ -147,6 +144,8 @@ def export_report_to_pdf(
         for p in tmp_paths:
             with suppress(OSError):
                 os.remove(p)
+
+        plt.close("all")
 
     except Exception:  # pragma: no cover - fallback when FPDF not installed
         logger.info("FPDF not available, falling back to PdfPages")
@@ -160,6 +159,33 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
+            for name, figure in figures.items():
+                if figure is None:
+                    continue
+                if isinstance(figure, (str, Path)):
+                    img = plt.imread(figure)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                    continue
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                    continue
+                try:
+                    figure.suptitle(name, fontsize=12)
+                    pdf_backend.savefig(figure, dpi=300)
+                finally:
+                    plt.close(figure)
+
             for name, table in tables.items():
                 if isinstance(table, (str, Path)):
                     try:
@@ -172,22 +198,6 @@ def export_report_to_pdf(
                 pdf_backend.savefig(fig, dpi=300)
                 plt.close(fig)
 
-            for name, fig in figures.items():
-                if fig is None:
-                    continue
-                if isinstance(fig, (str, Path)):
-                    img = plt.imread(fig)
-                    f, ax = plt.subplots()
-                    ax.imshow(img)
-                    ax.axis("off")
-                    f.suptitle(name, fontsize=12)
-                    pdf_backend.savefig(f, dpi=300)
-                    plt.close(f)
-                    continue
-                try:
-                    fig.suptitle(name, fontsize=12)
-                    pdf_backend.savefig(fig, dpi=300)
-                finally:
-                    plt.close(fig)
+        plt.close("all")
 
     return out
