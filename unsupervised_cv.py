@@ -109,9 +109,12 @@ def unsupervised_cv_and_temporal_tests(
     if not isinstance(df_active, pd.DataFrame):
         raise TypeError("df_active must be a DataFrame")
     if n_splits < 2:
-        raise ValueError("n_splits must be >= 2")
+        logger.warning("n_splits < 2: skipping cross-validation")
+        splits: Sequence[Tuple[np.ndarray, np.ndarray]] = []
+    else:
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        splits = list(kf.split(df_active))
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
     pca_axis_scores: list[float] = []
     pca_dist_scores: list[float] = []
@@ -124,7 +127,7 @@ def unsupervised_cv_and_temporal_tests(
         logger.warning("UMAP unavailable: %s", exc)
         umap = None  # type: ignore
 
-    for train_idx, test_idx in kf.split(df_active):
+    for train_idx, test_idx in splits:
         df_train = df_active.iloc[train_idx]
         df_test = df_active.iloc[test_idx]
 
