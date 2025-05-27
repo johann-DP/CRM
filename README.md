@@ -69,32 +69,12 @@ analyses. UMAP accepts several parameters in `config.yaml`, including
 UMAP may warn when a seed is given while using several threads. The default
 configuration avoids setting a seed so that all CPU cores can be used.
 
-## Running `phase4_famd.py`
+## FAMD scripts removed
 
-For a streamlined FAMD-only pipeline without a configuration file, you can use
-`phase4_famd.py`. Provide the input Excel file and an output directory:
-
-```bash
-python phase4_famd.py --input "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx" \
-                       --output "D:\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output"
-```
-
-This mirrors the paths used when the original script was created and will
-generate figures and CSV results inside the specified output folder.
-
-### Fine-tuning `phase4_famd_simple.py`
-
-The lightweight script `phase4_famd_simple.py` exposes a couple of options to
-automatically choose the number of components. Use `--optimize` together with
-`--rule` to specify the selection criterion (``variance``, ``kaiser`` or
-``elbow``). The variance rule accepts an additional `--variance_threshold`
-argument. Example:
-
-```bash
-python phase4_famd_simple.py --input export_everwin.xlsx \
-                            --output phase4_output \
-                            --optimize --rule variance --variance_threshold 0.9
-```
+The standalone scripts `phase4_famd.py` and `phase4_famd_simple.py` were
+removed on 27/05/2025. Their capabilities are now integrated into
+`phase4v2.py` and the associated tuning utilities. Use `phase4v2.py` with a
+configuration file to run FAMD and optionally optimize the number of components.
 
 ## Fine-tuning PHATE on Phase 3 data
 
