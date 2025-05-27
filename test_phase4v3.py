@@ -71,6 +71,19 @@ def sample_files_with_dict(tmp_path: Path):
     }
 
 
+@pytest.fixture()
+def sample_files_with_dict(tmp_path: Path, sample_files):
+    mapping = pd.DataFrame({
+        "original": ["Date Op", "Total recette realise", "Categorie"],
+        "clean": ["Date", "Recette", "Cat"],
+    })
+    dict_path = tmp_path / "dict.xlsx"
+    mapping.to_excel(dict_path, index=False)
+    cfg = dict(sample_files)
+    cfg["data_dictionary"] = str(dict_path)
+    return cfg
+
+
 def test_load_datasets_types(sample_files):
     mod = importlib.import_module("phase4v3")
     datasets = mod.load_datasets(sample_files)
@@ -94,6 +107,23 @@ def test_load_datasets_structure(sample_files):
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == expected_cols
         assert df.shape[0] == rows
+
+
+def test_column_mapping(sample_files_with_dict):
+    mod = importlib.import_module("phase4v3")
+    datasets = mod.load_datasets(sample_files_with_dict)
+
+    assert list(datasets["raw"].columns) == ["Date", "Recette", "Cat"]
+    for key in ["phase1", "phase2", "phase3"]:
+        assert list(datasets[key].columns) == ["Date", "Recette", "Cat"]
+
+
+def test_default_config_usage(sample_files):
+    mod = importlib.import_module("phase4v3")
+    mod.CONFIG.clear()
+    mod.CONFIG.update(sample_files)
+    datasets = mod.load_datasets()
+    assert set(datasets) >= {"raw", "phase1", "phase2", "phase3"}
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):

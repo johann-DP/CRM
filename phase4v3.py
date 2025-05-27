@@ -55,9 +55,7 @@ except Exception:  # pragma: no cover - optional dependency may not be present
 
 from best_params import BEST_PARAMS
 
-# Global configuration used when ``load_datasets`` or other functions are
-# called without an explicit ``config`` parameter.  Tests may override this
-# dictionary by updating its values.
+# Global configuration used when no config is provided to helper functions.
 CONFIG: Dict[str, Any] = {}
 
 
@@ -105,11 +103,18 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
 
 
 def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.DataFrame]:
-    """Load raw and cleaned datasets specified in ``config`` or ``CONFIG``."""
+    """Load raw and cleaned datasets specified in ``config``.
+
+    Parameters
+    ----------
+    config : mapping or ``None``
+        Configuration dictionary.  If ``None``, the global ``CONFIG`` is used.
+    """
     logger = logging.getLogger(__name__)
+
     cfg = CONFIG if config is None else config
     if not isinstance(cfg, Mapping):
-        raise TypeError("config must be a mapping")
+        raise TypeError("config must be a mapping or None")
     if "input_file" not in cfg:
         raise ValueError("'input_file' missing from config")
 
@@ -121,6 +126,15 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         return df
 
     datasets: Dict[str, pd.DataFrame] = {}
+    raw_path = Path(cfg["input_file"])
+    datasets["raw"] = _read_dataset(raw_path)
+    logger.info(
+        "Raw dataset loaded from %s [%d rows, %d cols]",
+        raw_path,
+        datasets["raw"].shape[0],
+        datasets["raw"].shape[1],
+    )
+
     mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
 
     def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
@@ -128,14 +142,7 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
             df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
         return df
 
-    raw_path = Path(cfg["input_file"])
-    datasets["raw"] = _apply_mapping(_read_dataset(raw_path))
-    logger.info(
-        "Raw dataset loaded from %s [%d rows, %d cols]",
-        raw_path,
-        datasets["raw"].shape[0],
-        datasets["raw"].shape[1],
-    )
+    datasets["raw"] = _apply_mapping(datasets["raw"])
 
     for key, cfg_key in [
         ("phase1", "phase1_file"),
