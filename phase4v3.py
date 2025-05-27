@@ -112,6 +112,14 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         raise TypeError("config must be a mapping")
     if "input_file" not in cfg:
         raise ValueError("'input_file' missing from config")
+
+    mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
+
+    def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
+        if mapping:
+            df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+        return df
+
     datasets: Dict[str, pd.DataFrame] = {}
     mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
 
@@ -1494,7 +1502,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     np.random.seed(0)
     random.seed(0)
     cfg = _load_config(Path(args.config))
-    CONFIG.update(cfg)
     run_pipeline(cfg)
 
 
