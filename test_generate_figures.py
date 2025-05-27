@@ -5,7 +5,7 @@ matplotlib.use("Agg")
 from visualization import generate_figures
 
 
-def test_generate_figures_basic():
+def test_generate_figures_basic(tmp_path):
     df = pd.DataFrame({
         "num1": [1, 2, 3],
         "num2": [4, 5, 6],
@@ -38,7 +38,17 @@ def test_generate_figures_basic():
         }
     }
 
-    figs = generate_figures(factor_results, nonlin_results, df, ["num1", "num2"], ["cat"])
+    figs = generate_figures(
+        factor_results,
+        nonlin_results,
+        df,
+        ["num1", "num2"],
+        ["cat"],
+        output_dir=tmp_path,
+    )
+    assert (tmp_path / "pca" / "pca_scatter_2d.png").exists()
+    assert (tmp_path / "pca" / "pca_correlation.png").exists()
+    assert (tmp_path / "umap" / "umap_scatter_2d.png").exists()
     assert "pca_correlation" in figs
     assert "pca_scatter_2d" in figs
     assert "umap_scatter_2d" in figs
@@ -46,7 +56,7 @@ def test_generate_figures_basic():
         assert hasattr(f, "savefig")
 
 
-def test_generate_figures_missing_f2():
+def test_generate_figures_missing_f2(tmp_path):
     df = pd.DataFrame({
         "num1": [1, 2, 3],
         "num2": [4, 5, 6],
@@ -69,7 +79,7 @@ def test_generate_figures_missing_f2():
         }
     }
 
-    figs = generate_figures(factor_results, {}, df, ["num1", "num2"], ["cat"])
+    figs = generate_figures(factor_results, {}, df, ["num1", "num2"], ["cat"], output_dir=tmp_path)
     # scatter plot should still be produced
     assert "pca_scatter_2d" in figs
     # correlation plot cannot be generated with a single axis

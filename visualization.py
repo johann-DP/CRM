@@ -5,6 +5,7 @@ from __future__ import annotations
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import pandas as pd
 import seaborn as sns
@@ -131,6 +132,42 @@ def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.Dat
     subset = subset.rename(columns={cols[0]: "F1", cols[1]: "F2"})
     return subset
 
+def plot_scree(inertia: pd.Series, title: str) -> plt.Figure:
+    """Return a scree plot showing variance explained by each component."""
+    axes = range(1, len(inertia) + 1)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    ax.bar(axes, inertia.values * 100, edgecolor="black")
+    ax.plot(axes, np.cumsum(inertia.values) * 100, "-o", color="orange")
+    ax.set_xlabel("Composante")
+    ax.set_ylabel("% Variance expliquée")
+    ax.set_title(title)
+    ax.set_xticks(list(axes))
+    fig.tight_layout()
+    return fig
+
+
+def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
+    """Return a bar plot of variable contributions to F1 and F2."""
+    if not {"F1", "F2"}.issubset(contrib.columns):
+        cols = contrib.columns[:2]
+        contrib = contrib.rename(columns={cols[0]: "F1", cols[1]: "F2"})
+    grouped: dict[str, pd.Series] = {}
+    for idx in contrib.index:
+        var = idx.split("__", 1)[0]
+        grouped.setdefault(var, pd.Series(dtype=float))
+        grouped[var] = grouped[var].add(contrib.loc[idx, ["F1", "F2"]], fill_value=0)
+    df = pd.DataFrame(grouped).T.fillna(0)
+    df = df.sort_values(df.sum(axis=1).name if df.columns.size>2 else 0, ascending=False)
+    df = df.iloc[:n]
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    df[["F1", "F2"]].plot(kind="bar", stacked=True, ax=ax)
+    ax.set_ylabel("% Contribution")
+    ax.set_title("Contribution des variables à F1/F2 – FAMD")
+    ax.legend(title="Axe")
+    fig.tight_layout()
+    return fig
+
+
 
 def generate_figures(
     factor_results: Dict[str, Dict[str, Any]],
@@ -138,29 +175,37 @@ def generate_figures(
     df_active: pd.DataFrame,
     quant_vars: List[str],
     qual_vars: List[str],
+    output_dir: Optional[Path] = None,
 ) -> Dict[str, plt.Figure]:
-    """Generate comparative figures for dimensionality reduction results."""
+    """Generate and optionally save comparative visualization figures."""
     color_var = _choose_color_var(df_active, qual_vars)
     figures: Dict[str, plt.Figure] = {}
     first_3d_done = False
+    out = Path(output_dir) if output_dir is not None else None
+
+    def _save(fig: plt.Figure, method: str, name: str) -> None:
+        if out is None:
+            return
+        sub = out / method.lower()
+        sub.mkdir(parents=True, exist_ok=True)
+        fig.savefig(sub / f"{name}.png")
 
     for method, res in factor_results.items():
         emb = res.get("embeddings")
         if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            fig = plot_scatter_2d(
-                emb.iloc[:, :2],
-                df_active,
-                color_var,
-                f"Projection des affaires – {method.upper()}",
-            )
+            title = f"Projection des affaires – {method.upper()}"
+            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
+            _save(fig, method, f"{method}_scatter_2d")
             if not first_3d_done and emb.shape[1] >= 3:
-                figures[f"{method}_scatter_3d"] = plot_scatter_3d(
+                fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
                     df_active,
                     color_var,
                     f"Projection 3D – {method.upper()}",
                 )
+                figures[f"{method}_scatter_3d"] = fig3d
+                _save(fig3d, method, f"{method}_scatter_3d")
                 first_3d_done = True
         coords = res.get("loadings")
         if coords is None:
@@ -171,25 +216,37 @@ def generate_figures(
                 var_pc = res.get("inertia")
                 pct = float(var_pc.iloc[:2].sum() * 100) if isinstance(var_pc, pd.Series) else float("nan")
                 title = f"{method.upper()} – cercle des corrélations (F1–F2)\nVariance {pct:.1f}%"
-                figures[f"{method}_correlation"] = plot_correlation_circle(qcoords, title)
+                fig = plot_correlation_circle(qcoords, title)
+                figures[f"{method}_correlation"] = fig
+                _save(fig, method, f"{method}_correlation")
+        inertia = res.get("inertia")
+        if isinstance(inertia, pd.Series) and not inertia.empty:
+            fig = plot_scree(inertia, f"Variance expliquée par composante – {method.upper()}")
+            figures[f"{method}_scree"] = fig
+            _save(fig, method, f"{method}_scree")
+        if method == "famd":
+            contrib = res.get("contributions")
+            if isinstance(contrib, pd.DataFrame) and not contrib.empty:
+                fig = plot_famd_contributions(contrib)
+                figures[f"{method}_contributions"] = fig
+                _save(fig, method, f"{method}_contributions")
 
     for method, res in nonlin_results.items():
         emb = res.get("embeddings")
         if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            fig = plot_scatter_2d(
-                emb.iloc[:, :2],
-                df_active,
-                color_var,
-                f"Projection des affaires – {method.upper()}",
-            )
+            title = f"Projection des affaires – {method.upper()}"
+            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
+            _save(fig, method, f"{method}_scatter_2d")
             if not first_3d_done and emb.shape[1] >= 3:
-                figures[f"{method}_scatter_3d"] = plot_scatter_3d(
+                fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
                     df_active,
                     color_var,
                     f"Projection 3D – {method.upper()}",
                 )
+                figures[f"{method}_scatter_3d"] = fig3d
+                _save(fig3d, method, f"{method}_scatter_3d")
                 first_3d_done = True
-    return figures
 
+    return figures

@@ -265,9 +265,15 @@ def _run_single_dataset(
     plot_methods_heatmap(metrics, output_dir)
     metrics.to_csv(output_dir / "metrics.csv")
 
-    figures = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
-    for name, fig in figures.items():
-        fig.savefig(output_dir / f"{name}.png")
+    figures = generate_figures(
+        factor_results,
+        nonlin_results,
+        df_active,
+        quant_vars,
+        qual_vars,
+        output_dir=output_dir,
+    )
+    for fig in figures.values():
         plt.close(fig)
 
     return {
