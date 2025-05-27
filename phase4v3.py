@@ -6,48 +6,22 @@ Bloc 1: Chargement et structuration des jeux de donnees.
 
 from __future__ import annotations
 
+import argparse
+import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
+import yaml
 
-# scripts de fine-tuning fournis
-try:
-    from fine_tune_famd import run_famd as tune_famd
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("fine_tune_famd import failed: %s", exc)
-    tune_famd = None
-try:
-    from fine_tune_pca import run_pca as tune_pca
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("fine_tune_pca import failed: %s", exc)
-    tune_pca = None
-try:
-    from fine_tuning_mca import run_mca as tune_mca
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("fine_tuning_mca import failed: %s", exc)
-    tune_mca = None
-try:
-    from fine_tune_mfa import run_mfa as tune_mfa
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("fine_tune_mfa import failed: %s", exc)
-    tune_mfa = None
-try:
-    from fine_tuning_umap import run_umap as tune_umap
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("fine_tuning_umap import failed: %s", exc)
-    tune_umap = None
-try:
-    from phase4_fine_tune_phate import run_phate as tune_phate
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("phase4_fine_tune_phate import failed: %s", exc)
-    tune_phate = None
-try:
-    from pacmap_fine_tune import run_pacmap as tune_pacmap
-except Exception as exc:  # pragma: no cover - optional dependency
-    logging.getLogger(__name__).warning("pacmap_fine_tune import failed: %s", exc)
-    tune_pacmap = None
+from data_preparation import prepare_data
+from variable_selection import select_variables
+from factor_methods import run_pca, run_mca, run_famd, run_mfa
+from nonlinear_methods import run_all_nonlinear
+from evaluate_methods import evaluate_methods, plot_methods_heatmap
+from dataset_comparison import handle_missing_values
+from visualization import generate_figures
 
 
 # ---------------------------------------------------------------------------
@@ -162,4 +136,155 @@ def load_datasets(config: Dict[str, str]) -> Dict[str, pd.DataFrame]:
         if extra:
             logger.debug("%s has %d additional columns", name, len(extra))
     return datasets
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helpers
+# ---------------------------------------------------------------------------
+
+def _setup_logging(output_dir: Path, level: str = "INFO") -> logging.Logger:
+    """Configure ``logging`` to write to ``phase4.log`` in ``output_dir``."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger()
+    logger.setLevel(level)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    file_handler = logging.FileHandler(output_dir / "phase4.log", encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    logger.addHandler(file_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(fmt)
+    logger.addHandler(stream_handler)
+    return logger
+
+
+def _run_single_dataset(
+    df: pd.DataFrame,
+    output_dir: Path,
+    *,
+    exclude_lost: bool = True,
+    min_modalite_freq: int = 5,
+    random_state: int = 0,
+) -> Dict[str, Any]:
+    """Execute the analysis pipeline on a single dataframe."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    df_prep = prepare_data(df, exclude_lost=exclude_lost)
+    df_active, quant_vars, qual_vars = select_variables(
+        df_prep, min_modalite_freq=min_modalite_freq
+    )
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+
+    factor_results: Dict[str, Any] = {}
+    if quant_vars:
+        factor_results["pca"] = run_pca(
+            df_active, quant_vars, optimize=True, random_state=random_state
+        )
+    if qual_vars:
+        factor_results["mca"] = run_mca(
+            df_active, qual_vars, optimize=True, random_state=random_state
+        )
+    if quant_vars and qual_vars:
+        try:
+            factor_results["famd"] = run_famd(
+                df_active,
+                quant_vars,
+                qual_vars,
+                optimize=True,
+                random_state=random_state,
+            )
+        except ValueError as exc:
+            logging.getLogger(__name__).warning("FAMD skipped: %s", exc)
+
+    groups = []
+    if quant_vars:
+        groups.append(quant_vars)
+    if qual_vars:
+        groups.append(qual_vars)
+    if len(groups) > 1:
+        factor_results["mfa"] = run_mfa(
+            df_active, groups, optimize=True, random_state=random_state
+        )
+
+    nonlin_results = run_all_nonlinear(df_active)
+    valid_nonlin = {
+        k: v
+        for k, v in nonlin_results.items()
+        if isinstance(v.get("embeddings"), pd.DataFrame) and not v["embeddings"].empty
+    }
+
+    if not factor_results and not valid_nonlin:
+        logging.getLogger(__name__).warning("No variables selected; skipping analysis")
+        empty = pd.DataFrame()
+        empty.to_csv(output_dir / "metrics.csv")
+        return {"metrics": empty, "figures": {}}
+
+    metrics = evaluate_methods(
+        {**factor_results, **valid_nonlin},
+        df_active,
+        quant_vars,
+        qual_vars,
+        n_clusters=3 if len(df_active) > 3 else 2,
+    )
+
+    plot_methods_heatmap(metrics, output_dir)
+    metrics.to_csv(output_dir / "metrics.csv")
+
+    figures = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
+    for name, fig in figures.items():
+        fig.savefig(output_dir / f"{name}.png")
+        plt.close(fig)
+
+    return {"metrics": metrics, "figures": figures}
+
+
+def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Run the complete phase 4 pipeline based on ``config``."""
+    random_state = int(config.get("random_state", 0))
+    output_dir = Path(config.get("output_dir", "phase4_output"))
+    _setup_logging(output_dir)
+
+    import numpy as np
+
+    np.random.seed(random_state)
+
+    datasets = load_datasets(config)
+    data_key = config.get("dataset", "raw")
+    if data_key not in datasets:
+        raise KeyError(f"dataset '{data_key}' not found in config")
+
+    logging.info("Running pipeline on dataset '%s'", data_key)
+    result = _run_single_dataset(
+        datasets[data_key],
+        output_dir,
+        exclude_lost=bool(config.get("exclude_lost", True)),
+        min_modalite_freq=int(config.get("min_modalite_freq", 5)),
+        random_state=random_state,
+    )
+    logging.info("Analysis complete")
+    return result
+
+
+def _load_config(path: Path) -> Dict[str, Any]:
+    """Load a YAML or JSON configuration file."""
+    with open(path, "r", encoding="utf-8") as fh:
+        if path.suffix.lower() in {".yaml", ".yml"}:
+            return yaml.safe_load(fh)
+        return json.load(fh)
+
+
+def main(argv: Optional[list[str]] = None) -> None:
+    """Entry point for command line execution."""
+    parser = argparse.ArgumentParser(description="Phase 4 analysis pipeline")
+    parser.add_argument("--config", required=True, help="Path to config YAML/JSON")
+    args = parser.parse_args(argv)
+
+    cfg = _load_config(Path(args.config))
+    run_pipeline(cfg)
+
+
+if __name__ == "__main__":  # pragma: no cover - manual execution
+    main()
 
