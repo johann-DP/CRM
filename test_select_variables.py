@@ -39,3 +39,23 @@ def test_select_variables_rare_modalities():
     assert "Statut commercial" in qual_vars
     assert "Autre" in df_active["Statut commercial"].cat.categories
     assert (df_active["Statut commercial"] == "Autre").sum() == 1
+
+
+def test_select_variables_constant_numeric_and_text():
+    df = pd.DataFrame({
+        "ID": [1, 2, 3, 4],
+        "amount": [10, 20, 30, 40],
+        "const": [1, 1, 1, 1],
+        "cat": ["a", "b", "a", "b"],
+        "notes": ["foo", "bar", "baz", "qux"],
+    })
+    df["cat"] = df["cat"].astype("category")
+
+    df_active, quant_vars, qual_vars = select_variables(df, min_modalite_freq=1)
+
+    assert quant_vars == ["amount"]
+    assert qual_vars == ["cat"]
+    assert "const" not in df_active.columns
+    assert "notes" not in df_active.columns
+    assert df_active["amount"].dtype.kind == "f"
+    assert df_active["cat"].dtype.name == "category"

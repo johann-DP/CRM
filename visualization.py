@@ -5,6 +5,7 @@ from __future__ import annotations
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from pathlib import Path
 import pandas as pd
@@ -180,6 +181,42 @@ def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.Dat
     subset = subset.rename(columns={cols[0]: "F1", cols[1]: "F2"})
     return subset
 
+def plot_scree(inertia: pd.Series, title: str) -> plt.Figure:
+    """Return a scree plot showing variance explained by each component."""
+    axes = range(1, len(inertia) + 1)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    ax.bar(axes, inertia.values * 100, edgecolor="black")
+    ax.plot(axes, np.cumsum(inertia.values) * 100, "-o", color="orange")
+    ax.set_xlabel("Composante")
+    ax.set_ylabel("% Variance expliquée")
+    ax.set_title(title)
+    ax.set_xticks(list(axes))
+    fig.tight_layout()
+    return fig
+
+
+def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
+    """Return a bar plot of variable contributions to F1 and F2."""
+    if not {"F1", "F2"}.issubset(contrib.columns):
+        cols = contrib.columns[:2]
+        contrib = contrib.rename(columns={cols[0]: "F1", cols[1]: "F2"})
+    grouped: dict[str, pd.Series] = {}
+    for idx in contrib.index:
+        var = idx.split("__", 1)[0]
+        grouped.setdefault(var, pd.Series(dtype=float))
+        grouped[var] = grouped[var].add(contrib.loc[idx, ["F1", "F2"]], fill_value=0)
+    df = pd.DataFrame(grouped).T.fillna(0)
+    df = df.sort_values(df.sum(axis=1).name if df.columns.size>2 else 0, ascending=False)
+    df = df.iloc[:n]
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    df[["F1", "F2"]].plot(kind="bar", stacked=True, ax=ax)
+    ax.set_ylabel("% Contribution")
+    ax.set_title("Contribution des variables à F1/F2 – FAMD")
+    ax.legend(title="Axe")
+    fig.tight_layout()
+    return fig
+
+
 
 def plot_scree(inertia: pd.Series, title: str) -> plt.Figure:
     """Return a scree plot showing variance explained by each component."""
@@ -251,12 +288,8 @@ def generate_figures(
     for method, res in factor_results.items():
         emb = res.get("embeddings")
         if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            fig = plot_scatter_2d(
-                emb.iloc[:, :2],
-                df_active,
-                color_var,
-                f"Projection des affaires – {method.upper()}",
-            )
+            title = f"Projection des affaires – {method.upper()}"
+            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             km = KMeans(n_clusters=cluster_k, random_state=0)
@@ -302,12 +335,8 @@ def generate_figures(
     for method, res in nonlin_results.items():
         emb = res.get("embeddings")
         if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            fig = plot_scatter_2d(
-                emb.iloc[:, :2],
-                df_active,
-                color_var,
-                f"Projection des affaires – {method.upper()}",
-            )
+            title = f"Projection des affaires – {method.upper()}"
+            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             km = KMeans(n_clusters=cluster_k, random_state=0)
@@ -326,5 +355,5 @@ def generate_figures(
                 figures[f"{method}_scatter_3d"] = fig3d
                 _save(fig3d, method, f"{method}_scatter_3d")
                 first_3d_done = True
-    return figures
 
+    return figures
