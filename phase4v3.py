@@ -55,6 +55,9 @@ except Exception:  # pragma: no cover - optional dependency may not be present
 
 from best_params import BEST_PARAMS
 
+# Global configuration updated by ``main`` when run as a script
+CONFIG: Dict[str, Any] = {}
+
 
 # ---------------------------------------------------------------------------
 # Data Loading & Preparation
@@ -99,8 +102,12 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
     return mapping
 
 
-def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
-    """Load raw and cleaned datasets specified in ``config``."""
+def load_datasets(config: Optional[Dict[str, Any]] = None) -> Dict[str, pd.DataFrame]:
+    """Load raw and cleaned datasets specified in ``config`` or ``CONFIG``."""
+    if config is None:
+        config = CONFIG
+    if not isinstance(config, dict):
+        raise TypeError("config must be a dictionary")
     logger = logging.getLogger(__name__)
     if "input_file" not in config:
         raise ValueError("'input_file' missing from config")
@@ -113,13 +120,7 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
             df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
         return df
 
-    datasets["raw"] = _apply_mapping(_read_dataset(raw_path))
-    logger.info(
-        "Raw dataset loaded from %s [%d rows, %d cols]",
-        raw_path,
-        datasets["raw"].shape[0],
-        datasets["raw"].shape[1],
-    )
+    datasets["raw"] = _apply_mapping(datasets["raw"])
 
     for key, cfg_key in [
         ("phase1", "phase1_file"),
