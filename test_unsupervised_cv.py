@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from unsupervised_cv import unsupervised_cv_and_temporal_tests
+import math
 
 
 def sample_df() -> pd.DataFrame:
@@ -42,3 +43,16 @@ def test_unsupervised_cv_basic():
     assert set(res) == {"cv_stability", "temporal_shift"}
     assert "pca_axis_corr_mean" in res["cv_stability"]
     assert isinstance(res["temporal_shift"], dict)
+
+
+def test_unsupervised_cv_skip_cv():
+    df = sample_df()
+    res = unsupervised_cv_and_temporal_tests(df, ["num1", "num2"], ["cat"], n_splits=1)
+    assert math.isnan(res["cv_stability"]["pca_axis_corr_mean"])
+    assert res["temporal_shift"] is not None
+
+
+def test_unsupervised_cv_no_date():
+    df = sample_df().drop(columns=["date"])
+    res = unsupervised_cv_and_temporal_tests(df, ["num1", "num2"], ["cat"], n_splits=2)
+    assert res["temporal_shift"] is None
