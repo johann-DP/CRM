@@ -12,7 +12,9 @@ metrics evaluation) and does **not** depend on legacy scripts such as
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from pathlib import Path
 
 import pandas as pd
 
@@ -88,7 +90,8 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
 # ---------------------------------------------------------------------------
 
 def compare_datasets_versions(
-    datasets: Dict[str, pd.DataFrame], *, exclude_lost: bool = True, min_modalite_freq: int = 5
+    datasets: Dict[str, pd.DataFrame], *, exclude_lost: bool = True, min_modalite_freq: int = 5,
+    output_dir: Optional[Path] = None
 ) -> Dict[str, Any]:
     """Compare dimensionality reduction results between dataset versions.
 
@@ -100,6 +103,9 @@ def compare_datasets_versions(
         Whether to remove lost/cancelled opportunities during preparation.
     min_modalite_freq : int, default ``5``
         Frequency threshold passed to :func:`variable_selection.select_variables`.
+    output_dir : Path, optional
+        Base directory where figures for each version will be saved. A
+        subdirectory named after the version is created within this path.
 
     Returns
     -------
@@ -160,8 +166,14 @@ def compare_datasets_versions(
         )
         metrics["dataset_version"] = name
         try:
+            fig_dir = Path(output_dir) / name if output_dir is not None else None
             figures = generate_figures(
-                factor_results, nonlin_results, df_active, quant_vars, qual_vars
+                factor_results,
+                nonlin_results,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir=fig_dir,
             )
         except Exception as exc:  # pragma: no cover - visualization failure
             logger.warning("Figure generation failed: %s", exc)
@@ -198,5 +210,5 @@ if __name__ == "__main__":  # pragma: no cover - manual testing helper
         "Type opportunité": ["T1", "T2", "T1"],
     })
     datasets = {"v1": df, "v2": df.drop(1)}
-    out = compare_datasets_versions(datasets)
+    out = compare_datasets_versions(datasets, output_dir=Path("figures"))
     pprint.pprint(out["metrics"].head())
