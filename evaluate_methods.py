@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
+import logging
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -101,13 +103,37 @@ def evaluate_methods(
             inertias = inertias.tolist()
         inertias = list(inertias)
 
+        logger = logging.getLogger(__name__)
+        if inertias and inertias[0] > 0.5:
+            logger.warning(
+                "Attention : l'axe F1 de %s explique %.1f%% de la variance",
+                method.upper(),
+                inertias[0] * 100,
+            )
+
+        contrib = info.get("contributions")
+        if isinstance(contrib, pd.DataFrame) and "F1" in contrib:
+            top = float(contrib["F1"].max())
+            if top > 50:
+                dom_var = contrib["F1"].idxmax()
+                logger.warning(
+                    "Attention : la variable %s domine l’axe F1 de la %s avec %.1f%% de contribution, risque de projection biaisée.",
+                    dom_var,
+                    method.upper(),
+                    top,
+                )
+
         kaiser = int(sum(1 for eig in np.array(inertias) * n_features if eig > 1))
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
         X_low = info["embeddings"].values
         labels = KMeans(n_clusters=n_clusters, random_state=None).fit_predict(X_low)
-        sil = float(silhouette_score(X_low, labels))
-        dunn = dunn_index(X_low, labels)
+        if len(labels) <= n_clusters or len(set(labels)) < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X_low, labels))
+            dunn = dunn_index(X_low, labels)
 
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
@@ -123,8 +149,12 @@ def evaluate_methods(
         )
         X_high = np.hstack([X_num, X_cat])
         k_nn = min(10, max(1, len(X_high) // 2))
-        T = float(trustworthiness(X_high, X_low, n_neighbors=k_nn))
-        C = float(trustworthiness(X_low, X_high, n_neighbors=k_nn))
+        if k_nn >= len(X_high) / 2:
+            T = float("nan")
+            C = float("nan")
+        else:
+            T = float(trustworthiness(X_high, X_low, n_neighbors=k_nn))
+            C = float(trustworthiness(X_low, X_high, n_neighbors=k_nn))
 
         runtime = info.get("runtime_seconds") or info.get("runtime_s") or info.get("runtime")
 

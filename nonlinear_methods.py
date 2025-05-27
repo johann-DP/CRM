@@ -15,7 +15,11 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-import umap
+
+try:  # optional dependency
+    import umap  # type: ignore
+except Exception:  # pragma: no cover - optional dependency may not be present
+    umap = None
 
 try:  # optional dependencies
     import phate  # type: ignore
@@ -57,10 +61,17 @@ def _encode_mixed(df: pd.DataFrame) -> np.ndarray:
         X_cat = np.empty((len(df), 0))
 
     if X_num.size and X_cat.size:
-        return np.hstack([X_num, X_cat])
-    if X_num.size:
-        return X_num
-    return X_cat
+        X = np.hstack([X_num, X_cat])
+    elif X_num.size:
+        X = X_num
+    else:
+        X = X_cat
+
+    # ensure no NaN values
+    if np.isnan(X).any():  # pragma: no cover - should not happen
+        X = np.nan_to_num(X)
+
+    return X
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +88,14 @@ def run_umap(
     random_state: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run UMAP on ``df_active`` and return model and embeddings."""
+    if umap is None:  # pragma: no cover - optional dependency may be absent
+        logger.warning("UMAP is not installed; skipping")
+        return {
+            "model": None,
+            "embeddings": pd.DataFrame(index=df_active.index),
+            "params": {},
+        }
+
     start = time.perf_counter()
     X = _encode_mixed(df_active)
 
@@ -90,7 +109,7 @@ def run_umap(
     embedding = reducer.fit_transform(X)
     runtime = time.perf_counter() - start
 
-    cols = [f"UMAP{i + 1}" for i in range(n_components)]
+    cols = [f"Dim{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
 
     params = {
@@ -139,7 +158,7 @@ def run_phate(
     embedding = op.fit_transform(X)
     runtime = time.perf_counter() - start
 
-    cols = [f"PHATE{i + 1}" for i in range(n_components)]
+    cols = [f"Dim{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
 
     params = {"n_components": n_components, "k": k, "a": a, "t": t}
@@ -186,7 +205,7 @@ def run_pacmap(
         return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
 
     runtime = time.perf_counter() - start
-    cols = [f"PACMAP{i + 1}" for i in range(n_components)]
+    cols = [f"Dim{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
     params.pop("verbose")
     params.pop("apply_pca")

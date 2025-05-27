@@ -107,7 +107,12 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
     datasets: Dict[str, pd.DataFrame] = {}
     raw_path = Path(config["input_file"])
     datasets["raw"] = _read_dataset(raw_path)
-    logger.info("Raw dataset loaded from %s", raw_path)
+    logger.info(
+        "Raw dataset loaded from %s [%d rows, %d cols]",
+        raw_path,
+        datasets["raw"].shape[0],
+        datasets["raw"].shape[1],
+    )
 
     mapping = _load_data_dictionary(Path(config.get("data_dictionary", "")))
 
@@ -130,9 +135,15 @@ def load_datasets(config: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
         if not path.exists():
             logger.warning("Dataset %s not found: %s", key, path)
             continue
-        df = _read_dataset(path) if path.suffix.lower() != ".csv" else pd.read_csv(path)
+        df = _read_dataset(path)
         datasets[key] = _apply_mapping(df)
-        logger.info("Loaded %s dataset from %s", key, path)
+        logger.info(
+            "Loaded %s dataset from %s [%d rows, %d cols]",
+            key,
+            path,
+            df.shape[0],
+            df.shape[1],
+        )
 
     ref_cols = set(datasets["raw"].columns)
     for name, df in list(datasets.items()):
@@ -1406,10 +1417,16 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         empty = pd.DataFrame()
         empty.to_csv(output_dir / "metrics.csv")
         return {"metrics": empty, "figures": {}}
-    metrics = evaluate_methods({**factor_results, **valid_nonlin}, df_active, quant_vars, qual_vars, n_clusters=3 if len(df_active) > 3 else 2)
+    metrics = evaluate_methods({**factor_results, **valid_nonlin}, 
+                               df_active, quant_vars, 
+                               qual_vars, 
+                               n_clusters=3 if len(df_active) > 3 else 2)
     plot_methods_heatmap(metrics, output_dir)
     metrics.to_csv(output_dir / "metrics.csv")
-    figures = generate_figures(factor_results, nonlin_results, df_active, quant_vars, qual_vars)
+    figures = generate_figures(factor_results, 
+                               nonlin_results, 
+                               df_active, quant_vars, 
+                               qual_vars)
     for name, fig in figures.items():
         fig.savefig(output_dir / f"{name}.png")
         plt.close(fig)
@@ -1469,6 +1486,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     np.random.seed(0)
     random.seed(0)
     cfg = _load_config(Path(args.config))
+    CONFIG.update(cfg)
     run_pipeline(cfg)
 
 

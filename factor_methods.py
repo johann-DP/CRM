@@ -57,7 +57,7 @@ def run_pca(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = 0,
     whiten: Optional[bool] = None,
     svd_solver: Optional[str] = None,
 ) -> Dict[str, object]:
@@ -97,7 +97,9 @@ def run_pca(
 
     if optimize and n_components is None:
         tmp = PCA(n_components=max_dim, random_state=random_state).fit(X)
-        n_components = _select_n_components(tmp.explained_variance_, threshold=variance_threshold)
+        n_components = _select_n_components(
+            tmp.explained_variance_, threshold=variance_threshold
+        )
         logger.info("PCA: selected %d components automatically", n_components)
 
     n_components = n_components or max_dim
@@ -109,21 +111,34 @@ def run_pca(
     pca = PCA(n_components=n_components, random_state=random_state, **kwargs)
     emb = pca.fit_transform(X)
 
-    inertia = pd.Series(pca.explained_variance_ratio_,
-                        index=[f"F{i+1}" for i in range(pca.n_components_)])
-    embeddings = pd.DataFrame(emb, index=df_active.index,
-                              columns=[f"F{i+1}" for i in range(pca.n_components_)])
-    loadings = pd.DataFrame(pca.components_.T, index=quant_vars,
-                            columns=[f"F{i+1}" for i in range(pca.n_components_)])
+    inertia = pd.Series(
+        pca.explained_variance_ratio_,
+        index=[f"F{i+1}" for i in range(pca.n_components_)],
+    )
+    embeddings = pd.DataFrame(
+        emb,
+        index=df_active.index,
+        columns=[f"F{i+1}" for i in range(pca.n_components_)],
+    )
+    loadings = pd.DataFrame(
+        pca.components_.T,
+        index=quant_vars,
+        columns=[f"F{i+1}" for i in range(pca.n_components_)],
+    )
 
     runtime = time.perf_counter() - start
-    return {
+    result = {
         "model": pca,
         "inertia": inertia,
         "embeddings": embeddings,
         "loadings": loadings,
         "runtime_s": runtime,
     }
+    # aliases for compatibility with other naming conventions
+    result["explained_variance_ratio"] = inertia
+    result["coords"] = embeddings
+    result["runtime"] = runtime
+    return result
 
 
 def run_mca(
@@ -133,7 +148,7 @@ def run_mca(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = 0,
     normalize: bool = True,
     n_iter: int = 3,
 ) -> Dict[str, object]:
@@ -183,25 +198,37 @@ def run_mca(
     )
     mca = mca.fit(df_cat)
 
-    inertia = pd.Series(_get_explained_inertia(mca),
-                        index=[f"F{i+1}" for i in range(mca.n_components)])
+    inertia = pd.Series(
+        _get_explained_inertia(mca), index=[f"F{i+1}" for i in range(mca.n_components)]
+    )
     embeddings = mca.row_coordinates(df_cat)
     embeddings.index = df_active.index
     col_coords = mca.column_coordinates(df_cat)
 
     runtime = time.perf_counter() - start
-    return {
+    result = {
         "model": mca,
         "inertia": inertia,
         "embeddings": embeddings,
         "column_coords": col_coords,
         "runtime_s": runtime,
     }
+    result["explained_inertia"] = inertia
+    result["coords"] = embeddings
+    result["runtime"] = runtime
+    return result
 
 
-def run_famd(df_active: pd.DataFrame, quant_vars: List[str], qual_vars: List[str],
-             n_components: Optional[int] = None, *, optimize: bool = False,
-             variance_threshold: float = 0.8, random_state: Optional[int] = None) -> Dict[str, object]:
+def run_famd(
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    n_components: Optional[int] = None,
+    *,
+    optimize: bool = False,
+    variance_threshold: float = 0.8,
+    random_state: Optional[int] = 0,
+) -> Dict[str, object]:
     """Run Factor Analysis of Mixed Data (FAMD)."""
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
@@ -216,7 +243,9 @@ def run_famd(df_active: pd.DataFrame, quant_vars: List[str], qual_vars: List[str
 
     if optimize and n_components is None:
         max_dim = df_mix.shape[1]
-        tmp = prince.FAMD(n_components=max_dim, n_iter=3, random_state=random_state).fit(df_mix)
+        tmp = prince.FAMD(
+            n_components=max_dim, n_iter=3, random_state=random_state
+        ).fit(df_mix)
         eig = getattr(tmp, "eigenvalues_", None)
         if eig is None:
             eig = np.asarray(_get_explained_inertia(tmp)) * max_dim
@@ -227,8 +256,10 @@ def run_famd(df_active: pd.DataFrame, quant_vars: List[str], qual_vars: List[str
     famd = prince.FAMD(n_components=n_components, n_iter=3, random_state=random_state)
     famd = famd.fit(df_mix)
 
-    inertia = pd.Series(_get_explained_inertia(famd),
-                        index=[f"F{i+1}" for i in range(famd.n_components)])
+    inertia = pd.Series(
+        _get_explained_inertia(famd),
+        index=[f"F{i+1}" for i in range(famd.n_components)],
+    )
     embeddings = famd.row_coordinates(df_mix)
     embeddings.index = df_active.index
     if hasattr(famd, "column_coordinates"):
@@ -243,10 +274,10 @@ def run_famd(df_active: pd.DataFrame, quant_vars: List[str], qual_vars: List[str
     elif hasattr(famd, "column_contributions_"):
         contrib = famd.column_contributions_
     else:
-        contrib = (col_coords ** 2).div((col_coords ** 2).sum(axis=0), axis=1) * 100
+        contrib = (col_coords**2).div((col_coords**2).sum(axis=0), axis=1) * 100
 
     runtime = time.perf_counter() - start
-    return {
+    result = {
         "model": famd,
         "inertia": inertia,
         "embeddings": embeddings,
@@ -254,12 +285,23 @@ def run_famd(df_active: pd.DataFrame, quant_vars: List[str], qual_vars: List[str
         "contributions": contrib,
         "runtime_s": runtime,
     }
+    result["explained_inertia"] = inertia
+    result["coords"] = embeddings
+    result["runtime"] = runtime
+    return result
 
 
-def run_mfa(df_active: pd.DataFrame, groups: List[List[str]], n_components: Optional[int] = None,
-            *, optimize: bool = False, variance_threshold: float = 0.8,
-            normalize: bool = True, random_state: Optional[int] = None,
-            n_iter: int = 3) -> Dict[str, object]:
+def run_mfa(
+    df_active: pd.DataFrame,
+    groups: List[List[str]],
+    n_components: Optional[int] = None,
+    *,
+    optimize: bool = False,
+    variance_threshold: float = 0.8,
+    normalize: bool = True,
+    random_state: Optional[int] = 0,
+    n_iter: int = 3,
+) -> Dict[str, object]:
     """Run Multiple Factor Analysis."""
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
@@ -278,8 +320,9 @@ def run_mfa(df_active: pd.DataFrame, groups: List[List[str]], n_components: Opti
     if qual_cols:
         enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         encoded = enc.fit_transform(df_active[qual_cols])
-        df_dummies = pd.DataFrame(encoded, index=df_active.index,
-                                  columns=enc.get_feature_names_out(qual_cols))
+        df_dummies = pd.DataFrame(
+            encoded, index=df_active.index, columns=enc.get_feature_names_out(qual_cols)
+        )
     else:
         df_dummies = pd.DataFrame(index=df_active.index)
 
@@ -320,24 +363,33 @@ def run_mfa(df_active: pd.DataFrame, groups: List[List[str]], n_components: Opti
         eig = getattr(tmp, "eigenvalues_", None)
         if eig is None:
             eig = (tmp.percentage_of_variance_ / 100) * max_dim
-        n_components = _select_n_components(np.asarray(eig), threshold=variance_threshold)
+        n_components = _select_n_components(
+            np.asarray(eig), threshold=variance_threshold
+        )
         logger.info("MFA: selected %d components automatically", n_components)
 
     n_components = n_components or 5
-    mfa = prince.MFA(n_components=n_components, n_iter=n_iter, random_state=random_state)
+    mfa = prince.MFA(
+        n_components=n_components, n_iter=n_iter, random_state=random_state
+    )
     mfa = mfa.fit(df_all, groups=groups_dict)
     mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
     embeddings = mfa.row_coordinates(df_all)
     embeddings.index = df_active.index
 
-    inertia = pd.Series(mfa.explained_inertia_,
-                        index=[f"F{i+1}" for i in range(len(mfa.explained_inertia_))])
+    inertia = pd.Series(
+        mfa.explained_inertia_,
+        index=[f"F{i+1}" for i in range(len(mfa.explained_inertia_))],
+    )
 
     runtime = time.perf_counter() - start
-    return {
+    result = {
         "model": mfa,
         "inertia": inertia,
         "embeddings": embeddings,
         "runtime_s": runtime,
     }
-
+    result["explained_inertia"] = inertia
+    result["coords"] = embeddings
+    result["runtime"] = runtime
+    return result
