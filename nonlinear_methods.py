@@ -16,20 +16,18 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-try:  # optional dependency
+# Optional dependencies are imported lazily to avoid costly import time
+# (e.g. PaCMAP triggers numba compilation on import).
+try:  # pragma: no cover - optional dependency may not be present
     import umap  # type: ignore
-except Exception:  # pragma: no cover - optional dependency may not be present
+except Exception:
     umap = None
 
-try:  # optional dependencies
-    import phate  # type: ignore
-except Exception:  # pragma: no cover - optional dependency may not be present
-    phate = None
-
-try:
-    import pacmap  # type: ignore
-except Exception:  # pragma: no cover - optional dependency may not be present
-    pacmap = None
+# ``phate`` and ``pacmap`` are set to ``None`` and will only be imported when
+# the corresponding functions are called.  This prevents slow start-up during
+# test collection when those heavy libraries are available.
+phate = None  # type: ignore
+pacmap = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -139,9 +137,14 @@ def run_phate(
 
     Returns an empty result if PHATE is not installed.
     """
+    global phate
     if phate is None:
-        logger.warning("PHATE is not installed; skipping")
-        return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
+        try:  # pragma: no cover - lazy optional import
+            import phate as _phate  # type: ignore
+            phate = _phate
+        except Exception:
+            logger.warning("PHATE is not installed; skipping")
+            return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
 
     start = time.perf_counter()
     X = _encode_mixed(df_active)
@@ -180,9 +183,14 @@ def run_pacmap(
     If PaCMAP is unavailable or fails, ``model`` is ``None`` and the embeddings
     DataFrame is empty.
     """
+    global pacmap
     if pacmap is None:
-        logger.warning("PaCMAP is not installed; skipping")
-        return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
+        try:  # pragma: no cover - lazy optional import
+            import pacmap as _pacmap  # type: ignore
+            pacmap = _pacmap
+        except Exception:
+            logger.warning("PaCMAP is not installed; skipping")
+            return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
 
     start = time.perf_counter()
     X = _encode_mixed(df_active)
@@ -233,11 +241,12 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
         logger.warning("PHATE failed: %s", exc)
         results["phate"] = {"error": str(exc)}
 
-    try:
-        results["pacmap"] = run_pacmap(df_active)
-    except Exception as exc:  # pragma: no cover - unexpected runtime failure
-        logger.warning("PaCMAP failed: %s", exc)
-        results["pacmap"] = {"error": str(exc)}
+    if pacmap is not None:
+        try:
+            results["pacmap"] = run_pacmap(df_active)
+        except Exception as exc:  # pragma: no cover - unexpected runtime failure
+            logger.warning("PaCMAP failed: %s", exc)
+            results["pacmap"] = {"error": str(exc)}
 
     return results
 
