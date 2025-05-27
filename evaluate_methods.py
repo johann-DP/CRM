@@ -106,8 +106,12 @@ def evaluate_methods(
 
         X_low = info["embeddings"].values
         labels = KMeans(n_clusters=n_clusters, random_state=None).fit_predict(X_low)
-        sil = float(silhouette_score(X_low, labels))
-        dunn = dunn_index(X_low, labels)
+        if len(labels) <= n_clusters or len(set(labels)) < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X_low, labels))
+            dunn = dunn_index(X_low, labels)
 
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
@@ -123,8 +127,12 @@ def evaluate_methods(
         )
         X_high = np.hstack([X_num, X_cat])
         k_nn = min(10, max(1, len(X_high) // 2))
-        T = float(trustworthiness(X_high, X_low, n_neighbors=k_nn))
-        C = float(trustworthiness(X_low, X_high, n_neighbors=k_nn))
+        if k_nn >= len(X_high) / 2:
+            T = float("nan")
+            C = float("nan")
+        else:
+            T = float(trustworthiness(X_high, X_low, n_neighbors=k_nn))
+            C = float(trustworthiness(X_low, X_high, n_neighbors=k_nn))
 
         runtime = info.get("runtime_seconds") or info.get("runtime_s") or info.get("runtime")
 

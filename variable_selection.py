@@ -29,66 +29,82 @@ def select_variables(df: pd.DataFrame, min_modalite_freq: int = 5) -> Tuple[pd.D
     """
     logger = logging.getLogger(__name__)
 
-    candidate_quant = [
-        "Total recette actualisé",
-        "Total recette réalisé",
-        "Total recette produit",
-        "Budget client estimé",
-        "duree_projet_jours",
-        "taux_realisation",
-        "marge_estimee",
-    ]
-    candidate_qual = [
-        "Statut commercial",
-        "Statut production",
-        "Type opportunité",
-        "Catégorie",
-        "Sous-catégorie",
-        "Pilier",
-        "Entité opérationnelle",
-        "Présence partenaire",
-    ]
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame")
 
-    exclude = {"Code", "Client", "Contact principal", "Titre"}
+    df = df.copy()
 
-    quant_vars: List[str] = []
-    for col in candidate_quant:
-        if col not in df.columns or col in exclude:
-            continue
-        series = pd.to_numeric(df[col], errors="coerce")
-        if series.var(skipna=True) == 0 or series.isna().all():
-            logger.warning("Variable quantitative '%s' exclue", col)
-            continue
-        df[col] = series.astype(float)
-        quant_vars.append(col)
+    # Columns explicitly ignored based on the data dictionary / prior phases
+    exclude = {
+        "Code",
+        "ID",
+        "Id",
+        "Identifiant",
+        "Client",
+        "Contact principal",
+        "Titre",
+        "texte",
+        "commentaire",
+        "Commentaires",
+    }
 
-    qual_vars: List[str] = []
-    for col in candidate_qual:
-        if col not in df.columns or col in exclude:
-            continue
-        series = df[col].astype("category")
-        counts = series.value_counts(dropna=False)
-        rares = counts[counts < min_modalite_freq].index
-        if len(rares) > 0:
-            logger.info("%d modalités rares dans '%s' regroupées en 'Autre'", len(rares), col)
-            if "Autre" not in series.cat.categories:
-                series = series.cat.add_categories(["Autre"])
-            series = series.apply(lambda x: "Autre" if x in rares else x).astype("category")
-        if series.nunique(dropna=False) <= 1:
-            logger.warning("Variable qualitative '%s' exclue", col)
-            continue
-        df[col] = series
-        qual_vars.append(col)
+    # Drop constant columns and those in the exclusion list
+    n_unique = df.nunique(dropna=False)
+    constant_cols = n_unique[n_unique <= 1].index.tolist()
+    drop_cols = set(constant_cols) | {c for c in df.columns if c in exclude}
 
-    df_active = df[quant_vars + qual_vars].copy()
+    # Remove datetime columns
+    drop_cols.update([c for c in df.select_dtypes(include="datetime").columns])
 
-    if quant_vars:
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+
+    quantitative_vars: List[str] = []
+    qualitative_vars: List[str] = []
+
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            series = pd.to_numeric(df[col], errors="coerce")
+            if series.var(skipna=True) == 0 or series.isna().all():
+                logger.warning("Variable quantitative '%s' exclue", col)
+                continue
+            df[col] = series.astype(float)
+            quantitative_vars.append(col)
+        else:
+            series = df[col].astype("category")
+            unique_ratio = series.nunique(dropna=False) / len(series)
+            if unique_ratio > 0.8:
+                logger.warning("Variable textuelle '%s' exclue", col)
+                continue
+            counts = series.value_counts(dropna=False)
+            if len(series) < min_modalite_freq:
+                threshold = 0  # no grouping on tiny samples
+            else:
+                threshold = min_modalite_freq
+            rares = counts[counts < threshold].index
+            if len(rares) > 0:
+                logger.info(
+                    "%d modalités rares dans '%s' regroupées en 'Autre'",
+                    len(rares),
+                    col,
+                )
+                if "Autre" not in series.cat.categories:
+                    series = series.cat.add_categories(["Autre"])
+                series = series.apply(lambda x: "Autre" if x in rares else x).astype("category")
+            if series.nunique(dropna=False) <= 1:
+                logger.warning("Variable qualitative '%s' exclue", col)
+                continue
+            df[col] = series
+            qualitative_vars.append(col)
+
+    df_active = df[quantitative_vars + qualitative_vars].copy()
+
+    if quantitative_vars:
         scaler = StandardScaler()
-        df_active[quant_vars] = scaler.fit_transform(df_active[quant_vars])
+        df_active[quantitative_vars] = scaler.fit_transform(df_active[quantitative_vars])
 
-    for col in qual_vars:
+    for col in qualitative_vars:
         df_active[col] = df_active[col].astype("category")
 
     logger.info("DataFrame actif avec %d variables", len(df_active.columns))
-    return df_active, quant_vars, qual_vars
+    return df_active, quantitative_vars, qualitative_vars
 
