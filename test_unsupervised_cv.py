@@ -1,5 +1,5 @@
-import types
 import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -39,5 +39,6 @@ def patch_umap(monkeypatch):
 def test_unsupervised_cv_basic():
     df = sample_df()
     res = unsupervised_cv_and_temporal_tests(df, ["num1", "num2"], ["cat"], n_splits=3)
-    assert set(res.index) == {"pca", "umap"}
-    assert {"cv_distance_diff", "temporal_distance_diff"} <= set(res.columns)
+    assert set(res) == {"cv_stability", "temporal_shift"}
+    assert "pca_axis_corr_mean" in res["cv_stability"]
+    assert isinstance(res["temporal_shift"], dict)
