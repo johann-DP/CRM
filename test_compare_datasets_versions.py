@@ -1,4 +1,5 @@
 import pandas as pd
+from pathlib import Path
 
 import dataset_comparison as dc
 
@@ -34,16 +35,31 @@ def test_compare_versions_basic():
         assert not d["metrics"].empty
 
 
-def test_compare_versions_monkeypatched(monkeypatch, tmp_path):
+def test_compare_versions_output_dir(tmp_path, monkeypatch):
     datasets = sample_datasets()
 
-    def dummy_eval(*_args, **_kwargs):
-        return pd.DataFrame({"silhouette": [0.5]}, index=["dummy"])
+    def dummy_generate(*args, output_dir=None, **kwargs):
+        if output_dir is not None:
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
+            (Path(output_dir) / "dummy.txt").write_text("x")
+        return {}
 
-    monkeypatch.setattr(dc, "evaluate_methods", dummy_eval)
-    monkeypatch.setattr(dc, "generate_figures", lambda *a, **k: {})
+    from dataset_comparison import generate_figures as real_generate
+    monkeypatch.setattr("dataset_comparison.generate_figures", dummy_generate)
 
-    res = dc.compare_datasets_versions(datasets, min_modalite_freq=1, output_dir=tmp_path)
-    combined = res["metrics"]
-    assert len(combined) == len(datasets)
-    assert set(combined["dataset_version"]) == set(datasets)
+    res = compare_datasets_versions(datasets, min_modalite_freq=1, output_dir=tmp_path)
+    for name in datasets:
+        assert (tmp_path / name / "dummy.txt").is_file()
+    monkeypatch.setattr("dataset_comparison.generate_figures", real_generate)
+
+
+def test_compare_versions_monkeypatched(monkeypatch):
+    datasets = sample_datasets()
+
+    def fake_eval(*args, **kwargs):
+        return pd.DataFrame({"variance_cumulee_%": [0.1]}, index=["dummy"])
+
+    monkeypatch.setattr("dataset_comparison.evaluate_methods", fake_eval)
+    res = compare_datasets_versions(datasets, min_modalite_freq=1)
+    assert set(res["metrics"]["dataset_version"]) == set(datasets)
+    assert (res["metrics"].groupby("dataset_version").size() == 1).all()

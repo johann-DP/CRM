@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
-
 from pathlib import Path
 
 import pandas as pd
@@ -90,8 +89,11 @@ def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: Li
 # ---------------------------------------------------------------------------
 
 def compare_datasets_versions(
-    datasets: Dict[str, pd.DataFrame], *, exclude_lost: bool = True, min_modalite_freq: int = 5,
-    output_dir: Optional[Path] = None
+    datasets: Dict[str, pd.DataFrame],
+    *,
+    exclude_lost: bool = True,
+    min_modalite_freq: int = 5,
+    output_dir: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
     """Compare dimensionality reduction results between dataset versions.
 
@@ -103,9 +105,9 @@ def compare_datasets_versions(
         Whether to remove lost/cancelled opportunities during preparation.
     min_modalite_freq : int, default ``5``
         Frequency threshold passed to :func:`variable_selection.select_variables`.
-    output_dir : Path, optional
-        Base directory where figures for each version will be saved. A
-        subdirectory named after the version is created within this path.
+    output_dir : str or Path, optional
+        Base directory where figures will be saved. A subdirectory per dataset
+        version is created when provided.
 
     Returns
     -------
@@ -120,6 +122,7 @@ def compare_datasets_versions(
 
     results_by_version: Dict[str, Any] = {}
     metrics_frames: List[pd.DataFrame] = []
+    base_dir = Path(output_dir) if output_dir is not None else None
 
     for name, df in datasets.items():
         logger.info("Processing dataset version '%s'", name)
@@ -166,7 +169,7 @@ def compare_datasets_versions(
         )
         metrics["dataset_version"] = name
         try:
-            fig_dir = Path(output_dir) / name if output_dir is not None else None
+            fig_dir = base_dir / name if base_dir is not None else None
             figures = generate_figures(
                 factor_results,
                 nonlin_results,
