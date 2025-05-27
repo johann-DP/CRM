@@ -16,14 +16,14 @@ Otherwise install the pinned dependencies from ``requirements.txt``::
 Using a clean environment avoids binary incompatibilities between NumPy,
 pandas and the plotting libraries.
 
-## Running `phase4v3.py`
+## Running `phase4.py`
 
-The main analysis pipeline lives in `phase4v3.py`. The script requires a
+The main analysis pipeline lives in `phase4.py`. The script requires a
 configuration file in YAML (or JSON) format. A template is provided in
 `config.yaml`. Copy or modify it to suit your dataset and run:
 
 ```bash
-python phase4v3.py --config config.yaml
+python phase4.py --config config.yaml
 ```
 
 Set `optimize_params: true` in the configuration to automatically tune the main
@@ -74,7 +74,7 @@ configuration avoids setting a seed so that all CPU cores can be used.
 
 The standalone scripts `phase4_famd.py` and `phase4_famd_simple.py` were
 removed on 27/05/2025. Their capabilities are now integrated into
-`phase4v3.py` and the associated tuning utilities. Use `phase4v3.py` with a
+`phase4.py` and the associated tuning utilities. Use `phase4.py` with a
 configuration file to run FAMD and optionally optimise the number of components.
 
 ## Fine-tuning PHATE on Phase 3 data
