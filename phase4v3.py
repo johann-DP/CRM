@@ -55,8 +55,9 @@ except Exception:  # pragma: no cover - optional dependency may not be present
 
 from best_params import BEST_PARAMS
 
-# Global configuration loaded via ``main``. Functions default to this
-# dictionary when no explicit configuration is provided.
+# Global configuration used when ``load_datasets`` or other functions are
+# called without an explicit ``config`` parameter.  Tests may override this
+# dictionary by updating its values.
 CONFIG: Dict[str, Any] = {}
 
 
@@ -104,10 +105,7 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
 
 
 def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.DataFrame]:
-    """Load raw and cleaned datasets specified in ``config``.
-
-    If ``config`` is ``None``, the global :data:`CONFIG` dictionary is used.
-    """
+    """Load raw and cleaned datasets specified in ``config`` or ``CONFIG``."""
     logger = logging.getLogger(__name__)
     cfg = CONFIG if config is None else config
     if not isinstance(cfg, Mapping):
@@ -123,9 +121,15 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         return df
 
     datasets: Dict[str, pd.DataFrame] = {}
+    mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
+
+    def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
+        if mapping:
+            df = df.rename(columns={c: mapping.get(c, c) for c in df.columns})
+        return df
+
     raw_path = Path(cfg["input_file"])
-    raw_df = _read_dataset(raw_path)
-    datasets["raw"] = _apply_mapping(raw_df)
+    datasets["raw"] = _apply_mapping(_read_dataset(raw_path))
     logger.info(
         "Raw dataset loaded from %s [%d rows, %d cols]",
         raw_path,
