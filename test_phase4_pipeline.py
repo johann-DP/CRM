@@ -1,9 +1,11 @@
-import importlib
 from pathlib import Path
 from typing import Dict
 import pandas as pd
 
 import pytest
+
+import dataset_loader as dl
+import phase4
 
 
 def _make_sample_config(tmp_path: Path) -> dict[str, str]:
@@ -91,8 +93,7 @@ def sample_files_with_dict(tmp_path: Path, sample_files):
 
 
 def test_load_datasets_types(sample_files):
-    mod = importlib.import_module("phase4v3")
-    datasets = mod.load_datasets(sample_files)
+    datasets = dl.load_datasets(sample_files)
 
     assert set(datasets) >= {"raw", "phase1", "phase2", "phase3"}
     raw_df = datasets["raw"]
@@ -102,8 +103,7 @@ def test_load_datasets_types(sample_files):
 
 
 def test_load_datasets_structure(sample_files):
-    mod = importlib.import_module("phase4v3")
-    datasets = mod.load_datasets(sample_files)
+    datasets = dl.load_datasets(sample_files)
 
     expected_cols = ["Date Op", "Total recette realise", "Categorie"]
     expected_rows = {"raw": 2, "phase1": 2, "phase2": 1, "phase3": 2}
@@ -116,8 +116,7 @@ def test_load_datasets_structure(sample_files):
 
 
 def test_column_mapping(sample_files_with_dict):
-    mod = importlib.import_module("phase4v3")
-    datasets = mod.load_datasets(sample_files_with_dict)
+    datasets = dl.load_datasets(sample_files_with_dict)
 
     assert list(datasets["raw"].columns) == ["Date", "Recette", "Cat"]
     for key in ["phase1", "phase2", "phase3"]:
@@ -125,19 +124,17 @@ def test_column_mapping(sample_files_with_dict):
 
 
 def test_default_config_usage(sample_files):
-    mod = importlib.import_module("phase4v3")
-    mod.CONFIG.clear()
-    mod.CONFIG.update(sample_files)
-    datasets = mod.load_datasets()
+    dl.CONFIG.clear()
+    dl.CONFIG.update(sample_files)
+    datasets = dl.load_datasets()
     assert set(datasets) >= {"raw", "phase1", "phase2", "phase3"}
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):
-    mod = importlib.import_module("phase4v3")
     cfg = dict(sample_files)
-    cfg.update({"output_dir": str(tmp_path), "dataset": "raw"})
+    cfg.update({"output_dir": str(tmp_path), "dataset": "raw", "methods": ["pca"]})
 
-    out = mod.run_pipeline(cfg)
+    out = phase4.run_pipeline(cfg)
 
     assert "metrics" in out
     assert isinstance(out["metrics"], pd.DataFrame)
@@ -145,17 +142,15 @@ def test_run_pipeline(tmp_path: Path, sample_files):
 
 
 def test_load_datasets_mapping(sample_files_with_dict):
-    mod = importlib.import_module("phase4v3")
-    datasets = mod.load_datasets(sample_files_with_dict)
+    datasets = dl.load_datasets(sample_files_with_dict)
 
     for df in datasets.values():
         assert list(df.columns) == ["Date", "Recette", "Cat"]
 
 
 def test_load_datasets_global_config(sample_files):
-    mod = importlib.import_module("phase4v3")
-    mod.CONFIG.clear()
-    mod.CONFIG.update(sample_files)
+    dl.CONFIG.clear()
+    dl.CONFIG.update(sample_files)
 
-    datasets = mod.load_datasets()
+    datasets = dl.load_datasets()
     assert set(datasets) >= {"raw", "phase1", "phase2", "phase3"}

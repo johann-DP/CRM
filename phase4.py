@@ -26,7 +26,7 @@ import pandas as pd
 import yaml
 
 # Import helper modules -------------------------------------------------------
-from phase4v3 import load_datasets  # reuse the autonomous loader
+from dataset_loader import load_datasets  # reuse the autonomous loader
 from data_preparation import prepare_data
 from dataset_comparison import handle_missing_values, compare_datasets_versions
 from factor_methods import run_pca, run_mca, run_famd, run_mfa
@@ -201,6 +201,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     factor_results: Dict[str, Any] = {}
     if "pca" in methods and quant_vars:
         params = _method_params("pca", config)
+        params.pop("n_components", None)
         factor_results["pca"] = run_pca(
             df_active,
             quant_vars,
@@ -211,6 +212,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if "mca" in methods and qual_vars:
         params = _method_params("mca", config)
+        params.pop("n_components", None)
         factor_results["mca"] = run_mca(
             df_active,
             qual_vars,
@@ -221,6 +223,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if "famd" in methods and quant_vars and qual_vars:
         params = _method_params("famd", config)
+        params.pop("n_components", None)
         try:
             factor_results["famd"] = run_famd(
                 df_active,
@@ -240,6 +243,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         groups.append(qual_vars)
     if "mfa" in methods and len(groups) > 1:
         params = _method_params("mfa", config)
+        params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
         if cfg_groups:
             groups = cfg_groups
