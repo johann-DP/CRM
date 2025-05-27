@@ -19,6 +19,8 @@ import random
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
+from sklearn.preprocessing import StandardScaler
+
 import numpy as np
 import pandas as pd
 import yaml
@@ -26,7 +28,6 @@ import yaml
 # Import helper modules -------------------------------------------------------
 from phase4v3 import load_datasets  # reuse the autonomous loader
 from data_preparation import prepare_data
-from variable_selection import select_variables
 from dataset_comparison import handle_missing_values, compare_datasets_versions
 from factor_methods import run_pca, run_mca, run_famd, run_mfa
 from nonlinear_methods import run_umap, run_phate, run_pacmap
@@ -71,6 +72,102 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
         if key.startswith(prefix):
             params[key[len(prefix) :]] = value
     return params
+
+
+def select_variables(df: pd.DataFrame, min_modalite_freq: int = 5) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Select and prepare active variables for dimensional analysis.
+
+    Parameters
+    ----------
+    df:
+        DataFrame returned by :func:`prepare_data`.
+    min_modalite_freq:
+        Minimum frequency below which categorical levels are grouped into
+        ``"Autre"``.
+
+    Returns
+    -------
+    tuple
+        ``(df_active, quantitative_vars, qualitative_vars)`` where
+        ``df_active`` contains scaled numeric columns and categorical columns
+        cast to ``category``.
+    """
+    logger = logging.getLogger(__name__)
+
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame")
+
+    df = df.copy()
+
+    # Columns to exclude based on data dictionary / prior knowledge
+    exclude = {
+        "Code",
+        "ID",
+        "Id",
+        "Identifiant",
+        "Client",
+        "Contact principal",
+        "Titre",
+        "texte",
+        "commentaire",
+        "Commentaires",
+    }
+
+    # Drop constant columns, excluded columns and datetimes
+    n_unique = df.nunique(dropna=False)
+    constant_cols = n_unique[n_unique <= 1].index.tolist()
+    drop_cols = set(constant_cols) | {c for c in df.columns if c in exclude}
+    drop_cols.update([c for c in df.select_dtypes(include="datetime").columns])
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+
+    quantitative_vars: list[str] = []
+    qualitative_vars: list[str] = []
+
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            series = pd.to_numeric(df[col], errors="coerce")
+            if series.var(skipna=True) == 0 or series.isna().all():
+                logger.warning("Variable quantitative '%s' exclue", col)
+                continue
+            df[col] = series.astype(float)
+            quantitative_vars.append(col)
+        else:
+            series = df[col].astype("category")
+            unique_ratio = series.nunique(dropna=False) / len(series)
+            if unique_ratio > 0.8:
+                logger.warning("Variable textuelle '%s' exclue", col)
+                continue
+            counts = series.value_counts(dropna=False)
+            threshold = 0 if len(series) < min_modalite_freq else min_modalite_freq
+            rares = counts[counts < threshold].index
+            if len(rares) > 0:
+                logger.info(
+                    "%d modalités rares dans '%s' regroupées en 'Autre'",
+                    len(rares),
+                    col,
+                )
+                if "Autre" not in series.cat.categories:
+                    series = series.cat.add_categories(["Autre"])
+                series = series.apply(lambda x: "Autre" if x in rares else x).astype(
+                    "category"
+                )
+            if series.nunique(dropna=False) <= 1:
+                logger.warning("Variable qualitative '%s' exclue", col)
+                continue
+            df[col] = series
+            qualitative_vars.append(col)
+
+    df_active = df[quantitative_vars + qualitative_vars].copy()
+
+    if quantitative_vars:
+        scaler = StandardScaler()
+        df_active[quantitative_vars] = scaler.fit_transform(df_active[quantitative_vars])
+
+    for col in qualitative_vars:
+        df_active[col] = df_active[col].astype("category")
+
+    logger.info("DataFrame actif avec %d variables", len(df_active.columns))
+    return df_active, quantitative_vars, qualitative_vars
 
 
 # ---------------------------------------------------------------------------
