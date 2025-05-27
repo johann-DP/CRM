@@ -10,6 +10,7 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 from typing import Dict, Any, List, Optional
+from sklearn.cluster import KMeans
 
 
 def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
@@ -118,6 +119,53 @@ def plot_scatter_3d(
     return fig
 
 
+def plot_cluster_scatter(
+    emb_df: pd.DataFrame, labels: np.ndarray, title: str
+) -> plt.Figure:
+    """Return a 2D scatter plot coloured by K-Means clusters.
+
+    Parameters
+    ----------
+    emb_df : pandas.DataFrame
+        Embedding coordinates with at least two columns.
+    labels : array-like
+        Cluster labels for each observation.
+    title : str
+        Title of the figure.
+    """
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    unique = np.unique(labels)
+    try:
+        cmap = matplotlib.colormaps.get_cmap("tab10")
+    except AttributeError:  # Matplotlib < 3.6
+        cmap = matplotlib.cm.get_cmap("tab10")
+    n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+    for i, lab in enumerate(unique):
+        mask = labels == lab
+        ax.scatter(
+            emb_df.loc[mask, emb_df.columns[0]],
+            emb_df.loc[mask, emb_df.columns[1]],
+            s=10,
+            alpha=0.7,
+            color=cmap(i % n_colors),
+            label=str(lab),
+        )
+        centroid = emb_df.loc[mask, emb_df.columns[:2]].mean().values
+        ax.scatter(
+            centroid[0],
+            centroid[1],
+            marker="x",
+            s=60,
+            color=cmap(i % n_colors),
+        )
+    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax.set_xlabel(emb_df.columns[0])
+    ax.set_ylabel(emb_df.columns[1])
+    ax.set_title(title)
+    fig.tight_layout()
+    return fig
+
+
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]
@@ -138,8 +186,16 @@ def generate_figures(
     df_active: pd.DataFrame,
     quant_vars: List[str],
     qual_vars: List[str],
+    *,
+    cluster_k: int = 3,
 ) -> Dict[str, plt.Figure]:
-    """Generate comparative figures for dimensionality reduction results."""
+    """Generate comparative figures for dimensionality reduction results.
+
+    Parameters
+    ----------
+    cluster_k : int, default ``3``
+        Number of K-Means clusters for the additional scatter plots.
+    """
     color_var = _choose_color_var(df_active, qual_vars)
     figures: Dict[str, plt.Figure] = {}
     first_3d_done = False
@@ -154,6 +210,12 @@ def generate_figures(
                 f"Projection des affaires – {method.upper()}",
             )
             figures[f"{method}_scatter_2d"] = fig
+            km = KMeans(n_clusters=cluster_k, random_state=0)
+            labels = km.fit_predict(emb.iloc[:, :2].values)
+            title = f"Projection {method.upper()} – coloration par clusters (k={cluster_k})"
+            figures[f"{method}_clusters"] = plot_cluster_scatter(
+                emb.iloc[:, :2], labels, title
+            )
             if not first_3d_done and emb.shape[1] >= 3:
                 figures[f"{method}_scatter_3d"] = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -183,6 +245,12 @@ def generate_figures(
                 f"Projection des affaires – {method.upper()}",
             )
             figures[f"{method}_scatter_2d"] = fig
+            km = KMeans(n_clusters=cluster_k, random_state=0)
+            labels = km.fit_predict(emb.iloc[:, :2].values)
+            title = f"Projection {method.upper()} – coloration par clusters (k={cluster_k})"
+            figures[f"{method}_clusters"] = plot_cluster_scatter(
+                emb.iloc[:, :2], labels, title
+            )
             if not first_3d_done and emb.shape[1] >= 3:
                 figures[f"{method}_scatter_3d"] = plot_scatter_3d(
                     emb.iloc[:, :3],
