@@ -46,6 +46,10 @@ def test_evaluate_and_plot(tmp_path, monkeypatch):
 
     metrics = em.evaluate_methods(results, df, quant_vars, qual_vars, n_clusters=2)
 
+    for method, info in results.items():
+        assert "cluster_labels" in info
+        assert len(info["cluster_labels"]) == len(df)
+
     assert set(metrics.columns) == {
         "variance_cumulee_%",
         "nb_axes_kaiser",

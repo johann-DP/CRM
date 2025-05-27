@@ -89,8 +89,8 @@ def test_generate_figures_missing_f2(tmp_path):
     )
     # scatter plot should still be produced
     assert "pca_scatter_2d" in figs
-    # correlation plot cannot be generated with a single axis
-    assert "pca_correlation" not in figs
+    # correlation plot can be computed from embeddings
+    assert "pca_correlation" in figs
 
 
 def test_generate_figures_clusters(tmp_path):
