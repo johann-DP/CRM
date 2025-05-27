@@ -84,6 +84,6 @@ def test_prepare_data_imputes_missing_values():
     num_cols = cleaned.select_dtypes(include=np.number).columns
     assert not cleaned[num_cols].isna().any().any()
 
-    means = cleaned[num_cols.difference(["Code"])] .mean()
+    means = cleaned[num_cols.difference(["Code"])].mean()
     assert np.allclose(means, 0, atol=1e-6)
 
