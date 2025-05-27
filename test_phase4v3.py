@@ -1,31 +1,30 @@
 import importlib
 from pathlib import Path
+from typing import Dict
 import pandas as pd
 
 import pytest
 
 
-@pytest.fixture()
-def sample_files(tmp_path: Path):
-    raw = pd.DataFrame({
-        "Date Op": ["2024-01-01", "2024-02-01"],
-        "Total recette realise": ["1 000", "2 500"],
-        "Categorie": ["A", "B"],
-    })
+def _make_sample_config(tmp_path: Path) -> dict[str, str]:
+    raw = pd.DataFrame(
+        {
+            "Date Op": ["2024-01-01", "2024-02-01"],
+            "Total recette realise": ["1 000", "2 500"],
+            "Categorie": ["A", "B"],
+        }
+    )
     raw_path = tmp_path / "raw.csv"
     raw.to_csv(raw_path, index=False)
 
-    phase1 = raw.copy()
     phase1_path = tmp_path / "phase1.csv"
-    phase1.to_csv(phase1_path, index=False)
+    raw.to_csv(phase1_path, index=False)
 
-    phase2 = raw.iloc[:1]
     phase2_path = tmp_path / "phase2.csv"
-    phase2.to_csv(phase2_path, index=False)
+    raw.iloc[:1].to_csv(phase2_path, index=False)
 
-    phase3 = raw.copy()
     phase3_path = tmp_path / "phase3.csv"
-    phase3.to_csv(phase3_path, index=False)
+    raw.to_csv(phase3_path, index=False)
 
     return {
         "input_file": str(raw_path),
