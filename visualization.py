@@ -292,9 +292,14 @@ def generate_figures(
             fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
-            km = KMeans(n_clusters=cluster_k, random_state=0)
-            labels = km.fit_predict(emb.iloc[:, :2].values)
-            title = f"Projection {method.upper()} – coloration par clusters (k={cluster_k})"
+            labels = res.get("cluster_labels")
+            if labels is None or len(labels) != len(emb):
+                km = KMeans(n_clusters=cluster_k, random_state=0)
+                labels = km.fit_predict(emb.iloc[:, :2].values)
+            k_used = len(np.unique(labels))
+            title = (
+                f"Projection {method.upper()} – coloration par clusters (k={k_used})"
+            )
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[f"{method}_clusters"] = cfig
             _save(cfig, method, f"{method}_clusters")
@@ -339,9 +344,14 @@ def generate_figures(
             fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
-            km = KMeans(n_clusters=cluster_k, random_state=0)
-            labels = km.fit_predict(emb.iloc[:, :2].values)
-            title = f"Projection {method.upper()} – coloration par clusters (k={cluster_k})"
+            labels = res.get("cluster_labels")
+            if labels is None or len(labels) != len(emb):
+                km = KMeans(n_clusters=cluster_k, random_state=0)
+                labels = km.fit_predict(emb.iloc[:, :2].values)
+            k_used = len(np.unique(labels))
+            title = (
+                f"Projection {method.upper()} – coloration par clusters (k={k_used})"
+            )
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[f"{method}_clusters"] = cfig
             _save(cfig, method, f"{method}_clusters")
