@@ -100,7 +100,7 @@ def unsupervised_cv_and_temporal_tests(
     qual_vars: Sequence[str],
     *,
     n_splits: int = 5,
-    random_state: Optional[int] = 0,
+    random_state: Optional[int] = None,
 ) -> pd.DataFrame:
     """Assess robustness of PCA and UMAP with cross-validation and time splits."""
     logger = logging.getLogger(__name__)

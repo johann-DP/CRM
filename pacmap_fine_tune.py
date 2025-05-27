@@ -115,7 +115,7 @@ def main() -> None:
             nn, mn, nc = combo
             ini = None
         start = time.time()
-        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=42)
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=None)
         if has_init:
             kwargs["init"] = ini
         model = pacmap.PaCMAP(**kwargs)
@@ -174,7 +174,7 @@ def main() -> None:
         mn = float(row["MN_ratio"])
         nc = int(row["n_components"])
         ini = row.get("init") if has_init else None
-        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=42)
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=None)
         if has_init:
             kwargs["init"] = ini
         model = pacmap.PaCMAP(**kwargs)

@@ -52,10 +52,8 @@ analyses. UMAP accepts several parameters in `config.yaml`, including
 
 ### UMAP warnings
 
-UMAP emits a warning when `random_state` is provided while using multiple
-threads. The provided configuration sets `n_jobs: 1` whenever a seed is used to
-avoid this warning and keep results reproducible. You can remove the seed if you
-prefer parallelism over determinism.
+UMAP may warn when a seed is given while using several threads. The default
+configuration avoids setting a seed so that all CPU cores can be used.
 
 ## Running `phase4_famd.py`
 

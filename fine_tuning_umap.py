@@ -96,8 +96,7 @@ def grid_search_umap(X: np.ndarray, logger: logging.Logger):
                     kwargs["random_state"] = RANDOM_STATE
                 reducer = umap.UMAP(**kwargs)
                 emb = reducer.fit_transform(X)
-                km_rs = RANDOM_STATE if RANDOM_STATE is not None else 0
-                labels = KMeans(n_clusters=5, random_state=km_rs).fit_predict(emb)
+                labels = KMeans(n_clusters=5, random_state=RANDOM_STATE).fit_predict(emb)
                 score = silhouette_score(emb, labels)
                 logger.info("Silhouette: %.3f", score)
                 results.append({

@@ -431,7 +431,7 @@ outliers_cols = [
 # 1) Référence brute (NA→0)
 X_raw = df[outliers_cols].fillna(0)
 # Isolation Forest brute
-iforest_raw = IsolationForest(n_estimators=100, contamination='auto', random_state=42)
+iforest_raw = IsolationForest(n_estimators=100, contamination='auto', random_state=None)
 y_if_raw = iforest_raw.fit_predict(X_raw)
 raw_if_count = int((y_if_raw == -1).sum())
 # Local Outlier Factor brut
@@ -456,7 +456,7 @@ logger.info("Prétraitement multivarié appliqué : StandardScaler + imputation 
 # 3) Détection sur données prétraitées
 
 # Isolation Forest prétraité
-iforest = IsolationForest(n_estimators=100, contamination='auto', random_state=42)
+iforest = IsolationForest(n_estimators=100, contamination='auto', random_state=None)
 y_if = iforest.fit_predict(X_proc_df)
 new_if_count = int((y_if == -1).sum())
 df['flag_iforest'] = (y_if == -1)
@@ -493,7 +493,7 @@ X = df[outliers_cols].fillna(0).values
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-pca = PCA(n_components=2, random_state=42)
+pca = PCA(n_components=2, random_state=None)
 X_pca = pca.fit_transform(X_scaled)
 df['PC1'] = X_pca[:, 0]
 df['PC2'] = X_pca[:, 1]

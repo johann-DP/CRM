@@ -258,7 +258,7 @@ def main() -> None:
                 base = f"n{n_comp}_norm{normalize}_iter{n_iter}"
                 logging.info("Running MCA %s", base)
                 start = time.perf_counter()
-                mca = prince.MCA(n_components=n_comp, n_iter=n_iter, correction=corr, random_state=42)
+                mca = prince.MCA(n_components=n_comp, n_iter=n_iter, correction=corr, random_state=None)
                 mca = mca.fit(df)
                 duration = time.perf_counter() - start
 
