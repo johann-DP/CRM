@@ -93,16 +93,16 @@ def test_prepare_data_keep_lost():
 
     df = pd.DataFrame(
         {
-            "Code": [1, 2],
-            "Date de début actualisée": ["2024-01-01", "2024-01-02"],
-            "Date de fin réelle": ["2024-02-01", "2024-02-02"],
-            "Total recette réalisé": [100, 200],
-            "Budget client estimé": [100, 200],
-            "Statut commercial": ["Gagné", "Perdu"],
+            "Code": [1, 2, 3],
+            "Date de début actualisée": ["2024-01-01"] * 3,
+            "Date de fin réelle": ["2024-01-02"] * 3,
+            "Total recette réalisé": [10, 20, 30],
+            "Budget client estimé": [10, 20, 30],
+            "Statut commercial": ["Gagné", "Perdu", "Annulé"],
         }
     )
 
     cleaned = mod.prepare_data(df, exclude_lost=False)
 
-    assert list(cleaned["Code"]) == [1, 2]
+    assert list(cleaned["Code"]) == [1, 2, 3]
 
