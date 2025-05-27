@@ -35,6 +35,22 @@ def sample_files(tmp_path: Path):
     }
 
 
+@pytest.fixture()
+def sample_files_with_dict(tmp_path: Path, sample_files):
+    """Return config with an additional data dictionary for column mapping."""
+    mapping = pd.DataFrame(
+        {
+            "original": ["Date Op", "Total recette realise", "Categorie"],
+            "clean": ["date", "recette", "cat"],
+        }
+    )
+    dict_path = tmp_path / "dict.xlsx"
+    mapping.to_excel(dict_path, index=False)
+    cfg = dict(sample_files)
+    cfg["data_dictionary"] = str(dict_path)
+    return cfg
+
+
 def test_load_datasets_types(sample_files):
     mod = importlib.import_module("phase4v3")
     datasets = mod.load_datasets(sample_files)
@@ -44,6 +60,30 @@ def test_load_datasets_types(sample_files):
     assert pd.api.types.is_datetime64_any_dtype(raw_df["Date Op"])
     assert pd.api.types.is_numeric_dtype(raw_df["Total recette realise"])
     assert datasets["phase1"].shape[0] == 2
+
+
+def test_load_datasets_structure(sample_files):
+    mod = importlib.import_module("phase4v3")
+    datasets = mod.load_datasets(sample_files)
+
+    expected_cols = ["Date Op", "Total recette realise", "Categorie"]
+    expected_rows = {"raw": 2, "phase1": 2, "phase2": 1, "phase3": 2}
+    for key, rows in expected_rows.items():
+        assert key in datasets
+        df = datasets[key]
+        assert isinstance(df, pd.DataFrame)
+        assert list(df.columns) == expected_cols
+        assert df.shape[0] == rows
+
+
+def test_load_datasets_apply_mapping(sample_files_with_dict):
+    """Ensure column mapping from the data dictionary is applied."""
+    mod = importlib.import_module("phase4v3")
+    datasets = mod.load_datasets(sample_files_with_dict)
+
+    expected_cols = ["date", "recette", "cat"]
+    for df in datasets.values():
+        assert list(df.columns) == expected_cols
 
 
 def test_run_pipeline(tmp_path: Path, sample_files):
