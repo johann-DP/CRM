@@ -18,10 +18,53 @@ import yaml
 from data_preparation import prepare_data
 from variable_selection import select_variables
 from factor_methods import run_pca, run_mca, run_famd, run_mfa
-from nonlinear_methods import run_all_nonlinear
+from nonlinear_methods import run_umap, run_phate, run_pacmap
 from evaluate_methods import evaluate_methods, plot_methods_heatmap
 from dataset_comparison import handle_missing_values
 from visualization import generate_figures
+
+# Optional tuned versions of the main methods
+try:
+    from fine_tune_pca import run_pca as tune_pca  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned PCA: %s", exc)
+    tune_pca = None  # type: ignore
+
+try:
+    from fine_tuning_mca import run_mca as tune_mca  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned MCA: %s", exc)
+    tune_mca = None  # type: ignore
+
+try:
+    from fine_tune_mfa import run_famd as tune_famd  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned FAMD: %s", exc)
+    tune_famd = None  # type: ignore
+
+try:
+    from fine_tune_mfa import run_mfa as tune_mfa  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned MFA: %s", exc)
+    tune_mfa = None  # type: ignore
+
+try:
+    from fine_tuning_umap import run_umap as tune_umap  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned UMAP: %s", exc)
+    tune_umap = None  # type: ignore
+
+try:
+    from phase4_fine_tune_phate import run_phate as tune_phate  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned PHATE: %s", exc)
+    tune_phate = None  # type: ignore
+
+try:
+    from pacmap_fine_tune import run_pacmap as tune_pacmap  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency
+    logging.getLogger(__name__).warning("Could not import tuned PaCMAP: %s", exc)
+    tune_pacmap = None  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -178,16 +221,19 @@ def _run_single_dataset(
 
     factor_results: Dict[str, Any] = {}
     if quant_vars:
-        factor_results["pca"] = run_pca(
+        pca_fn = tune_pca or run_pca
+        factor_results["pca"] = pca_fn(
             df_active, quant_vars, optimize=True, random_state=random_state
         )
     if qual_vars:
-        factor_results["mca"] = run_mca(
+        mca_fn = tune_mca or run_mca
+        factor_results["mca"] = mca_fn(
             df_active, qual_vars, optimize=True, random_state=random_state
         )
     if quant_vars and qual_vars:
         try:
-            factor_results["famd"] = run_famd(
+            famd_fn = tune_famd or run_famd
+            factor_results["famd"] = famd_fn(
                 df_active,
                 quant_vars,
                 qual_vars,
@@ -203,11 +249,32 @@ def _run_single_dataset(
     if qual_vars:
         groups.append(qual_vars)
     if len(groups) > 1:
-        factor_results["mfa"] = run_mfa(
+        mfa_fn = tune_mfa or run_mfa
+        factor_results["mfa"] = mfa_fn(
             df_active, groups, optimize=True, random_state=random_state
         )
 
-    nonlin_results = run_all_nonlinear(df_active)
+    nonlin_results: Dict[str, Any] = {}
+    umap_fn = tune_umap or run_umap
+    try:
+        nonlin_results["umap"] = umap_fn(df_active)
+    except Exception as exc:  # pragma: no cover - unexpected runtime failure
+        logging.getLogger(__name__).warning("UMAP failed: %s", exc)
+        nonlin_results["umap"] = {"error": str(exc)}
+
+    phate_fn = tune_phate or run_phate
+    try:
+        nonlin_results["phate"] = phate_fn(df_active)
+    except Exception as exc:  # pragma: no cover - unexpected runtime failure
+        logging.getLogger(__name__).warning("PHATE failed: %s", exc)
+        nonlin_results["phate"] = {"error": str(exc)}
+
+    pacmap_fn = tune_pacmap or run_pacmap
+    try:
+        nonlin_results["pacmap"] = pacmap_fn(df_active)
+    except Exception as exc:  # pragma: no cover - unexpected runtime failure
+        logging.getLogger(__name__).warning("PaCMAP failed: %s", exc)
+        nonlin_results["pacmap"] = {"error": str(exc)}
     valid_nonlin = {
         k: v
         for k, v in nonlin_results.items()
