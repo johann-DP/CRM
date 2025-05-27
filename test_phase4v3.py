@@ -46,6 +46,20 @@ def test_load_datasets_types(sample_files):
     assert datasets["phase1"].shape[0] == 2
 
 
+def test_load_datasets_structure(sample_files):
+    mod = importlib.import_module("phase4v3")
+    datasets = mod.load_datasets(sample_files)
+
+    expected_cols = ["Date Op", "Total recette realise", "Categorie"]
+    expected_rows = {"raw": 2, "phase1": 2, "phase2": 1, "phase3": 2}
+    for key, rows in expected_rows.items():
+        assert key in datasets
+        df = datasets[key]
+        assert isinstance(df, pd.DataFrame)
+        assert list(df.columns) == expected_cols
+        assert df.shape[0] == rows
+
+
 def test_run_pipeline(tmp_path: Path, sample_files):
     mod = importlib.import_module("phase4v3")
     cfg = dict(sample_files)
