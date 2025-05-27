@@ -250,6 +250,7 @@ def run_famd(
             n_components_rule,
         )
 
+
     scaler = StandardScaler()
     X_quanti = scaler.fit_transform(df_active[quant_vars])
     df_quanti = pd.DataFrame(X_quanti, index=df_active.index, columns=quant_vars)

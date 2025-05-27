@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def test_phase4v3_cli(tmp_path: Path):
+def test_phase4_cli(tmp_path: Path):
     df = pd.DataFrame({
         "Date de debut": ["2024-01-01", "2024-02-01", "2024-03-01", "2024-04-01", "2024-05-01"],
         "Total recette réalisé": [1000, 2500, 1500, 2000, 3000],
@@ -26,7 +26,7 @@ def test_phase4v3_cli(tmp_path: Path):
     config_path.write_text(json.dumps(cfg))
 
     result = subprocess.run(
-        [sys.executable, "phase4v3.py", "--config", str(config_path)],
+        [sys.executable, "phase4.py", "--config", str(config_path)],
         cwd=Path(__file__).resolve().parent,
         check=True,
     )

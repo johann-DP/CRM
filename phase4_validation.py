@@ -28,15 +28,16 @@ def assert_returncode_zero(proc: subprocess.CompletedProcess, msg: str) -> None:
 
 def check_importability() -> None:
     try:
-        importlib.import_module("phase4v3")
+        importlib.import_module("phase4")
+        importlib.import_module("dataset_loader")
     except Exception as exc:
-        raise AssertionError(f"Import phase4v3 failed: {exc}") from exc
+        raise AssertionError(f"Import phase4 or dataset_loader failed: {exc}") from exc
 
 
 def check_functions() -> None:
-    mod = importlib.import_module("phase4v3")
+    mod = importlib.import_module("phase4")
+    dl = importlib.import_module("dataset_loader")
     required = [
-        "load_datasets",
         "prepare_data",
         "select_variables",
         "run_pca",
@@ -47,16 +48,19 @@ def check_functions() -> None:
         "export_report_to_pdf",
     ]
     missing = [f for f in required if not callable(getattr(mod, f, None))]
+    if not callable(getattr(dl, "load_datasets", None)):
+        missing.append("load_datasets")
     if missing:
         raise AssertionError(f"Fonctions manquantes/non callables: {', '.join(missing)}")
 
 
 def check_lint(repo: Path) -> None:
-    proc = run([sys.executable, "-m", "py_compile", "phase4v3.py"], cwd=repo)
+    proc = run([sys.executable, "-m", "py_compile", "phase4.py", "dataset_loader.py"], cwd=repo)
     assert_returncode_zero(proc, "py_compile failed")
     proc = run([
         "flake8",
-        "phase4v3.py",
+        "phase4.py",
+        "dataset_loader.py",
         "--ignore=E203,W503",
         "--max-line-length=125",
     ], cwd=repo)
@@ -123,7 +127,7 @@ def make_config(paths: dict[str, Path], tmpdir: Path) -> Path:
 
 
 def run_pipeline(repo: Path, config_path: Path) -> subprocess.CompletedProcess:
-    return run([sys.executable, "phase4v3.py", "--config", str(config_path)], cwd=repo)
+    return run([sys.executable, "phase4.py", "--config", str(config_path)], cwd=repo)
 
 
 def md5sum(path: Path) -> str:
@@ -158,7 +162,7 @@ def validate_output(tmpdir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate phase4v3 pipeline")
+    parser = argparse.ArgumentParser(description="Validate phase4 pipeline")
     parser.add_argument("--tmpdir", required=True)
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
