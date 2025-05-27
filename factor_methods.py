@@ -228,10 +228,14 @@ def run_famd(
     optimize: bool = False,
     variance_threshold: float = 0.8,
     random_state: Optional[int] = 0,
+    weighting: Optional[str] = None,
 ) -> Dict[str, object]:
     """Run Factor Analysis of Mixed Data (FAMD)."""
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
+
+    if weighting is not None:
+        logger.info("FAMD weighting=%s ignored (not implemented)", weighting)
 
     scaler = StandardScaler()
     X_quanti = scaler.fit_transform(df_active[quant_vars])
