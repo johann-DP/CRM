@@ -101,3 +101,16 @@ def test_run_mfa_groups():
     res = run_mfa(df, groups, optimize=True)
     assert set(["runtime", "coords"]).issubset(res.keys())
     assert res["embeddings"].shape[0] == len(df)
+
+
+def test_run_famd_extra_kwargs():
+    df = sample_df()
+    res = run_famd(
+        df,
+        ["num1", "num2"],
+        ["cat1", "cat2"],
+        optimize=True,
+        weighting="balanced",
+        n_components_rule="elbow",
+    )
+    assert res["embeddings"].shape[0] == len(df)
