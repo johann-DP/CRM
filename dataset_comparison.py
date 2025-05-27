@@ -213,5 +213,5 @@ if __name__ == "__main__":  # pragma: no cover - manual testing helper
         "Type opportunité": ["T1", "T2", "T1"],
     })
     datasets = {"v1": df, "v2": df.drop(1)}
-    out = compare_datasets_versions(datasets)
+    out = compare_datasets_versions(datasets, output_dir=Path("figures"))
     pprint.pprint(out["metrics"].head())

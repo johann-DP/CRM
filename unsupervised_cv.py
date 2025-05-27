@@ -109,15 +109,25 @@ def unsupervised_cv_and_temporal_tests(
     if not isinstance(df_active, pd.DataFrame):
         raise TypeError("df_active must be a DataFrame")
     if n_splits < 2:
-        raise ValueError("n_splits must be >= 2")
+        logger.warning("n_splits < 2: skipping cross-validation")
+        splits: Sequence[Tuple[np.ndarray, np.ndarray]] = []
+    else:
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        splits = list(kf.split(df_active))
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
     pca_axis_scores: list[float] = []
     pca_dist_scores: list[float] = []
+    pca_var_ratio: list[float] = []
     umap_dist_scores: list[float] = []
 
-    for train_idx, test_idx in kf.split(df_active):
+    try:
+        import umap  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        logger.warning("UMAP unavailable: %s", exc)
+        umap = None  # type: ignore
+
+    for train_idx, test_idx in splits:
         df_train = df_active.iloc[train_idx]
         df_test = df_active.iloc[test_idx]
 
@@ -133,12 +143,9 @@ def unsupervised_cv_and_temporal_tests(
 
         pca_axis_scores.append(_axis_similarity(pca_train.components_, pca_test.components_))
         pca_dist_scores.append(_distance_discrepancy(emb_proj, emb_test))
+        if pca_train.explained_variance_ratio_.size:
+            pca_var_ratio.append(float(pca_train.explained_variance_ratio_[0]))
 
-        try:
-            import umap  # type: ignore
-        except Exception as exc:  # pragma: no cover - optional dependency
-            logger.warning("UMAP unavailable: %s", exc)
-            umap = None  # type: ignore
         if umap is not None:
             reducer_train = umap.UMAP(n_components=2, random_state=random_state)
             reducer_train.fit(X_train)
@@ -150,6 +157,8 @@ def unsupervised_cv_and_temporal_tests(
     cv_stability = {
         "pca_axis_corr_mean": float(np.nanmean(pca_axis_scores)) if pca_axis_scores else float("nan"),
         "pca_axis_corr_std": float(np.nanstd(pca_axis_scores)) if pca_axis_scores else float("nan"),
+        "pca_var_first_axis_mean": float(np.nanmean(pca_var_ratio)) if pca_var_ratio else float("nan"),
+        "pca_var_first_axis_std": float(np.nanstd(pca_var_ratio)) if pca_var_ratio else float("nan"),
         "pca_distance_mse_mean": float(np.mean(pca_dist_scores)) if pca_dist_scores else float("nan"),
         "pca_distance_mse_std": float(np.std(pca_dist_scores)) if pca_dist_scores else float("nan"),
         "umap_distance_mse_mean": float(np.mean(umap_dist_scores)) if umap_dist_scores else float("nan"),
@@ -183,7 +192,6 @@ def unsupervised_cv_and_temporal_tests(
         if umap is not None:
             reducer_old = umap.UMAP(n_components=2, random_state=random_state)
             reducer_old.fit(X_old)
-            emb_old_umap = reducer_old.transform(X_old)
             emb_proj_umap = reducer_old.transform(X_new)
             reducer_new = umap.UMAP(n_components=2, random_state=random_state)
             emb_new_umap = reducer_new.fit_transform(X_new)

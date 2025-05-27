@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-from dataset_comparison import compare_datasets_versions
+import dataset_comparison as dc
 
 
 def sample_datasets():
@@ -22,7 +22,7 @@ def sample_datasets():
 
 def test_compare_versions_basic():
     datasets = sample_datasets()
-    res = compare_datasets_versions(datasets, min_modalite_freq=1)
+    res = dc.compare_datasets_versions(datasets, min_modalite_freq=1)
 
     combined = res["metrics"]
     assert set(combined["dataset_version"]) == {"phase1", "phase3"}

@@ -128,6 +128,7 @@ def evaluate_methods(
 
         X_low = info["embeddings"].values
         labels = KMeans(n_clusters=n_clusters, random_state=None).fit_predict(X_low)
+        info["cluster_labels"] = labels
         if len(labels) <= n_clusters or len(set(labels)) < 2:
             sil = float("nan")
             dunn = float("nan")
