@@ -26,6 +26,14 @@ configuration file in YAML (or JSON) format. A template is provided in
 python phase4.py --config config.yaml
 ```
 
+To analyse several dataset versions concurrently, list them after the
+``--datasets`` option. Results for each dataset are written to a subdirectory
+of ``output_dir``.
+
+```bash
+python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
+```
+
 
 Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components
