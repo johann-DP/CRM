@@ -15,3 +15,13 @@ def test_method_params_merging():
     assert pacmap_params["MN_ratio"] == 0.7
     assert "n_neighbors" in pacmap_params  # default from BEST_PARAMS
 
+
+def test_method_params_ignore_none():
+    cfg = {
+        "umap": {"metric": None},
+        "umap_n_neighbors": None,
+    }
+    params = phase4._method_params("umap", cfg)
+    assert params["metric"] == "cosine"
+    assert params["n_neighbors"] == 30
+

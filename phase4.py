@@ -89,10 +89,12 @@ def _load_config(path: Path) -> Dict[str, Any]:
 def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
     params = BEST_PARAMS.get(method.upper(), {}).copy()
     if method.lower() in config and isinstance(config[method.lower()], Mapping):
-        params.update(config[method.lower()])
+        for key, value in config[method.lower()].items():
+            if value is not None:
+                params[key] = value
     prefix = f"{method.lower()}_"
     for key, value in config.items():
-        if key.startswith(prefix):
+        if key.startswith(prefix) and value is not None:
             params[key[len(prefix) :]] = value
     return params
 
