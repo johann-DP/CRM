@@ -91,11 +91,11 @@ def load_datasets(config: Mapping[str, Any]) -> Dict[str, pd.DataFrame]:
     datasets["raw"] = _apply_mapping(datasets["raw"])
 
     for key, cfg_key in [
-        ("phase1", "phase1_file"),
+        ("cleaned_1", "input_file_cleaned_1"),
         ("phase2", "phase2_file"),
-        ("phase3", "phase3_file"),
-        ("phase3_multi", "phase3_multi_file"),
-        ("phase3_univ", "phase3_univ_file"),
+        ("cleaned_3_all", "input_file_cleaned_3_all"),
+        ("cleaned_3_multi", "input_file_cleaned_3_multi"),
+        ("cleaned_3_univ", "input_file_cleaned_3_univ"),
     ]:
         path_str = config.get(cfg_key)
         if not path_str:
