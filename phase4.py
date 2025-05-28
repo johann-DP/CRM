@@ -17,7 +17,11 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence
+
+import datetime
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 from sklearn.preprocessing import StandardScaler
 
@@ -43,7 +47,6 @@ from phase4_functions import (
     generate_figures,
     select_variables,
     unsupervised_cv_and_temporal_tests,
-    export_report_to_pdf,
     BEST_PARAMS,
 )
 
@@ -82,6 +85,114 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
         if key.startswith(prefix):
             params[key[len(prefix) :]] = value
     return params
+
+
+def build_pdf_report(
+    output_dir: Path,
+    pdf_path: Path,
+    dataset_order: Sequence[str],
+    tables: Optional[Mapping[str, pd.DataFrame]] = None,
+) -> Path:
+    """Assemble all PNG figures under ``output_dir`` into ``pdf_path``.
+
+    A title page is added followed by sections for each dataset listed in
+    ``dataset_order``. Any provided tables are rendered as figures and appended
+    at the end of the document.
+    """
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _add_image(pdf: PdfPages, img_path: Path, caption: str) -> None:
+        img = plt.imread(img_path)
+        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        ax.imshow(img)
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.02,
+            caption,
+            transform=ax.transAxes,
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color="gray",
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+    def _table_to_fig(df: pd.DataFrame, title: str) -> plt.Figure:
+        height = 0.4 * len(df) + 1.5
+        fig, ax = plt.subplots(figsize=(8.0, height), dpi=200)
+        ax.axis("off")
+        ax.set_title(title)
+        table = ax.table(
+            cellText=df.values,
+            colLabels=list(df.columns),
+            rowLabels=list(df.index),
+            cellLoc="center",
+            rowLoc="center",
+            loc="center",
+        )
+        table.scale(1, 1.2)
+        fig.tight_layout()
+        return fig
+
+    with PdfPages(pdf_path) as pdf:
+        # Title page
+        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.6,
+            "Phase 4 Dimensional Analysis – Comparative Report",
+            ha="center",
+            va="center",
+            fontsize=16,
+            weight="bold",
+        )
+        ax.text(
+            0.5,
+            0.52,
+            datetime.datetime.now().strftime("%Y-%m-%d"),
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
+        ax.text(
+            0.5,
+            0.44,
+            "Automated compilation of Phase 4 results",
+            ha="center",
+            va="center",
+            fontsize=10,
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        for name in dataset_order:
+            # Section page
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(0.5, 0.9, name, ha="center", va="top", fontsize=14, weight="bold")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            if name == dataset_order[0]:
+                base_dir = output_dir
+            else:
+                base_dir = output_dir / "comparisons" / name
+            if not base_dir.exists():
+                continue
+            for img in sorted(base_dir.rglob("*.png")):
+                _add_image(pdf, img, f"{name} – {img.name}")
+
+        if tables:
+            for tname, df in tables.items():
+                fig = _table_to_fig(df, tname)
+                pdf.savefig(fig)
+                plt.close(fig)
+
+    return pdf_path
 
 
 # ---------------------------------------------------------------------------
@@ -212,9 +323,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     comparison_metrics = None
     comparison_figures: Dict[str, Any] = {}
+    comparison_names: list[str] = []
     if config.get("compare_versions"):
         versions = {k: v for k, v in datasets.items() if k != data_key}
         if versions:
+            comparison_names = list(versions.keys())
             comp = compare_datasets_versions(
                 versions,
                 exclude_lost=bool(config.get("exclude_lost", True)),
@@ -241,13 +354,18 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         pd.DataFrame(robustness_df).to_csv(output_dir / "robustness.csv")
 
     if config.get("output_pdf"):
-        all_figs = {**figures, **comparison_figures}
-        tables: Dict[str, Any] = {"metrics": metrics}
+        tables: Dict[str, pd.DataFrame] = {"metrics": metrics}
         if comparison_metrics is not None:
             tables["comparison_metrics"] = comparison_metrics
         if robustness_df is not None:
             tables["robustness"] = pd.DataFrame(robustness_df)
-        export_report_to_pdf(all_figs, tables, config["output_pdf"])
+        dataset_order = [data_key] + comparison_names
+        build_pdf_report(
+            output_dir,
+            Path(config["output_pdf"]),
+            dataset_order,
+            tables,
+        )
 
     logging.info("Analysis complete")
     return {
