@@ -3,7 +3,7 @@
 input_file: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx'
 output_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
-data_dictionary: "\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase1_output\data_dictionary_complet.xlsx"
+data_dictionary: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase1_output\data_dictionary_complet.xlsx'
 output_pdf: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 
 n_jobs: -1
@@ -12,7 +12,6 @@ methods: [famd, pca, mca, mfa, umap, pacmap, phate]
 
 # Method specific options (can be left empty)
 famd:
-  weighting: balanced
   # Let fine-tuning choose the component rule (variance, kaiser or elbow)
   n_components_rule:
   variance_threshold: 0.9
