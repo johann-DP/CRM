@@ -1,6 +1,10 @@
 # Configuration
 # Use UNC paths when running over the network from another machine
 input_file: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx'
+input_file_cleaned_1: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase1_output\export_phase1_cleaned.csv'
+input_file_cleaned_3_all: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_all.csv'
+input_file_cleaned_3_multi: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_multivariate.csv'
+input_file_cleaned_3_univ: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_output\phase3_cleaned_univ.csv'
 output_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
 data_dictionary: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase1_output\data_dictionary_complet.xlsx'
