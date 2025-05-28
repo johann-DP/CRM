@@ -294,6 +294,8 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         params = _method_params("mfa", config)
         params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
+        # ``mfa: {groups: [[...], [...]]}`` in the config overrides the default
+        # automatic grouping of quantitative and qualitative variables.
         if cfg_groups:
             groups = cfg_groups
         factor_results["mfa"] = run_mfa(

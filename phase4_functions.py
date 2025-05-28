@@ -19,9 +19,6 @@ from typing import Any, Dict, Mapping, Optional
 
 import pandas as pd
 
-CONFIG: Dict[str, Any] = {}
-
-
 def _read_dataset(path: Path) -> pd.DataFrame:
     """Read a CSV or Excel file with basic type handling."""
     if not path.exists():
@@ -61,17 +58,16 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
     return mapping
 
 
-def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.DataFrame]:
+def load_datasets(config: Mapping[str, Any]) -> Dict[str, pd.DataFrame]:
     """Load raw and processed datasets according to ``config``."""
     logger = logging.getLogger(__name__)
 
-    cfg = CONFIG if config is None else config
-    if not isinstance(cfg, Mapping):
-        raise TypeError("config must be a mapping or None")
-    if "input_file" not in cfg:
+    if not isinstance(config, Mapping):
+        raise TypeError("config must be a mapping")
+    if "input_file" not in config:
         raise ValueError("'input_file' missing from config")
 
-    mapping = _load_data_dictionary(Path(cfg.get("data_dictionary", "")))
+    mapping = _load_data_dictionary(Path(config.get("data_dictionary", "")))
 
     def _apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
         if mapping:
@@ -79,7 +75,7 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         return df
 
     datasets: Dict[str, pd.DataFrame] = {}
-    raw_path = Path(cfg["input_file"])
+    raw_path = Path(config["input_file"])
     datasets["raw"] = _read_dataset(raw_path)
     logger.info(
         "Raw dataset loaded from %s [%d rows, %d cols]",
@@ -97,7 +93,7 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
         ("phase3_multi", "phase3_multi_file"),
         ("phase3_univ", "phase3_univ_file"),
     ]:
-        path_str = cfg.get(cfg_key)
+        path_str = config.get(cfg_key)
         if not path_str:
             continue
         path = Path(path_str)
@@ -971,7 +967,13 @@ def run_mfa(
     random_state: Optional[int] = 0,
     n_iter: int = 3,
 ) -> Dict[str, object]:
-    """Run Multiple Factor Analysis."""
+    """Run Multiple Factor Analysis.
+
+    The ``groups`` argument defines the variable blocks used by MFA. Each
+    element of ``groups`` must be a list of column names present in
+    ``df_active``. When invoking :func:`run_pipeline`, these groups can be
+    provided in the configuration file under ``mfa: {groups: ...}``.
+    """
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
 
