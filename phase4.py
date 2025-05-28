@@ -57,6 +57,7 @@ from phase4_functions import (
     generate_figures,
     select_variables,
     unsupervised_cv_and_temporal_tests,
+    format_metrics_table,
     BEST_PARAMS,
 )
 
@@ -234,7 +235,13 @@ def build_pdf_report(
             if not base_dir.exists():
                 continue
             for img in sorted(base_dir.rglob("*.png")):
+                if img.name == "methods_heatmap.png":
+                    continue
                 _add_image(pdf, img, name)
+
+        heatmap_path = output_dir / "methods_heatmap.png"
+        if heatmap_path.exists():
+            _add_image(pdf, heatmap_path, dataset_order[0])
 
         if tables:
             for tname, df in tables.items():
@@ -434,9 +441,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if config.get("output_pdf"):
         logging.info("Building PDF report...")
-        tables: Dict[str, pd.DataFrame] = {"metrics": metrics}
+        tables: Dict[str, pd.DataFrame] = {"metrics": format_metrics_table(metrics)}
         if comparison_metrics is not None:
-            tables["comparison_metrics"] = comparison_metrics
+            tables["comparison_metrics"] = format_metrics_table(comparison_metrics)
         if robustness_df is not None:
             tables["robustness"] = pd.DataFrame(robustness_df)
         dataset_order = [data_key] + comparison_names
