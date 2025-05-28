@@ -258,7 +258,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     optimize = bool(config.get("optimize_params", False))
 
     logging.info("Loading datasets...")
-    datasets = load_datasets(config)
+    datasets = load_datasets(config, ignore_schema=bool(config.get("ignore_schema", False)))
     data_key = config.get("dataset", config.get("main_dataset", "raw"))
     if data_key not in datasets:
         raise KeyError(f"dataset '{data_key}' not found")

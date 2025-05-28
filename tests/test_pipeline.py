@@ -81,3 +81,4 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         assert Path(calls[name]).name == name
     assert calls["n_jobs"] == 2
     assert calls["backend"] == "multiprocessing"
+    
