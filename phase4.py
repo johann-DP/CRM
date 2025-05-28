@@ -462,7 +462,18 @@ def run_pipeline_parallel(
     *,
     n_jobs: Optional[int] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Run :func:`run_pipeline` on several datasets in parallel."""
+    """Run :func:`run_pipeline` on several datasets in parallel.
+
+    The available worker threads defined by ``config['n_jobs']`` are divided
+    among the dataset workers so that CPU resources are used efficiently.
+    """
+
+    n_jobs = n_jobs or len(datasets)
+
+    total_threads = int(config.get("n_jobs", -1))
+    if total_threads < 1:
+        total_threads = os.cpu_count() or 1
+    threads_per_dataset = max(1, total_threads // n_jobs)
 
     def _single(name: str) -> tuple[str, Dict[str, Any]]:
         cfg = dict(config)
@@ -473,9 +484,9 @@ def run_pipeline_parallel(
         if "output_pdf" in cfg:
             pdf = Path(cfg["output_pdf"])
             cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
+        cfg["n_jobs"] = threads_per_dataset
         return name, run_pipeline(cfg)
 
-    n_jobs = n_jobs or len(datasets)
     results = Parallel(n_jobs=n_jobs)(delayed(_single)(ds) for ds in datasets)
     return dict(results)
 

@@ -49,16 +49,32 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
     calls = {}
 
     def fake_run_pipeline(cfg):
-        calls[cfg["dataset"]] = cfg["output_dir"]
+        calls[cfg["dataset"]] = (cfg["output_dir"], cfg["n_jobs"])
         return {}
+
+    class DummyParallel:
+        def __init__(self, n_jobs=None):
+            self.n_jobs = n_jobs
+
+        def __call__(self, tasks):
+            return [task() for task in tasks]
+
+    def dummy_delayed(func):
+        return lambda *a, **k: lambda: func(*a, **k)
+
+    monkeypatch.setattr(phase4, "Parallel", DummyParallel)
+    monkeypatch.setattr(phase4, "delayed", dummy_delayed)
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
 
-    cfg = {"output_dir": str(tmp_path / "out"), "input_file": "dummy"}
+    cfg = {"output_dir": str(tmp_path / "out"), "input_file": "dummy", "n_jobs": 8}
     datasets = ["raw", "cleaned_1"]
 
-    res = phase4.run_pipeline_parallel(cfg, datasets, n_jobs=1)
+    res = phase4.run_pipeline_parallel(cfg, datasets, n_jobs=2)
 
     assert set(res) == set(datasets)
     for name in datasets:
-        assert Path(calls[name]).name == name
+        out_dir, threads = calls[name]
+        assert Path(out_dir).name == name
+        assert threads == 4
+

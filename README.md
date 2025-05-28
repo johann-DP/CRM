@@ -34,10 +34,13 @@ of ``output_dir``.
 python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
 
-If your pre-cleaned datasets do not share exactly the same columns as the raw
-file, set ``ignore_schema: true`` in the configuration. Missing columns will be
-added with ``NA`` values and extra columns will be discarded instead of raising
-a validation error during loading.
+Use ``--dataset-jobs`` to control how many datasets run in parallel. The
+threads defined by ``n_jobs`` in the configuration are divided between the
+dataset workers. For example, on an 8‑core machine:
+
+```bash
+python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ --dataset-jobs 4
+```
 
 
 Set `optimize_params: true` in the configuration to automatically tune the main
