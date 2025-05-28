@@ -3,6 +3,9 @@
 input_file: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\export_everwin (19).xlsx'
 output_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
 metrics_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\METRICS_DIR'
+data_dictionary: "\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase1_output\data_dictionary_complet.xlsx"
+output_pdf: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
+
 n_jobs: -1
 optimize_params: false
 methods: [famd, pca, mca, mfa, umap, pacmap, phate]
@@ -25,6 +28,8 @@ umap:
   # metric will be selected during fine-tuning
   metric:
 phate:
-  knn: auto
+  knn: 9
   t: auto
   # n_components selected by fine tuning
+pacmap:
+  n_components: 2

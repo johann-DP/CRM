@@ -890,7 +890,6 @@ def run_famd(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    weighting: Optional[str] = "balanced",
     n_components_rule: Optional[str] = None,
 ) -> Dict[str, object]:
     """Run Factor Analysis of Mixed Data (FAMD).
@@ -904,8 +903,6 @@ def run_famd(
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
 
-    if weighting is not None:
-        logger.info("FAMD weighting=%s ignored (not implemented)", weighting)
     if n_components_rule is not None:
         logger.info(
             "FAMD n_components_rule=%s ignored (not implemented)",
