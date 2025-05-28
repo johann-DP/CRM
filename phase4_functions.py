@@ -1275,11 +1275,13 @@ def run_phate(
     a: int = 40,
     *,
     t: str | int = "auto",
+    knn: int | None = None,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active``.
 
     The dataframe is encoded numerically via :func:`_encode_mixed` before
-    fitting PHATE.  Returns an empty result if the library is unavailable.
+    fitting PHATE.  The ``knn`` keyword is accepted as an alias for ``k``.
+    Returns an empty result if the library is unavailable.
     """
     global phate
     if phate is None:
@@ -1294,6 +1296,9 @@ def run_phate(
                 "embeddings": pd.DataFrame(index=df_active.index),
                 "params": {},
             }
+
+    if knn is not None:
+        k = knn
 
     start = time.perf_counter()
     X = _encode_mixed(df_active)
