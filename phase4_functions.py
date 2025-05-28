@@ -62,8 +62,21 @@ def _load_data_dictionary(path: Optional[Path]) -> Dict[str, str]:
     return mapping
 
 
-def load_datasets(config: Mapping[str, Any]) -> Dict[str, pd.DataFrame]:
-    """Load raw and processed datasets according to ``config``."""
+def load_datasets(
+    config: Mapping[str, Any], *, ignore_schema: bool = False
+) -> Dict[str, pd.DataFrame]:
+    """Load raw and processed datasets according to ``config``.
+
+    Parameters
+    ----------
+    config:
+        Mapping of configuration options. At minimum ``input_file`` must be
+        provided.
+    ignore_schema:
+        If ``True`` the column comparison between the raw dataset and the other
+        datasets is relaxed: missing columns are added with ``NA`` values and
+        extra columns are dropped instead of raising a :class:`ValueError`.
+    """
     logger = logging.getLogger(__name__)
 
     if not isinstance(config, Mapping):
@@ -120,9 +133,15 @@ def load_datasets(config: Mapping[str, Any]) -> Dict[str, pd.DataFrame]:
         missing = ref_set - cols
         extra = cols - ref_set
         if missing or extra:
-            raise ValueError(
-                f"{name} columns mismatch: missing {missing or None}, extra {extra or None}"
-            )
+            if not ignore_schema:
+                raise ValueError(
+                    f"{name} columns mismatch: missing {missing or None}, extra {extra or None}"
+                )
+            if missing:
+                for col in missing:
+                    df[col] = pd.NA
+            if extra:
+                df = df.drop(columns=list(extra))
         # reorder columns so all datasets share the same order
         datasets[name] = df[ref_cols]
     return datasets

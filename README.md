@@ -34,6 +34,11 @@ of ``output_dir``.
 python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
 
+If your pre-cleaned datasets do not share exactly the same columns as the raw
+file, set ``ignore_schema: true`` in the configuration. Missing columns will be
+added with ``NA`` values and extra columns will be discarded instead of raising
+a validation error during loading.
+
 
 Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components
