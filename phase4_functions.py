@@ -1716,13 +1716,19 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     annot = df_metrics.copy()
-    if "variance_cumulee_%" in annot:
-        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype(int)
-    if "nb_axes_kaiser" in annot:
-        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype(int)
     for col in annot.columns:
-        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
-            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        if col == "variance_cumulee_%":
+            annot[col] = annot[col].map(
+                lambda x: f"{int(round(x))}" if pd.notna(x) else ""
+            )
+        elif col == "nb_axes_kaiser":
+            annot[col] = annot[col].map(
+                lambda x: f"{int(x)}" if pd.notna(x) else ""
+            )
+        else:
+            annot[col] = annot[col].map(
+                lambda x: f"{x:.2f}" if pd.notna(x) else ""
+            )
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(
