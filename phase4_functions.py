@@ -91,11 +91,11 @@ def load_datasets(config: Mapping[str, Any]) -> Dict[str, pd.DataFrame]:
     datasets["raw"] = _apply_mapping(datasets["raw"])
 
     for key, cfg_key in [
-        ("phase1", "phase1_file"),
+        ("cleaned_1", "input_file_cleaned_1"),
         ("phase2", "phase2_file"),
-        ("phase3", "phase3_file"),
-        ("phase3_multi", "phase3_multi_file"),
-        ("phase3_univ", "phase3_univ_file"),
+        ("cleaned_3_all", "input_file_cleaned_3_all"),
+        ("cleaned_3_multi", "input_file_cleaned_3_multi"),
+        ("cleaned_3_univ", "input_file_cleaned_3_univ"),
     ]:
         path_str = config.get(cfg_key)
         if not path_str:
@@ -618,13 +618,13 @@ def compare_datasets_versions(
             and not v["embeddings"].empty
         }
         all_results = {**factor_results, **cleaned_nonlin}
-        n_clusters = 3 if len(df_active) > 3 else 2
+        k_max = min(10, max(2, len(df_active) - 1))
         metrics = evaluate_methods(
             all_results,
             df_active,
             quant_vars,
             qual_vars,
-            k_range=range(2, n_clusters + 1),
+            k_range=range(2, k_max + 1),
         )
         metrics["dataset_version"] = name
         try:
@@ -1696,11 +1696,20 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         else:
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
+    annot = df_metrics.copy()
+    if "variance_cumulee_%" in annot:
+        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype(int)
+    if "nb_axes_kaiser" in annot:
+        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype(int)
+    for col in annot.columns:
+        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(
         df_norm,
-        annot=df_metrics,
-        fmt=".2f",
+        annot=annot,
+        fmt="",
         cmap="coolwarm",
         vmin=0,
         vmax=1,
@@ -1838,7 +1847,13 @@ def plot_scatter_2d(
     """Return a 2D scatter plot figure coloured by ``color_var``."""
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     if color_var is None or color_var not in df_active.columns:
-        ax.scatter(emb_df.iloc[:, 0], emb_df.iloc[:, 1], s=10, alpha=0.7)
+        ax.scatter(
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            s=10,
+            alpha=0.6,
+            color="tab:blue",
+        )
     else:
         cats = df_active.loc[emb_df.index, color_var].astype("category")
         palette = sns.color_palette("tab10", len(cats.cat.categories))
@@ -1852,7 +1867,15 @@ def plot_scatter_2d(
                 color=color,
                 label=str(cat),
             )
-        ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        if str(color_var).lower().startswith("sous-"):
+            ax.legend(
+                title=color_var,
+                bbox_to_anchor=(0.5, -0.15),
+                loc="upper center",
+                ncol=3,
+            )
+        else:
+            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -1868,7 +1891,12 @@ def plot_scatter_3d(
     ax = fig.add_subplot(111, projection="3d")
     if color_var is None or color_var not in df_active.columns:
         ax.scatter(
-            emb_df.iloc[:, 0], emb_df.iloc[:, 1], emb_df.iloc[:, 2], s=10, alpha=0.7
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            emb_df.iloc[:, 2],
+            s=10,
+            alpha=0.6,
+            color="tab:blue",
         )
     else:
         cats = df_active.loc[emb_df.index, color_var].astype("category")
@@ -1884,7 +1912,15 @@ def plot_scatter_3d(
                 color=color,
                 label=str(cat),
             )
-        ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        if str(color_var).lower().startswith("sous-"):
+            ax.legend(
+                title=color_var,
+                bbox_to_anchor=(0.5, -0.1),
+                loc="upper center",
+                ncol=3,
+            )
+        else:
+            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -1998,11 +2034,12 @@ def plot_scree(
         color=sns.color_palette("deep")[0],
         edgecolor="black",
     )
-    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
+    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="#C04000")
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+    thresh = 0.8 if ratios.max() <= 1 else 80
+    ax.axhline(thresh, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
@@ -2056,6 +2093,7 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     df[["F1", "F2"]].plot(kind="bar", ax=ax)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_ylabel("% Contribution")
     ax.set_title("Contributions des variables – FAMD (F1 et F2)")
     ax.legend(title="Axe")
@@ -2137,7 +2175,7 @@ def generate_figures(
     qual_vars: List[str],
     output_dir: Optional[Path] = None,
     *,
-    cluster_k: int = 3,
+    cluster_k: int | None = None,
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -2145,8 +2183,10 @@ def generate_figures(
     ----------
     output_dir : Path or None, optional
         Directory where figures will be saved.
-    cluster_k : int, default ``3``
-        Maximum number of clusters tested when none are provided.
+    cluster_k : int or None, optional
+        If ``None``, the number of clusters is tuned automatically up to a
+        maximum of 10. Otherwise ``cluster_k`` is treated as the upper bound for
+        the search range.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
@@ -2171,10 +2211,11 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
+                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
                 labels, tuned_k = tune_kmeans_clusters(
-                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                    emb.iloc[:, :2].values,
+                    range(2, max_k + 1),
                 )
-                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"
@@ -2238,10 +2279,11 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
+                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
                 labels, tuned_k = tune_kmeans_clusters(
-                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                    emb.iloc[:, :2].values,
+                    range(2, max_k + 1),
                 )
-                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"
