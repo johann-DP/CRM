@@ -111,7 +111,28 @@ def build_pdf_report(
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _add_image(pdf: PdfPages, img_path: Path, caption: str) -> None:
+    def _format_caption(dataset: str, filename: str) -> str:
+        name = filename.rsplit(".", 1)[0]
+        parts = name.split("_")
+        method = parts[0].upper() if parts else ""
+        suffix = "_".join(parts[1:]) if len(parts) > 1 else ""
+        if "scree" in suffix:
+            desc = f"Éboulis {method}"
+        elif "correlation" in suffix:
+            desc = f"Cercle de corrélation {method}"
+        elif "contributions" in suffix:
+            desc = f"Contributions des variables – {method}"
+        elif "scatter_2d" in suffix:
+            desc = f"Nuage d'individus – {method} (2D)"
+        elif "clusters" in suffix:
+            desc = f"Segmentation K-means sur projection {method}"
+        elif "scatter_3d" in suffix:
+            desc = f"Nuage 3D – {method}"
+        else:
+            desc = name
+        return f"{dataset} – {desc}"
+
+    def _add_image(pdf: PdfPages, img_path: Path, dataset: str) -> None:
         img = plt.imread(img_path)
         fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
         ax.imshow(img)
@@ -119,7 +140,7 @@ def build_pdf_report(
         ax.text(
             0.5,
             0.02,
-            caption,
+            _format_caption(dataset, img_path.name),
             transform=ax.transAxes,
             ha="center",
             va="bottom",
@@ -193,7 +214,7 @@ def build_pdf_report(
             if not base_dir.exists():
                 continue
             for img in sorted(base_dir.rglob("*.png")):
-                _add_image(pdf, img, f"{name} – {img.name}")
+                _add_image(pdf, img, name)
 
         if tables:
             for tname, df in tables.items():
