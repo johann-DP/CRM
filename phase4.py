@@ -64,6 +64,7 @@ from phase4_functions import (
 # Utility helpers
 # ---------------------------------------------------------------------------
 
+
 def _setup_logging(output_dir: Path, level: str = "INFO") -> logging.Logger:
     output_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger()
@@ -229,6 +230,7 @@ def build_pdf_report(
 # Pipeline
 # ---------------------------------------------------------------------------
 
+
 def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     rs = config.get("random_state") or config.get("random_seed")
     random_state = int(rs) if rs is not None else None
@@ -248,7 +250,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     logging.info("Running pipeline on dataset '%s'", data_key)
 
     logging.info("Preparing data...")
-    df_prep = prepare_data(datasets[data_key], exclude_lost=bool(config.get("exclude_lost", True)))
+    df_prep = prepare_data(
+        datasets[data_key], exclude_lost=bool(config.get("exclude_lost", True))
+    )
     logging.info("Selecting variables...")
     df_active, quant_vars, qual_vars = select_variables(
         df_prep, min_modalite_freq=int(config.get("min_modalite_freq", 5))
@@ -256,13 +260,16 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     logging.info("Handling missing values...")
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
-    methods = [m.lower() for m in config.get(
-        "methods_to_run",
-        config.get(
-            "methods",
-            ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
-        ),
-    )]
+    methods = [
+        m.lower()
+        for m in config.get(
+            "methods_to_run",
+            config.get(
+                "methods",
+                ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
+            ),
+        )
+    ]
 
     factor_results: Dict[str, Any] = {}
     if "pca" in methods and quant_vars:
@@ -331,15 +338,21 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if "umap" in methods:
         logging.info("Running UMAP...")
         params = _method_params("umap", config)
-        nonlin_results["umap"] = run_umap(df_active, random_state=random_state, **params)
+        nonlin_results["umap"] = run_umap(
+            df_active, random_state=random_state, **params
+        )
     if "phate" in methods:
         logging.info("Running PHATE...")
         params = _method_params("phate", config)
-        nonlin_results["phate"] = run_phate(df_active, random_state=random_state, **params)
+        nonlin_results["phate"] = run_phate(
+            df_active, random_state=random_state, **params
+        )
     if "pacmap" in methods:
         logging.info("Running PaCMAP...")
         params = _method_params("pacmap", config)
-        nonlin_results["pacmap"] = run_pacmap(df_active, random_state=random_state, **params)
+        nonlin_results["pacmap"] = run_pacmap(
+            df_active, random_state=random_state, **params
+        )
 
     valid_nonlin = {
         k: v
@@ -393,7 +406,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
                 for ver, det in comp["details"].items()
                 for name, fig in det["figures"].items()
             }
-            comparison_metrics.to_csv(output_dir / "comparison_metrics.csv", index=False)
+            comparison_metrics.to_csv(
+                output_dir / "comparison_metrics.csv", index=False
+            )
 
     robustness_df = None
     if config.get("run_temporal_tests"):
@@ -431,10 +446,10 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-
 # ---------------------------------------------------------------------------
 # CLI Entrypoint
 # ---------------------------------------------------------------------------
+
 
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Phase 4 analysis (modular)")
