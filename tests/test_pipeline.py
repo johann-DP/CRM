@@ -77,3 +77,4 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         out_dir, threads = calls[name]
         assert Path(out_dir).name == name
         assert threads == 4
+

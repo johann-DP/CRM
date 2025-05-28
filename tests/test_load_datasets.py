@@ -86,3 +86,13 @@ def test_schema_check(tmp_path: Path):
 
     with pytest.raises(ValueError):
         pf.load_datasets(cfg)
+
+
+def test_schema_check_ignored(tmp_path: Path):
+    cfg = _make_sample_config(tmp_path)
+    df = pd.read_csv(cfg["input_file_cleaned_1"])
+    df["Extra"] = 1
+    df.to_csv(cfg["input_file_cleaned_1"], index=False)
+
+    datasets = pf.load_datasets(cfg, ignore_schema=True)
+    assert "Extra" not in datasets["cleaned_1"].columns
