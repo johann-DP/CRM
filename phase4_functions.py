@@ -445,7 +445,7 @@ metrics evaluation) and does **not** depend on legacy scripts such as
 
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Mapping
 from pathlib import Path
 
 import pandas as pd
@@ -521,6 +521,7 @@ def compare_datasets_versions(
     exclude_lost: bool = True,
     min_modalite_freq: int = 5,
     output_dir: Optional[str | Path] = None,
+    exclude_lost_map: Optional[Mapping[str, bool]] = None,
 ) -> Dict[str, Any]:
     """Compare dimensionality reduction results between dataset versions.
 
@@ -530,6 +531,8 @@ def compare_datasets_versions(
         Mapping of version name to raw ``DataFrame``.
     exclude_lost : bool, default ``True``
         Whether to remove lost/cancelled opportunities during preparation.
+    exclude_lost_map : Mapping[str, bool], optional
+        Mapping overriding ``exclude_lost`` for specific dataset versions.
     min_modalite_freq : int, default ``5``
         Frequency threshold passed to :func:`variable_selection.select_variables`.
     output_dir : str or Path, optional
@@ -553,7 +556,8 @@ def compare_datasets_versions(
 
     for name, df in datasets.items():
         logger.info("Processing dataset version '%s'", name)
-        df_prep = prepare_data(df, exclude_lost=exclude_lost)
+        excl = exclude_lost_map.get(name, exclude_lost) if exclude_lost_map else exclude_lost
+        df_prep = prepare_data(df, exclude_lost=excl)
         df_active, quant_vars, qual_vars = select_variables(
             df_prep, min_modalite_freq=min_modalite_freq
         )
@@ -2494,7 +2498,7 @@ metrics evaluation) and does **not** depend on legacy scripts such as
 
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Mapping
 from pathlib import Path
 
 import pandas as pd
@@ -2579,6 +2583,7 @@ def compare_datasets_versions(
     exclude_lost: bool = True,
     min_modalite_freq: int = 5,
     output_dir: Optional[str | Path] = None,
+    exclude_lost_map: Optional[Mapping[str, bool]] = None,
 ) -> Dict[str, Any]:
     """Compare dimensionality reduction results between dataset versions.
 
@@ -2588,6 +2593,8 @@ def compare_datasets_versions(
         Mapping of version name to raw ``DataFrame``.
     exclude_lost : bool, default ``True``
         Whether to remove lost/cancelled opportunities during preparation.
+    exclude_lost_map : Mapping[str, bool], optional
+        Mapping overriding ``exclude_lost`` for specific dataset versions.
     min_modalite_freq : int, default ``5``
         Frequency threshold passed to :func:`variable_selection.select_variables`.
     output_dir : str or Path, optional
@@ -2611,7 +2618,8 @@ def compare_datasets_versions(
 
     for name, df in datasets.items():
         logger.info("Processing dataset version '%s'", name)
-        df_prep = prepare_data(df, exclude_lost=exclude_lost)
+        excl = exclude_lost_map.get(name, exclude_lost) if exclude_lost_map else exclude_lost
+        df_prep = prepare_data(df, exclude_lost=excl)
         df_active, quant_vars, qual_vars = select_variables(
             df_prep, min_modalite_freq=min_modalite_freq
         )
