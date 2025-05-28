@@ -1717,9 +1717,11 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
 
     annot = df_metrics.copy()
     if "variance_cumulee_%" in annot:
-        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype(int)
+        annot["variance_cumulee_%"] = (
+            annot["variance_cumulee_%"].round().astype("Int64")
+        )
     if "nb_axes_kaiser" in annot:
-        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype(int)
+        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
     for col in annot.columns:
         if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
             annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
