@@ -1555,21 +1555,44 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import pandas as pd
 import seaborn as sns
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Sequence
 from sklearn.cluster import KMeans
 
 
-def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
-    """Return a correlation circle figure for the provided coordinates.
+def plot_correlation_circle(
+    factor_model: Any, quant_vars: Sequence[str], output_path: str | Path
+) -> Path:
+    """Generate and save a correlation circle for ``factor_model``.
 
     Parameters
     ----------
-    coords : pandas.DataFrame
-        DataFrame indexed by variable names with ``F1`` and ``F2`` columns.
-    title : str
-        Title of the figure.
+    factor_model:
+        Fitted model exposing ``components_`` or ``column_correlations_``.
+    quant_vars:
+        Names of quantitative variables to include.
+    output_path:
+        Destination path for the created figure.
     """
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+
+    if hasattr(factor_model, "column_correlations_"):
+        coords = pd.DataFrame(
+            factor_model.column_correlations_, columns=["F1", "F2"]
+        )
+        coords = coords.loc[[v for v in quant_vars if v in coords.index]]
+    elif hasattr(factor_model, "components_"):
+        comps = np.asarray(factor_model.components_, dtype=float)
+        names = getattr(factor_model, "feature_names_in_", list(quant_vars))
+        eig = getattr(factor_model, "explained_variance_", None)
+        if eig is not None:
+            load = comps[:2].T * np.sqrt(eig[:2])
+        else:
+            load = comps[:2].T
+        coords = pd.DataFrame(load, index=names, columns=["F1", "F2"])
+        coords = coords.loc[[v for v in quant_vars if v in coords.index]]
+    else:  # pragma: no cover - unexpected model type
+        raise AttributeError("factor_model lacks components")
+
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
     circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
@@ -1577,17 +1600,20 @@ def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
         ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True, color="black")
-        offset_x = x * 1.15 + 0.03 * np.sign(x)
-        offset_y = y * 1.15 + 0.03 * np.sign(y)
-        ax.text(offset_x, offset_y, str(var), fontsize=8, ha="center", va="center")
+        ax.text(x * 1.1, y * 1.1, str(var), fontsize=8, ha="center", va="center")
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
-    ax.set_title(title)
+    ax.set_title("Correlation circle")
     ax.set_aspect("equal")
     fig.tight_layout()
-    return fig
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output)
+    plt.close(fig)
+    return output
 
 
 def _choose_color_var(df: pd.DataFrame, qual_vars: List[str]) -> Optional[str]:
@@ -1743,18 +1769,44 @@ def _corr_from_embeddings(
         return pd.DataFrame(columns=["F1", "F2"])
     return pd.DataFrame(data, index=["F1", "F2"]).T
 
-def plot_scree(inertia: pd.Series, title: str) -> plt.Figure:
-    """Return a scree plot showing variance explained by each component."""
-    axes = range(1, len(inertia) + 1)
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    ax.bar(axes, inertia.values * 100, edgecolor="black")
-    ax.plot(axes, np.cumsum(inertia.values) * 100, "-o", color="orange")
+def plot_scree(
+    explained_variance: Sequence[float] | pd.Series,
+    method_name: str,
+    output_path: str | Path,
+) -> Path:
+    """Generate and save a scree plot for ``method_name``.
+
+    The function writes the image to ``output_path`` and returns that path.
+    ``explained_variance`` can be a sequence of eigenvalues or variance ratios.
+    """
+
+    values = np.asarray(explained_variance, dtype=float)
+    if values.max() > 1.0:
+        ratios = values / values.sum()
+    else:
+        ratios = values
+
+    axes = np.arange(1, len(ratios) + 1)
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    ax.bar(axes, ratios * 100, edgecolor="black")
+    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
+
+    if values.max() > 1.0:
+        ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
+    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
-    ax.set_title(title)
+    ax.set_title(f"{method_name} Scree Plot")
     ax.set_xticks(list(axes))
+    ax.legend(loc="upper right")
     fig.tight_layout()
-    return fig
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output)
+    plt.close(fig)
+    return output
 
 
 def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
@@ -1777,6 +1829,68 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     ax.legend(title="Axe")
     fig.tight_layout()
     return fig
+
+
+def plot_embedding(
+    coords_df: pd.DataFrame,
+    color_by: Optional[Sequence[Any]] = None,
+    title: str = "",
+    output_path: str | Path = "",
+) -> Path:
+    """Generate and save a 2D scatter plot from ``coords_df``.
+
+    Parameters
+    ----------
+    coords_df:
+        DataFrame with two columns representing the embedding.
+    color_by:
+        Optional sequence of labels used to colour the points.
+    title:
+        Title of the figure.
+    output_path:
+        Destination path for the saved image.
+    """
+
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    if color_by is None:
+        ax.scatter(coords_df.iloc[:, 0], coords_df.iloc[:, 1], s=10, alpha=0.7)
+    else:
+        labels = pd.Series(list(color_by), index=coords_df.index)
+        if labels.dtype.kind in {"O", "b"} or str(labels.dtype).startswith("category"):
+            cats = labels.astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    coords_df.loc[mask, coords_df.columns[0]],
+                    coords_df.loc[mask, coords_df.columns[1]],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.legend(title=getattr(labels, "name", ""), bbox_to_anchor=(1.05, 1), loc="upper left")
+        else:
+            sc = ax.scatter(
+                coords_df.iloc[:, 0],
+                coords_df.iloc[:, 1],
+                c=labels,
+                cmap="viridis",
+                s=10,
+                alpha=0.7,
+            )
+            fig.colorbar(sc, ax=ax)
+
+    ax.set_xlabel(coords_df.columns[0])
+    ax.set_ylabel(coords_df.columns[1])
+    ax.set_title(title)
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output)
+    plt.close(fig)
+    return output
 
 
 
@@ -1852,18 +1966,15 @@ def generate_figures(
             qcoords = _corr_from_embeddings(emb, df_active, quant_vars)
         else:
             qcoords = pd.DataFrame()
-        if not qcoords.empty:
-            var_pc = res.get("inertia")
-            pct = float(var_pc.iloc[:2].sum() * 100) if isinstance(var_pc, pd.Series) else float("nan")
-            title = f"{method.upper()} – cercle des corrélations (F1–F2)\nVariance {pct:.1f}%"
-            fig_corr = plot_correlation_circle(qcoords, title)
-            figures[f"{method}_correlation"] = fig_corr
-            _save(fig_corr, method, f"{method}_correlation")
+        if not qcoords.empty and "model" in res:
+            dest = Path(output_dir) / method.lower() / f"{method}_correlation.png" if output_dir else Path(f"{method}_correlation.png")
+            path = plot_correlation_circle(res["model"], quant_vars, dest)
+            figures[f"{method}_correlation"] = path
         inertia = res.get("inertia")
         if isinstance(inertia, pd.Series) and not inertia.empty:
-            fig_scree = plot_scree(inertia, f"Variance expliquée par composante – {method.upper()}")
-            figures[f"{method}_scree"] = fig_scree
-            _save(fig_scree, method, f"{method}_scree")
+            dest = Path(output_dir) / method.lower() / f"{method}_scree.png" if output_dir else Path(f"{method}_scree.png")
+            path = plot_scree(inertia, method.upper(), dest)
+            figures[f"{method}_scree"] = path
         if method == "famd":
             contrib = res.get("contributions")
             if isinstance(contrib, pd.DataFrame) and not contrib.empty:
@@ -2746,7 +2857,6 @@ from sklearn.metrics import silhouette_score
 try:  # Optional legacy imports used by the old fine-tuning scripts
     from phase4v2 import plot_correlation_circle, scatter_all_segments  # type: ignore
 except Exception:  # pragma: no cover
-    plot_correlation_circle = None  # type: ignore
     scatter_all_segments = None  # type: ignore
 try:
     from standalone_utils import prepare_active_dataset  # type: ignore
@@ -3285,7 +3395,6 @@ import prince
 try:  # optional legacy functions
     from phase4v2 import plot_correlation_circle, scatter_all_segments  # type: ignore
 except Exception:  # pragma: no cover
-    plot_correlation_circle = None  # type: ignore
     scatter_all_segments = None  # type: ignore
 
 import warnings
