@@ -1961,10 +1961,8 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
         grouped.setdefault(var, pd.Series(dtype=float))
         grouped[var] = grouped[var].add(contrib.loc[idx, ["F1", "F2"]], fill_value=0)
     df = pd.DataFrame(grouped).T.fillna(0)
-    df = df.sort_values(
-        df.sum(axis=1).name if df.columns.size > 2 else 0, ascending=False
-    )
-    df = df.iloc[:n]
+    sort_index = df.sum(axis=1).sort_values(ascending=False).index
+    df = df.loc[sort_index].iloc[:n]
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     df[["F1", "F2"]].plot(kind="bar", ax=ax)
     ax.set_ylabel("% Contribution")
