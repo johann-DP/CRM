@@ -13,8 +13,6 @@ This module contains a :func:`load_datasets` function extracted from
 The API is kept identical for backward compatibility.
 """
 
-
-import logging
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
@@ -139,13 +137,9 @@ the fine tuning scripts so that these legacy files can be removed.
 
 
 import logging
-from typing import Any
 
-import numpy as np
 import pandas as pd
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler
-
 
 logger = logging.getLogger(__name__)
 
@@ -327,12 +321,9 @@ def prepare_data(
 
 """Utility functions for selecting active variables for CRM analyses."""
 
-
-import logging
 from typing import List, Tuple
 
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
 
 def select_variables(
@@ -468,9 +459,6 @@ from typing import Any, Dict, List, Optional, Mapping
 from pathlib import Path
 
 import pandas as pd
-
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -695,17 +683,12 @@ The functions do not depend on other local modules so they can be reused
 independently of ``phase4v2.py`` or the fine-tuning scripts.
 """
 
-
-import logging
-import time
 from typing import Dict, List, Optional, Sequence, Mapping, Union
 
 from pandas.api.types import is_object_dtype, is_categorical_dtype
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import prince
 
 
@@ -907,7 +890,7 @@ def run_famd(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    weighting: Optional[str] = None,
+    weighting: Optional[str] = "balanced",
     n_components_rule: Optional[str] = None,
 ) -> Dict[str, object]:
     """Run Factor Analysis of Mixed Data (FAMD).
@@ -1142,11 +1125,10 @@ files can be removed without breaking the pipeline.
 
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # Optional dependencies are imported lazily to avoid costly import time
 # (e.g. PaCMAP triggers numba compilation on import).
@@ -1188,7 +1170,7 @@ def _encode_mixed(df: pd.DataFrame) -> np.ndarray:
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         except TypeError:  # pragma: no cover - older scikit-learn
-            enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            enc = OneHotEncoder(handle_unknown="ignore")
         X_cat = enc.fit_transform(df[cat_cols])
     else:
         X_cat = np.empty((len(df), 0))
@@ -1432,14 +1414,10 @@ from pathlib import Path
 from typing import Any, Dict, Sequence
 from joblib import Parallel, delayed
 
-import logging
-
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -1568,7 +1546,7 @@ def evaluate_methods(
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         except TypeError:  # pragma: no cover - older scikit-learn
-            enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            enc = OneHotEncoder(handle_unknown="ignore")
         X_num = StandardScaler().fit_transform(
             df_active.loc[info["embeddings"].index, quant_vars]
         )
@@ -2175,8 +2153,6 @@ def generate_figures(
 # ---------------------------------------------------------------------------
 """Unsupervised cross-validation and temporal robustness tests."""
 
-
-import logging
 from typing import Sequence, Tuple, Optional, Dict
 
 import numpy as np
@@ -2214,7 +2190,7 @@ def _fit_preprocess(
         try:
             encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
         except TypeError:  # pragma: no cover - older scikit-learn
-            encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            encoder = OneHotEncoder(handle_unknown="ignore")
         X_cat = encoder.fit_transform(df[qual_vars])
 
     if X_num.size and X_cat.size:
@@ -2434,8 +2410,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
-
-logger = logging.getLogger(__name__)
 
 
 def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
