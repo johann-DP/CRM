@@ -36,7 +36,9 @@ def test_evaluate_and_plot(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pf, "trustworthiness", lambda *args, **kwargs: 0.5)
 
-    metrics = pf.evaluate_methods(results, df, quant_vars, qual_vars, n_clusters=2)
+    metrics = pf.evaluate_methods(
+        results, df, quant_vars, qual_vars, k_range=range(2, 3)
+    )
 
     # cluster labels added
     for info in results.values():
