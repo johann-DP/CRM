@@ -1815,19 +1815,55 @@ def plot_correlation_circle(
     else:  # pragma: no cover - unexpected model type
         raise AttributeError("factor_model lacks components")
 
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
+    norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
+    scale = float(norms.max()) if len(norms) else 1.0
+
+    fig, (ax, axc) = plt.subplots(ncols=2, figsize=(12, 6), dpi=200)
+
+    circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
-        ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True, color="black")
+        ax.arrow(0, 0, x, y, head_width=0.02 * scale, length_includes_head=True, color="black")
         ax.text(x * 1.1, y * 1.1, str(var), fontsize=8, ha="center", va="center")
-    ax.set_xlim(-1.1, 1.1)
-    ax.set_ylim(-1.1, 1.1)
+    ax.set_xlim(-scale * 1.1, scale * 1.1)
+    ax.set_ylim(-scale * 1.1, scale * 1.1)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
+
+    # cos^2 diagram ---------------------------------------------------------
+    axc_circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
+    axc.add_patch(axc_circle)
+    axc.axhline(0, color="grey", lw=0.5)
+    axc.axvline(0, color="grey", lw=0.5)
+    for var in coords.index:
+        x, y = coords.loc[var, ["F1", "F2"]]
+        cos2 = x ** 2 + y ** 2
+        angle = np.arctan2(y, x)
+        axc.arrow(
+            0,
+            0,
+            np.cos(angle) * cos2,
+            np.sin(angle) * cos2,
+            head_width=0.02,
+            length_includes_head=True,
+            color="black",
+        )
+        axc.text(
+            np.cos(angle) * cos2 * 1.1,
+            np.sin(angle) * cos2 * 1.1,
+            str(var),
+            fontsize=8,
+            ha="center",
+            va="center",
+        )
+    axc.set_xlim(-1.1, 1.1)
+    axc.set_ylim(-1.1, 1.1)
+    axc.set_xlabel("cos²")
+    axc.set_ylabel("")
+    axc.set_aspect("equal")
 
     method_name = factor_model.__class__.__name__.upper()
     if hasattr(factor_model, "explained_variance_ratio_"):
@@ -1841,6 +1877,7 @@ def plot_correlation_circle(
         f"Cercle des corrélations – {method_name} (F1+F2 = {var2:.1f} % de variance)"
     )
     ax.set_aspect("equal")
+    axc.set_title("Qualité de représentation (cos²)")
     fig.tight_layout()
 
     output = Path(output_path)
@@ -1976,6 +2013,7 @@ def plot_cluster_scatter(
     except AttributeError:  # Matplotlib < 3.6
         cmap = matplotlib.cm.get_cmap("tab10")
     n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+    centroids = []
     for i, lab in enumerate(unique):
         mask = labels == lab
         ax.scatter(
@@ -1987,16 +2025,39 @@ def plot_cluster_scatter(
             label=str(lab),
         )
         centroid = emb_df.loc[mask, emb_df.columns[:2]].mean().values
+        centroids.append(centroid)
+
+    if centroids:
+        centroids = np.vstack(centroids)
         ax.scatter(
-            centroid[0],
-            centroid[1],
+            centroids[:, 0],
+            centroids[:, 1],
             marker="x",
             s=60,
-            color=cmap(i % n_colors),
+            color="black",
+            zorder=3,
         )
     ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
+    ax.set_title(title)
+    fig.tight_layout()
+    return fig
+
+
+def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
+    """Return a bar chart showing the count of points per cluster."""
+    unique, counts = np.unique(labels, return_counts=True)
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+    try:
+        cmap = matplotlib.colormaps.get_cmap("tab10")
+    except AttributeError:  # pragma: no cover - older Matplotlib
+        cmap = matplotlib.cm.get_cmap("tab10")
+    n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+    colors = [cmap(i % n_colors) for i in range(len(unique))]
+    ax.bar([str(u) for u in unique], counts, color=colors, edgecolor="black")
+    ax.set_xlabel("Cluster")
+    ax.set_ylabel("Effectif")
     ax.set_title(title)
     fig.tight_layout()
     return fig
@@ -2063,8 +2124,7 @@ def plot_scree(
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    thresh = 0.8 if ratios.max() <= 1 else 80
-    ax.axhline(thresh, color="green", ls="--", lw=0.8, label="80% cumul")
+    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
@@ -2244,6 +2304,18 @@ def generate_figures(
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[f"{method}_clusters"] = cfig
             _save(cfig, method, f"{method}_clusters")
+            dist_fig = plot_cluster_distribution(
+                labels,
+                f"Répartition des segments – {method.upper()}"
+            )
+            figures[f"{method}_cluster_dist"] = dist_fig
+            _save(dist_fig, method, f"{method}_cluster_dist")
+            dist_fig = plot_cluster_distribution(
+                labels,
+                f"Répartition des segments – {method.upper()}"
+            )
+            figures[f"{method}_cluster_dist"] = dist_fig
+            _save(dist_fig, method, f"{method}_cluster_dist")
             if not first_3d_factor and emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2615,6 +2687,25 @@ def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
     table.scale(1, 1.2)
     fig.tight_layout()
     return fig
+
+
+def format_metrics_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Return ``df`` with values formatted as strings for display."""
+    formatted = df.copy()
+    for col in formatted.columns:
+        if col == "variance_cumulee_%":
+            formatted[col] = formatted[col].map(
+                lambda x: f"{int(round(x))}" if pd.notna(x) else ""
+            )
+        elif col == "nb_axes_kaiser":
+            formatted[col] = formatted[col].map(
+                lambda x: f"{int(x)}" if pd.notna(x) else ""
+            )
+        else:
+            formatted[col] = formatted[col].map(
+                lambda x: f"{x:.2f}" if pd.notna(x) else ""
+            )
+    return formatted
 
 
 def export_report_to_pdf(
