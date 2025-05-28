@@ -1613,20 +1613,22 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         else:
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
-    plt.figure(figsize=(8, 0.4 * len(df_norm) + 2), dpi=200)
-    ax = sns.heatmap(
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    sns.heatmap(
         df_norm,
         annot=df_metrics,
         fmt=".2f",
-        cmap="viridis",
+        cmap="coolwarm",
         vmin=0,
         vmax=1,
+        ax=ax,
     )
     ax.set_title("Comparaison des méthodes")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(output / "methods_heatmap.png")
-    plt.close()
+    fig.savefig(output / "methods_heatmap.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1696,7 +1698,7 @@ def plot_correlation_circle(
     else:  # pragma: no cover - unexpected model type
         raise AttributeError("factor_model lacks components")
 
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
@@ -1726,7 +1728,7 @@ def plot_correlation_circle(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output)
+    fig.savefig(output, dpi=300)
     plt.close(fig)
     return output
 
@@ -1906,8 +1908,13 @@ def plot_scree(
         ratios = values
 
     axes = np.arange(1, len(ratios) + 1)
-    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
-    ax.bar(axes, ratios * 100, edgecolor="black")
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    ax.bar(
+        axes,
+        ratios * 100,
+        color=sns.color_palette("deep")[0],
+        edgecolor="black",
+    )
     ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
 
     if values.max() > 1.0:
@@ -1923,7 +1930,7 @@ def plot_scree(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output)
+    fig.savefig(output, dpi=300)
     plt.close(fig)
     return output
 
@@ -1993,7 +2000,7 @@ def plot_embedding(
         Destination path for the saved image.
     """
 
-    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     if color_by is None:
         ax.scatter(coords_df.iloc[:, 0], coords_df.iloc[:, 1], s=10, alpha=0.7)
     else:
@@ -2034,7 +2041,7 @@ def plot_embedding(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output)
+    fig.savefig(output, dpi=300)
     plt.close(fig)
     return output
 
@@ -2069,7 +2076,7 @@ def generate_figures(
             return
         sub = out / method.lower()
         sub.mkdir(parents=True, exist_ok=True)
-        fig.savefig(sub / f"{name}.png")
+        fig.savefig(sub / f"{name}.png", dpi=300)
         plt.close(fig)
 
     for method, res in factor_results.items():
