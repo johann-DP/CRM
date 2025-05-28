@@ -1408,6 +1408,7 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 
 from pathlib import Path
 from typing import Any, Dict, Sequence
+from joblib import Parallel, delayed
 
 import logging
 
@@ -1498,7 +1499,11 @@ def evaluate_methods(
     rows = []
     n_features = len(quant_vars) + len(qual_vars)
 
-    for method, info in results_dict.items():
+    logger = logging.getLogger(__name__)
+
+    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, Dict[str, Any]]:
+        method, info = item
+
         inertias = info.get("inertia")
         if inertias is None:
             inertias = []
@@ -1506,7 +1511,6 @@ def evaluate_methods(
             inertias = inertias.tolist()
         inertias = list(inertias)
 
-        logger = logging.getLogger(__name__)
         if inertias and inertias[0] > 0.5:
             logger.warning(
                 "Attention : l'axe F1 de %s explique %.1f%% de la variance",
@@ -1564,19 +1568,23 @@ def evaluate_methods(
             info.get("runtime_seconds") or info.get("runtime_s") or info.get("runtime")
         )
 
-        rows.append(
-            {
-                "method": method,
-                "variance_cumulee_%": cum_inertia,
-                "nb_axes_kaiser": kaiser,
-                "silhouette": sil,
-                "dunn_index": dunn,
-                "trustworthiness": T,
-                "continuity": C,
-                "runtime_seconds": runtime,
-            }
-        )
+        row = {
+            "method": method,
+            "variance_cumulee_%": cum_inertia,
+            "nb_axes_kaiser": kaiser,
+            "silhouette": sil,
+            "dunn_index": dunn,
+            "trustworthiness": T,
+            "continuity": C,
+            "runtime_seconds": runtime,
+        }
+        return method, labels, row
 
+    parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
+    rows = []
+    for method, labels, row in parallel_res:
+        results_dict[method]["cluster_labels"] = labels
+        rows.append(row)
     df_metrics = pd.DataFrame(rows).set_index("method")
     return df_metrics
 
@@ -2252,7 +2260,7 @@ def unsupervised_cv_and_temporal_tests(
         umap = None  # type: ignore
 
     if kf is not None:
-        for train_idx, test_idx in kf.split(df_active):
+        def _process_split(train_idx: np.ndarray, test_idx: np.ndarray) -> tuple[float, float, float, float]:
             df_train = df_active.iloc[train_idx]
             df_test = df_active.iloc[test_idx]
 
@@ -2266,22 +2274,31 @@ def unsupervised_cv_and_temporal_tests(
             pca_test = PCA(n_components=n_comp)
             emb_test = pca_test.fit_transform(X_test)
 
-            pca_axis_scores.append(
-                _axis_similarity(pca_train.components_, pca_test.components_)
-            )
-            pca_dist_scores.append(_distance_discrepancy(emb_proj, emb_test))
-            if pca_train.explained_variance_ratio_.size:
-                pca_var_ratio.append(float(pca_train.explained_variance_ratio_[0]))
+            axis_score = _axis_similarity(pca_train.components_, pca_test.components_)
+            dist_score = _distance_discrepancy(emb_proj, emb_test)
+            var_ratio = float(pca_train.explained_variance_ratio_[0]) if pca_train.explained_variance_ratio_.size else float("nan")
 
+            umap_score = float("nan")
             if umap is not None:
                 reducer_train = umap.UMAP(n_components=2, n_jobs=-1)
                 reducer_train.fit(X_train)
                 emb_umap_proj = reducer_train.transform(X_test)
                 reducer_test = umap.UMAP(n_components=2, n_jobs=-1)
                 emb_umap_test = reducer_test.fit_transform(X_test)
-                umap_dist_scores.append(
-                    _distance_discrepancy(emb_umap_proj, emb_umap_test)
-                )
+                umap_score = _distance_discrepancy(emb_umap_proj, emb_umap_test)
+
+            return axis_score, dist_score, var_ratio, umap_score
+
+        results = Parallel(n_jobs=-1)(
+            delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
+        )
+        for axis, dist, var, um in results:
+            pca_axis_scores.append(axis)
+            pca_dist_scores.append(dist)
+            if not np.isnan(var):
+                pca_var_ratio.append(var)
+            if not np.isnan(um):
+                umap_dist_scores.append(um)
 
     cv_stability = {
         "pca_axis_corr_mean": (
