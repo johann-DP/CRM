@@ -43,3 +43,10 @@ def test_run_mfa_basic():
     assert res["embeddings"].shape[0] == len(df)
     assert len(res["inertia"]) == res["embeddings"].shape[1]
 
+
+def test_run_mfa_with_weights():
+    df = sample_df()
+    groups = {"Num": ["num1", "num2"], "Cat": ["cat1", "cat2"]}
+    res = pf.run_mfa(df, groups, optimize=True, weights={"Num": 2.0, "Cat": 1.0})
+    assert res["embeddings"].shape[0] == len(df)
+
