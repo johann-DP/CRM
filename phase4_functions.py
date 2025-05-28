@@ -698,7 +698,7 @@ independently of ``phase4v2.py`` or the fine-tuning scripts.
 
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Mapping, Union
 
 from pandas.api.types import is_object_dtype, is_categorical_dtype
 
@@ -987,9 +987,10 @@ def run_famd(
 
 def run_mfa(
     df_active: pd.DataFrame,
-    groups: List[List[str]],
+    groups: Union[Mapping[str, Sequence[str]], Sequence[Sequence[str]]],
     n_components: Optional[int] = None,
     *,
+    segment_col: Optional[str] = None,
     optimize: bool = False,
     variance_threshold: float = 0.8,
     normalize: bool = True,
@@ -1001,13 +1002,25 @@ def run_mfa(
     element of ``groups`` must be a list of column names present in
     ``df_active``. When invoking :func:`run_pipeline`, these groups can be
     provided in the configuration file under ``mfa: {groups: ...}``.
+    ``weights`` allows adjusting the relative importance of each group by
+    multiplying its (optionally normalised) columns by the specified factor.
     """
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
 
+    if segment_col is not None:
+        logger.info("MFA segment_col=%s ignored (not implemented)", segment_col)
+
+    if isinstance(groups, Mapping):
+        group_names = list(groups.keys())
+        group_list = list(groups.values())
+    else:
+        group_list = list(groups)
+        group_names = [f"G{i}" for i in range(1, len(group_list) + 1)]
+
     # one-hot encode qualitative variables that appear in groups
     qual_cols = []
-    for group in groups:
+    for group in group_list:
         for col in group:
             if col in df_active.columns and (
                 is_object_dtype(df_active[col]) or is_categorical_dtype(df_active[col])
@@ -1030,7 +1043,7 @@ def run_mfa(
 
     groups_dict: Dict[str, List[str]] = {}
     used_cols: List[str] = []
-    for i, g in enumerate(groups, 1):
+    for name, g in zip(group_names, group_list):
         cols: List[str] = []
         for v in g:
             if v in df_all.columns:
@@ -1039,7 +1052,6 @@ def run_mfa(
                 # qualitative variables have been expanded
                 cols.extend([c for c in df_all.columns if c.startswith(f"{v}_")])
         if cols:
-            name = f"G{i}"
             groups_dict[name] = cols
             used_cols.extend(cols)
 
@@ -1049,11 +1061,34 @@ def run_mfa(
         used_cols.extend(remaining)
     df_all = df_all[used_cols]
 
+    weights_map: Dict[str, float] = {}
+    if weights is not None:
+        if isinstance(weights, Mapping):
+            weights_map = {str(k): float(v) for k, v in weights.items()}
+        else:
+            weight_list = list(weights)
+            if len(weight_list) != len(group_names):
+                logger.warning(
+                    "MFA weights length mismatch: expected %d, got %d",
+                    len(group_names),
+                    len(weight_list),
+                )
+            for name, w in zip(group_names, weight_list):
+                weights_map[name] = float(w)
+
     if normalize:
         scaler = StandardScaler()
-        for cols in groups_dict.values():
+        for name, cols in groups_dict.items():
             if cols:
                 df_all[cols] = scaler.fit_transform(df_all[cols])
+            w = weights_map.get(name)
+            if w is not None and w != 1.0:
+                df_all[cols] = df_all[cols] * w
+    else:
+        for name, cols in groups_dict.items():
+            w = weights_map.get(name)
+            if w is not None and w != 1.0:
+                df_all[cols] = df_all[cols] * w
 
     if optimize and n_components is None:
         max_dim = df_all.shape[1]
@@ -1376,6 +1411,7 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 
 from pathlib import Path
 from typing import Any, Dict, Sequence
+from joblib import Parallel, delayed
 
 import logging
 
@@ -1466,7 +1502,11 @@ def evaluate_methods(
     rows = []
     n_features = len(quant_vars) + len(qual_vars)
 
-    for method, info in results_dict.items():
+    logger = logging.getLogger(__name__)
+
+    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, Dict[str, Any]]:
+        method, info = item
+
         inertias = info.get("inertia")
         if inertias is None:
             inertias = []
@@ -1474,7 +1514,6 @@ def evaluate_methods(
             inertias = inertias.tolist()
         inertias = list(inertias)
 
-        logger = logging.getLogger(__name__)
         if inertias and inertias[0] > 0.5:
             logger.warning(
                 "Attention : l'axe F1 de %s explique %.1f%% de la variance",
@@ -1532,19 +1571,23 @@ def evaluate_methods(
             info.get("runtime_seconds") or info.get("runtime_s") or info.get("runtime")
         )
 
-        rows.append(
-            {
-                "method": method,
-                "variance_cumulee_%": cum_inertia,
-                "nb_axes_kaiser": kaiser,
-                "silhouette": sil,
-                "dunn_index": dunn,
-                "trustworthiness": T,
-                "continuity": C,
-                "runtime_seconds": runtime,
-            }
-        )
+        row = {
+            "method": method,
+            "variance_cumulee_%": cum_inertia,
+            "nb_axes_kaiser": kaiser,
+            "silhouette": sil,
+            "dunn_index": dunn,
+            "trustworthiness": T,
+            "continuity": C,
+            "runtime_seconds": runtime,
+        }
+        return method, labels, row
 
+    parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
+    rows = []
+    for method, labels, row in parallel_res:
+        results_dict[method]["cluster_labels"] = labels
+        rows.append(row)
     df_metrics = pd.DataFrame(rows).set_index("method")
     return df_metrics
 
@@ -2220,7 +2263,7 @@ def unsupervised_cv_and_temporal_tests(
         umap = None  # type: ignore
 
     if kf is not None:
-        for train_idx, test_idx in kf.split(df_active):
+        def _process_split(train_idx: np.ndarray, test_idx: np.ndarray) -> tuple[float, float, float, float]:
             df_train = df_active.iloc[train_idx]
             df_test = df_active.iloc[test_idx]
 
@@ -2234,22 +2277,31 @@ def unsupervised_cv_and_temporal_tests(
             pca_test = PCA(n_components=n_comp)
             emb_test = pca_test.fit_transform(X_test)
 
-            pca_axis_scores.append(
-                _axis_similarity(pca_train.components_, pca_test.components_)
-            )
-            pca_dist_scores.append(_distance_discrepancy(emb_proj, emb_test))
-            if pca_train.explained_variance_ratio_.size:
-                pca_var_ratio.append(float(pca_train.explained_variance_ratio_[0]))
+            axis_score = _axis_similarity(pca_train.components_, pca_test.components_)
+            dist_score = _distance_discrepancy(emb_proj, emb_test)
+            var_ratio = float(pca_train.explained_variance_ratio_[0]) if pca_train.explained_variance_ratio_.size else float("nan")
 
+            umap_score = float("nan")
             if umap is not None:
                 reducer_train = umap.UMAP(n_components=2, n_jobs=-1)
                 reducer_train.fit(X_train)
                 emb_umap_proj = reducer_train.transform(X_test)
                 reducer_test = umap.UMAP(n_components=2, n_jobs=-1)
                 emb_umap_test = reducer_test.fit_transform(X_test)
-                umap_dist_scores.append(
-                    _distance_discrepancy(emb_umap_proj, emb_umap_test)
-                )
+                umap_score = _distance_discrepancy(emb_umap_proj, emb_umap_test)
+
+            return axis_score, dist_score, var_ratio, umap_score
+
+        results = Parallel(n_jobs=-1)(
+            delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
+        )
+        for axis, dist, var, um in results:
+            pca_axis_scores.append(axis)
+            pca_dist_scores.append(dist)
+            if not np.isnan(var):
+                pca_var_ratio.append(var)
+            if not np.isnan(um):
+                umap_dist_scores.append(um)
 
     cv_stability = {
         "pca_axis_corr_mean": (
