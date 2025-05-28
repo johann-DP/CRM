@@ -254,6 +254,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     _setup_logging(output_dir)
     n_jobs = int(config.get("n_jobs", -1))
     set_blas_threads(n_jobs)
+    optimize = bool(config.get("optimize_params", False))
 
     logging.info("Loading datasets...")
     datasets = load_datasets(config)
@@ -289,35 +290,38 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if "pca" in methods and quant_vars:
         logging.info("Running PCA...")
         params = _method_params("pca", config)
-        params.pop("n_components", None)
+        if optimize:
+            params.pop("n_components", None)
         factor_results["pca"] = run_pca(
             df_active,
             quant_vars,
-            optimize=True,
+            optimize=optimize,
             **params,
         )
 
     if "mca" in methods and qual_vars:
         logging.info("Running MCA...")
         params = _method_params("mca", config)
-        params.pop("n_components", None)
+        if optimize:
+            params.pop("n_components", None)
         factor_results["mca"] = run_mca(
             df_active,
             qual_vars,
-            optimize=True,
+            optimize=optimize,
             **params,
         )
 
     if "famd" in methods and quant_vars and qual_vars:
         logging.info("Running FAMD...")
         params = _method_params("famd", config)
-        params.pop("n_components", None)
+        if optimize:
+            params.pop("n_components", None)
         try:
             factor_results["famd"] = run_famd(
                 df_active,
                 quant_vars,
                 qual_vars,
-                optimize=True,
+                optimize=optimize,
                 **params,
             )
         except ValueError as exc:
@@ -331,7 +335,8 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if "mfa" in methods and len(groups) > 1:
         logging.info("Running MFA...")
         params = _method_params("mfa", config)
-        params.pop("n_components", None)
+        if optimize:
+            params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
         # ``mfa: {groups: [[...], [...]]}`` in the config overrides the default
         # automatic grouping of quantitative and qualitative variables.
@@ -340,7 +345,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         factor_results["mfa"] = run_mfa(
             df_active,
             groups,
-            optimize=True,
+            optimize=optimize,
             **params,
         )
 
