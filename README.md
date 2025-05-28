@@ -34,13 +34,9 @@ of ``output_dir``.
 python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
 
-Use ``--dataset-jobs`` to control how many datasets run in parallel. The
-threads defined by ``n_jobs`` in the configuration are divided between the
-dataset workers. For example, on an 8‑core machine:
-
-```bash
-python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ --dataset-jobs 4
-```
+The optional ``--dataset-jobs`` flag controls how many worker processes run
+those datasets in parallel. ``--dataset-backend`` selects the joblib backend
+used for that parallelism (default ``multiprocessing``).
 
 
 Set `optimize_params: true` in the configuration to automatically tune the main

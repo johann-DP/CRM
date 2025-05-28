@@ -49,32 +49,36 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
     calls = {}
 
     def fake_run_pipeline(cfg):
-        calls[cfg["dataset"]] = (cfg["output_dir"], cfg["n_jobs"])
+        calls[cfg["dataset"]] = cfg["output_dir"]
         return {}
 
-    class DummyParallel:
-        def __init__(self, n_jobs=None):
-            self.n_jobs = n_jobs
+    class FakeParallel:
+        def __init__(self, n_jobs=None, backend=None):
+            calls["n_jobs"] = n_jobs
+            calls["backend"] = backend
 
         def __call__(self, tasks):
             return [task() for task in tasks]
 
-    def dummy_delayed(func):
-        return lambda *a, **k: lambda: func(*a, **k)
-
-    monkeypatch.setattr(phase4, "Parallel", DummyParallel)
-    monkeypatch.setattr(phase4, "delayed", dummy_delayed)
+    def fake_delayed(func):
+        def wrapper(*args, **kwargs):
+            return lambda: func(*args, **kwargs)
+        return wrapper
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(phase4, "Parallel", FakeParallel)
+    monkeypatch.setattr(phase4, "delayed", fake_delayed)
 
-    cfg = {"output_dir": str(tmp_path / "out"), "input_file": "dummy", "n_jobs": 8}
+    cfg = {"output_dir": str(tmp_path / "out"), "input_file": "dummy"}
     datasets = ["raw", "cleaned_1"]
 
-    res = phase4.run_pipeline_parallel(cfg, datasets, n_jobs=2)
+    res = phase4.run_pipeline_parallel(
+        cfg, datasets, n_jobs=2, backend="multiprocessing"
+    )
 
     assert set(res) == set(datasets)
     for name in datasets:
-        out_dir, threads = calls[name]
-        assert Path(out_dir).name == name
-        assert threads == 4
-
+        assert Path(calls[name]).name == name
+    assert calls["n_jobs"] == 2
+    assert calls["backend"] == "multiprocessing"
+    
