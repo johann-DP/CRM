@@ -485,6 +485,7 @@ def run_pipeline_parallel(
     backend: str = "multiprocessing",
 ) -> Dict[str, Dict[str, Any]]:
     """Run :func:`run_pipeline` on several datasets in parallel."""
+    from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
     results = Parallel(n_jobs=n_jobs, backend=backend)(
