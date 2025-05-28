@@ -375,12 +375,13 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         metrics = pd.DataFrame()
     else:
         logging.info("Computing metrics...")
+        k_max = 3 if len(df_active) > 3 else 2
         metrics = evaluate_methods(
             all_results,
             df_active,
             quant_vars,
             qual_vars,
-            n_clusters=3 if len(df_active) > 3 else 2,
+            k_range=range(2, k_max + 1),
         )
         metrics.to_csv(output_dir / "metrics.csv")
         plot_methods_heatmap(metrics, output_dir)

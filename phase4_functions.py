@@ -620,7 +620,11 @@ def compare_datasets_versions(
         all_results = {**factor_results, **cleaned_nonlin}
         n_clusters = 3 if len(df_active) > 3 else 2
         metrics = evaluate_methods(
-            all_results, df_active, quant_vars, qual_vars, n_clusters=n_clusters
+            all_results,
+            df_active,
+            quant_vars,
+            qual_vars,
+            k_range=range(2, n_clusters + 1),
         )
         metrics["dataset_version"] = name
         try:
@@ -1461,13 +1465,41 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 """
 
 from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Sequence, Iterable, Tuple, Optional
 from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score
+from sklearn.cluster import KMeans
+
+
+def tune_kmeans_clusters(
+    X: np.ndarray, k_range: Iterable[int] = range(2, 7)
+) -> Tuple[np.ndarray, int]:
+    """Return K-Means labels using the best silhouette over ``k_range``."""
+    best_score = -1.0
+    best_labels: Optional[np.ndarray] = None
+    best_k = 2
+    X = np.asarray(X)
+    for k in k_range:
+        if k >= len(X) or k < 2:
+            continue
+        labels = KMeans(n_clusters=k).fit_predict(X)
+        if len(np.unique(labels)) < 2:
+            score = -1.0
+        else:
+            score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score = score
+            best_labels = labels
+            best_k = k
+    if best_labels is None:
+        k = max(2, min(len(X), 2))
+        best_labels = KMeans(n_clusters=k).fit_predict(X)
+        best_k = k
+    return best_labels, best_k
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -1522,7 +1554,7 @@ def evaluate_methods(
     quant_vars: Sequence[str],
     qual_vars: Sequence[str],
     *,
-    n_clusters: int = 3,
+    k_range: Iterable[int] = range(2, 7),
 ) -> pd.DataFrame:
     """Compute comparison metrics for each dimensionality reduction method.
 
@@ -1538,8 +1570,8 @@ def evaluate_methods(
         Names of quantitative variables in ``df_active``.
     qual_vars:
         Names of qualitative variables in ``df_active``.
-    n_clusters:
-        Number of clusters for the silhouette and Dunn metrics.
+    k_range:
+        Range of ``k`` values to test when tuning the K-Means clustering.
 
     Returns
     -------
@@ -1584,9 +1616,10 @@ def evaluate_methods(
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
         X_low = info["embeddings"].values
-        labels = KMeans(n_clusters=n_clusters).fit_predict(X_low)
+        labels, best_k = tune_kmeans_clusters(X_low, k_range)
         info["cluster_labels"] = labels
-        if len(labels) <= n_clusters or len(set(labels)) < 2:
+        info["cluster_k"] = best_k
+        if len(labels) <= best_k or len(set(labels)) < 2:
             sil = float("nan")
             dunn = float("nan")
         else:
@@ -2113,9 +2146,9 @@ def generate_figures(
     output_dir : Path or None, optional
         Directory where figures will be saved.
     cluster_k : int, default ``3``
-        Number of K-Means clusters for the additional scatter plots.
+        Maximum number of clusters tested when none are provided.
     """
-    color_var = _choose_color_var(df_active, qual_vars)
+    color_var = None
     figures: Dict[str, plt.Figure] = {}
     first_3d_factor = False
     first_3d_nonlin = False
@@ -2138,8 +2171,10 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                km = KMeans(n_clusters=cluster_k)
-                labels = km.fit_predict(emb.iloc[:, :2].values)
+                labels, tuned_k = tune_kmeans_clusters(
+                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                )
+                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"
@@ -2203,8 +2238,10 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                km = KMeans(n_clusters=cluster_k)
-                labels = km.fit_predict(emb.iloc[:, :2].values)
+                labels, tuned_k = tune_kmeans_clusters(
+                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                )
+                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"
