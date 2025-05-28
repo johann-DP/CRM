@@ -990,6 +990,7 @@ def run_mfa(
     groups: Union[Mapping[str, Sequence[str]], Sequence[Sequence[str]]],
     n_components: Optional[int] = None,
     *,
+    segment_col: Optional[str] = None,
     optimize: bool = False,
     variance_threshold: float = 0.8,
     normalize: bool = True,
@@ -1007,6 +1008,9 @@ def run_mfa(
     """
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
+
+    if segment_col is not None:
+        logger.info("MFA segment_col=%s ignored (not implemented)", segment_col)
 
     if isinstance(groups, Mapping):
         group_names = list(groups.keys())
