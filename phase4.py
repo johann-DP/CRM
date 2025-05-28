@@ -8,6 +8,15 @@ This script ties together the helper modules present in the repository
 complete dimensionality-reduction workflow.  It delegates the heavy
 lifting to these modules and only handles configuration and ordering of
 operations.
+
+Run the script with a YAML or JSON configuration file::
+
+    python phase4.py --config config.yaml
+
+The pinned dependencies listed in :code:`requirements.txt` must be
+installed in order to reproduce the results reliably.  Use
+``python -m pip install -r requirements.txt`` inside a fresh virtual
+environment before executing the pipeline.
 """
 
 from __future__ import annotations
@@ -200,11 +209,16 @@ def build_pdf_report(
 # ---------------------------------------------------------------------------
 
 def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
-    rs = config.get("random_state")
+    rs = config.get("random_state") or config.get("random_seed")
     random_state = int(rs) if rs is not None else None
     output_dir = Path(config.get("output_dir", "phase4_output"))
     _setup_logging(output_dir)
+    if random_state is not None:
+        logging.info("Setting random seed to %d", random_state)
+        np.random.seed(random_state)
+        random.seed(random_state)
 
+    logging.info("Loading datasets...")
     datasets = load_datasets(config)
     data_key = config.get("dataset", config.get("main_dataset", "raw"))
     if data_key not in datasets:
@@ -212,19 +226,26 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     logging.info("Running pipeline on dataset '%s'", data_key)
 
+    logging.info("Preparing data...")
     df_prep = prepare_data(datasets[data_key], exclude_lost=bool(config.get("exclude_lost", True)))
+    logging.info("Selecting variables...")
     df_active, quant_vars, qual_vars = select_variables(
         df_prep, min_modalite_freq=int(config.get("min_modalite_freq", 5))
     )
+    logging.info("Handling missing values...")
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
     methods = [m.lower() for m in config.get(
-        "methods",
-        ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
+        "methods_to_run",
+        config.get(
+            "methods",
+            ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
+        ),
     )]
 
     factor_results: Dict[str, Any] = {}
     if "pca" in methods and quant_vars:
+        logging.info("Running PCA...")
         params = _method_params("pca", config)
         params.pop("n_components", None)
         factor_results["pca"] = run_pca(
@@ -236,6 +257,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     if "mca" in methods and qual_vars:
+        logging.info("Running MCA...")
         params = _method_params("mca", config)
         params.pop("n_components", None)
         factor_results["mca"] = run_mca(
@@ -247,6 +269,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     if "famd" in methods and quant_vars and qual_vars:
+        logging.info("Running FAMD...")
         params = _method_params("famd", config)
         params.pop("n_components", None)
         try:
@@ -267,6 +290,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if qual_vars:
         groups.append(qual_vars)
     if "mfa" in methods and len(groups) > 1:
+        logging.info("Running MFA...")
         params = _method_params("mfa", config)
         params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
@@ -282,12 +306,15 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     nonlin_results: Dict[str, Any] = {}
     if "umap" in methods:
+        logging.info("Running UMAP...")
         params = _method_params("umap", config)
         nonlin_results["umap"] = run_umap(df_active, random_state=random_state, **params)
     if "phate" in methods:
+        logging.info("Running PHATE...")
         params = _method_params("phate", config)
         nonlin_results["phate"] = run_phate(df_active, random_state=random_state, **params)
     if "pacmap" in methods:
+        logging.info("Running PaCMAP...")
         params = _method_params("pacmap", config)
         nonlin_results["pacmap"] = run_pacmap(df_active, random_state=random_state, **params)
 
@@ -302,6 +329,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         logging.warning("No results to evaluate")
         metrics = pd.DataFrame()
     else:
+        logging.info("Computing metrics...")
         metrics = evaluate_methods(
             all_results,
             df_active,
@@ -312,6 +340,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         metrics.to_csv(output_dir / "metrics.csv")
         plot_methods_heatmap(metrics, output_dir)
 
+    logging.info("Generating figures...")
     figures = generate_figures(
         factor_results,
         nonlin_results,
@@ -327,6 +356,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if config.get("compare_versions"):
         versions = {k: v for k, v in datasets.items() if k != data_key}
         if versions:
+            logging.info("Comparing dataset versions...")
             comparison_names = list(versions.keys())
             comp = compare_datasets_versions(
                 versions,
@@ -344,6 +374,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     robustness_df = None
     if config.get("run_temporal_tests"):
+        logging.info("Running temporal stability tests...")
         robustness_df = unsupervised_cv_and_temporal_tests(
             df_active,
             quant_vars,
@@ -354,6 +385,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         pd.DataFrame(robustness_df).to_csv(output_dir / "robustness.csv")
 
     if config.get("output_pdf"):
+        logging.info("Building PDF report...")
         tables: Dict[str, pd.DataFrame] = {"metrics": metrics}
         if comparison_metrics is not None:
             tables["comparison_metrics"] = comparison_metrics
@@ -385,9 +417,6 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Phase 4 analysis (modular)")
     parser.add_argument("--config", required=True, help="Path to config YAML/JSON")
     args = parser.parse_args(argv)
-
-    np.random.seed(0)
-    random.seed(0)
 
     cfg = _load_config(Path(args.config))
     run_pipeline(cfg)
