@@ -28,6 +28,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+from joblib import Parallel, delayed
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -455,6 +456,41 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def run_pipeline_parallel(
+    config: Dict[str, Any],
+    datasets: Sequence[str],
+    *,
+    n_jobs: Optional[int] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Run :func:`run_pipeline` on several datasets in parallel.
+
+    The available worker threads defined by ``config['n_jobs']`` are divided
+    among the dataset workers so that CPU resources are used efficiently.
+    """
+
+    n_jobs = n_jobs or len(datasets)
+
+    total_threads = int(config.get("n_jobs", -1))
+    if total_threads < 1:
+        total_threads = os.cpu_count() or 1
+    threads_per_dataset = max(1, total_threads // n_jobs)
+
+    def _single(name: str) -> tuple[str, Dict[str, Any]]:
+        cfg = dict(config)
+        cfg["dataset"] = name
+        if "output_dir" in cfg:
+            base = Path(cfg["output_dir"])
+            cfg["output_dir"] = str(base / name)
+        if "output_pdf" in cfg:
+            pdf = Path(cfg["output_pdf"])
+            cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
+        cfg["n_jobs"] = threads_per_dataset
+        return name, run_pipeline(cfg)
+
+    results = Parallel(n_jobs=n_jobs)(delayed(_single)(ds) for ds in datasets)
+    return dict(results)
+
+
 # ---------------------------------------------------------------------------
 # CLI Entrypoint
 # ---------------------------------------------------------------------------
@@ -463,10 +499,24 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Phase 4 analysis (modular)")
     parser.add_argument("--config", required=True, help="Path to config YAML/JSON")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        help="Datasets to process in parallel (e.g. raw cleaned_1)",
+    )
+    parser.add_argument(
+        "--dataset-jobs",
+        type=int,
+        default=None,
+        help="Number of workers for dataset-level parallelism",
+    )
     args = parser.parse_args(argv)
 
     cfg = _load_config(Path(args.config))
-    run_pipeline(cfg)
+    if args.datasets:
+        run_pipeline_parallel(cfg, args.datasets, n_jobs=args.dataset_jobs)
+    else:
+        run_pipeline(cfg)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution

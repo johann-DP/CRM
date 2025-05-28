@@ -26,6 +26,22 @@ configuration file in YAML (or JSON) format. A template is provided in
 python phase4.py --config config.yaml
 ```
 
+To analyse several dataset versions concurrently, list them after the
+``--datasets`` option. Results for each dataset are written to a subdirectory
+of ``output_dir``.
+
+```bash
+python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
+```
+
+Use ``--dataset-jobs`` to control how many datasets run in parallel. The
+threads defined by ``n_jobs`` in the configuration are divided between the
+dataset workers. For example, on an 8‑core machine:
+
+```bash
+python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ --dataset-jobs 4
+```
+
 
 Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components
