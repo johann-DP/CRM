@@ -1611,7 +1611,16 @@ def plot_correlation_circle(
     ax.set_ylim(-1.1, 1.1)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
-    ax.set_title("Correlation circle")
+
+    method_name = factor_model.__class__.__name__.upper()
+    if hasattr(factor_model, "explained_variance_ratio_"):
+        inertia = np.asarray(getattr(factor_model, "explained_variance_ratio_"), dtype=float)
+    else:
+        inertia = np.asarray(_get_explained_inertia(factor_model), dtype=float)
+    var2 = float(np.sum(inertia[:2]) * 100) if inertia.size else 0.0
+    ax.set_title(
+        f"Cercle des corrélations – {method_name} (F1+F2 = {var2:.1f} % de variance)"
+    )
     ax.set_aspect("equal")
     fig.tight_layout()
 
@@ -1693,6 +1702,7 @@ def plot_scatter_3d(
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
     ax.set_title(title)
+    ax.view_init(elev=20, azim=60)
     fig.tight_layout()
     return fig
 
@@ -1803,7 +1813,7 @@ def plot_scree(
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
-    ax.set_title(f"{method_name} Scree Plot")
+    ax.set_title(f"Éboulis des variances – {method_name}")
     ax.set_xticks(list(axes))
     ax.legend(loc="upper right")
     fig.tight_layout()
@@ -1829,9 +1839,9 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     df = df.sort_values(df.sum(axis=1).name if df.columns.size>2 else 0, ascending=False)
     df = df.iloc[:n]
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    df[["F1", "F2"]].plot(kind="bar", stacked=True, ax=ax)
+    df[["F1", "F2"]].plot(kind="bar", ax=ax)
     ax.set_ylabel("% Contribution")
-    ax.set_title("Contribution des variables à F1/F2 – FAMD")
+    ax.set_title("Contributions des variables – FAMD (F1 et F2)")
     ax.legend(title="Axe")
     fig.tight_layout()
     return fig
@@ -3020,7 +3030,7 @@ def make_scree_plots(out_dir: Path, exp_df: pd.DataFrame) -> None:
             plt.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
             plt.xlabel("Composante")
             plt.ylabel("% variance expliquée")
-            plt.title(f"Scree plot – solver={solver} whiten={whiten}")
+            plt.title(f"Éboulis – solver={solver} whiten={whiten}")
             plt.xticks(axes)
             plt.tight_layout()
             fname = f"scree_{solver}_w{int(whiten)}.png"
