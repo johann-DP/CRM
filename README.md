@@ -26,9 +26,6 @@ configuration file in YAML (or JSON) format. A template is provided in
 python phase4.py --config config.yaml
 ```
 
-Add a ``random_state`` (or ``random_seed``) entry in the configuration to make
-the pipeline fully reproducible.  The value is propagated to NumPy, Python's
-``random`` module and all dimensionality reduction algorithms.
 
 Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components

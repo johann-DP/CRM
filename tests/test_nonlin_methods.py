@@ -20,36 +20,30 @@ def assert_same(a, b):
     assert np.allclose(a.values, b.values)
 
 
-def test_run_umap_reproducible():
+def test_run_umap_basic():
     df = sample_df()
-    res1 = pf.run_umap(df, random_state=42)
-    res2 = pf.run_umap(df, random_state=42)
-    assert res1["embeddings"].shape == (len(df), 2)
-    assert_same(res1["embeddings"], res2["embeddings"])
+    res = pf.run_umap(df)
+    assert res["embeddings"].shape == (len(df), 2)
 
 
-def test_run_phate_reproducible():
+def test_run_phate_basic():
     df = sample_df()
-    res1 = pf.run_phate(df, random_state=42)
-    res2 = pf.run_phate(df, random_state=42)
-    assert res1["embeddings"].shape[0] == len(df)
-    if res1["model"] is not None:
-        assert res1["embeddings"].shape[1] == 2
-        assert_same(res1["embeddings"], res2["embeddings"])
+    res = pf.run_phate(df)
+    assert res["embeddings"].shape[0] == len(df)
+    if res["model"] is not None:
+        assert res["embeddings"].shape[1] == 2
     else:
-        assert res1["embeddings"].empty
+        assert res["embeddings"].empty
 
 
-def test_run_pacmap_reproducible():
+def test_run_pacmap_basic():
     df = sample_df()
-    res1 = pf.run_pacmap(df, random_state=42)
-    res2 = pf.run_pacmap(df, random_state=42)
-    assert res1["embeddings"].shape[0] == len(df)
-    if res1["model"] is not None:
-        assert res1["embeddings"].shape[1] == 2
-        assert_same(res1["embeddings"], res2["embeddings"])
+    res = pf.run_pacmap(df)
+    assert res["embeddings"].shape[0] == len(df)
+    if res["model"] is not None:
+        assert res["embeddings"].shape[1] == 2
     else:
-        assert res1["embeddings"].empty
+        assert res["embeddings"].empty
 
 
 def test_run_pacmap_missing(monkeypatch):

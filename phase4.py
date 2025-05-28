@@ -37,6 +37,7 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 import yaml
+import os
 
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
@@ -95,6 +96,22 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
         if key.startswith(prefix):
             params[key[len(prefix) :]] = value
     return params
+
+
+def set_blas_threads(n_jobs: int = -1) -> int:
+    """Set thread count for common BLAS libraries."""
+    if n_jobs is None or n_jobs < 1:
+        n_jobs = os.cpu_count() or 1
+    for var in [
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+        "BLIS_NUM_THREADS",
+    ]:
+        os.environ[var] = str(n_jobs)
+    return n_jobs
 
 
 def build_pdf_report(
@@ -232,14 +249,10 @@ def build_pdf_report(
 
 
 def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
-    rs = config.get("random_state") or config.get("random_seed")
-    random_state = int(rs) if rs is not None else None
     output_dir = Path(config.get("output_dir", "phase4_output"))
     _setup_logging(output_dir)
-    if random_state is not None:
-        logging.info("Setting random seed to %d", random_state)
-        np.random.seed(random_state)
-        random.seed(random_state)
+    n_jobs = int(config.get("n_jobs", -1))
+    set_blas_threads(n_jobs)
 
     logging.info("Loading datasets...")
     datasets = load_datasets(config)
@@ -280,7 +293,6 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             df_active,
             quant_vars,
             optimize=True,
-            random_state=random_state,
             **params,
         )
 
@@ -292,7 +304,6 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             df_active,
             qual_vars,
             optimize=True,
-            random_state=random_state,
             **params,
         )
 
@@ -306,7 +317,6 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
                 quant_vars,
                 qual_vars,
                 optimize=True,
-                random_state=random_state,
                 **params,
             )
         except ValueError as exc:
@@ -330,7 +340,6 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             df_active,
             groups,
             optimize=True,
-            random_state=random_state,
             **params,
         )
 
@@ -338,21 +347,15 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if "umap" in methods:
         logging.info("Running UMAP...")
         params = _method_params("umap", config)
-        nonlin_results["umap"] = run_umap(
-            df_active, random_state=random_state, **params
-        )
+        nonlin_results["umap"] = run_umap(df_active, **params)
     if "phate" in methods:
         logging.info("Running PHATE...")
         params = _method_params("phate", config)
-        nonlin_results["phate"] = run_phate(
-            df_active, random_state=random_state, **params
-        )
+        nonlin_results["phate"] = run_phate(df_active, **params)
     if "pacmap" in methods:
         logging.info("Running PaCMAP...")
         params = _method_params("pacmap", config)
-        nonlin_results["pacmap"] = run_pacmap(
-            df_active, random_state=random_state, **params
-        )
+        nonlin_results["pacmap"] = run_pacmap(df_active, **params)
 
     valid_nonlin = {
         k: v
@@ -418,7 +421,6 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             quant_vars,
             qual_vars,
             n_splits=int(config.get("n_splits", 5)),
-            random_state=random_state,
         )
         pd.DataFrame(robustness_df).to_csv(output_dir / "robustness.csv")
 
