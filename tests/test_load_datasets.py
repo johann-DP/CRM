@@ -13,13 +13,13 @@ def _make_sample_config(tmp_path: Path) -> dict:
     raw_path = tmp_path / "raw.csv"
     raw.to_csv(raw_path, index=False)
 
-    c1_path = tmp_path / "clean1.csv"
+    c1_path = tmp_path / "cleaned1.csv"
     raw.to_csv(c1_path, index=False)
 
     phase2_path = tmp_path / "phase2.csv"
     raw.iloc[:1].to_csv(phase2_path, index=False)
 
-    c3_path = tmp_path / "clean3.csv"
+    c3_path = tmp_path / "cleaned3.csv"
     raw.to_csv(c3_path, index=False)
 
     return {
@@ -86,3 +86,13 @@ def test_schema_check(tmp_path: Path):
 
     with pytest.raises(ValueError):
         pf.load_datasets(cfg)
+
+
+def test_schema_check_ignored(tmp_path: Path):
+    cfg = _make_sample_config(tmp_path)
+    df = pd.read_csv(cfg["input_file_cleaned_1"])
+    df["Extra"] = 1
+    df.to_csv(cfg["input_file_cleaned_1"], index=False)
+
+    datasets = pf.load_datasets(cfg, ignore_schema=True)
+    assert "Extra" not in datasets["cleaned_1"].columns

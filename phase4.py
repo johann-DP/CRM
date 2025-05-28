@@ -28,6 +28,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+from joblib import Parallel, delayed
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -257,7 +258,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     optimize = bool(config.get("optimize_params", False))
 
     logging.info("Loading datasets...")
-    datasets = load_datasets(config)
+    datasets = load_datasets(config, ignore_schema=bool(config.get("ignore_schema", False)))
     data_key = config.get("dataset", config.get("main_dataset", "raw"))
     if data_key not in datasets:
         raise KeyError(f"dataset '{data_key}' not found")
@@ -455,6 +456,33 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def run_pipeline_parallel(
+    config: Dict[str, Any],
+    datasets: Sequence[str],
+    *,
+    n_jobs: Optional[int] = None,
+    backend: str = "multiprocessing",
+) -> Dict[str, Dict[str, Any]]:
+    """Run :func:`run_pipeline` on several datasets in parallel."""
+
+    def _single(name: str) -> tuple[str, Dict[str, Any]]:
+        cfg = dict(config)
+        cfg["dataset"] = name
+        if "output_dir" in cfg:
+            base = Path(cfg["output_dir"])
+            cfg["output_dir"] = str(base / name)
+        if "output_pdf" in cfg:
+            pdf = Path(cfg["output_pdf"])
+            cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
+        return name, run_pipeline(cfg)
+
+    n_jobs = n_jobs or len(datasets)
+    results = Parallel(n_jobs=n_jobs, backend=backend)(
+        delayed(_single)(ds) for ds in datasets
+    )
+    return dict(results)
+
+
 # ---------------------------------------------------------------------------
 # CLI Entrypoint
 # ---------------------------------------------------------------------------
@@ -463,10 +491,34 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 def main(argv: Optional[list[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Phase 4 analysis (modular)")
     parser.add_argument("--config", required=True, help="Path to config YAML/JSON")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        help="Datasets to process in parallel (e.g. raw cleaned_1)",
+    )
+    parser.add_argument(
+        "--dataset-jobs",
+        type=int,
+        default=None,
+        help="Number of workers for dataset-level parallelism",
+    )
+    parser.add_argument(
+        "--dataset-backend",
+        default="multiprocessing",
+        help="joblib backend for dataset parallelism",
+    )
     args = parser.parse_args(argv)
 
     cfg = _load_config(Path(args.config))
-    run_pipeline(cfg)
+    if args.datasets:
+        run_pipeline_parallel(
+            cfg,
+            args.datasets,
+            n_jobs=args.dataset_jobs,
+            backend=args.dataset_backend,
+        )
+    else:
+        run_pipeline(cfg)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution
