@@ -1696,11 +1696,20 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         else:
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
+    annot = df_metrics.copy()
+    if "variance_cumulee_%" in annot:
+        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype(int)
+    if "nb_axes_kaiser" in annot:
+        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype(int)
+    for col in annot.columns:
+        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(
         df_norm,
-        annot=df_metrics,
-        fmt=".2f",
+        annot=annot,
+        fmt="",
         cmap="coolwarm",
         vmin=0,
         vmax=1,
@@ -1838,7 +1847,13 @@ def plot_scatter_2d(
     """Return a 2D scatter plot figure coloured by ``color_var``."""
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     if color_var is None or color_var not in df_active.columns:
-        ax.scatter(emb_df.iloc[:, 0], emb_df.iloc[:, 1], s=10, alpha=0.7)
+        ax.scatter(
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            s=10,
+            alpha=0.6,
+            color="tab:blue",
+        )
     else:
         cats = df_active.loc[emb_df.index, color_var].astype("category")
         palette = sns.color_palette("tab10", len(cats.cat.categories))
@@ -1852,7 +1867,15 @@ def plot_scatter_2d(
                 color=color,
                 label=str(cat),
             )
-        ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        if str(color_var).lower().startswith("sous-"):
+            ax.legend(
+                title=color_var,
+                bbox_to_anchor=(0.5, -0.15),
+                loc="upper center",
+                ncol=3,
+            )
+        else:
+            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -1868,7 +1891,12 @@ def plot_scatter_3d(
     ax = fig.add_subplot(111, projection="3d")
     if color_var is None or color_var not in df_active.columns:
         ax.scatter(
-            emb_df.iloc[:, 0], emb_df.iloc[:, 1], emb_df.iloc[:, 2], s=10, alpha=0.7
+            emb_df.iloc[:, 0],
+            emb_df.iloc[:, 1],
+            emb_df.iloc[:, 2],
+            s=10,
+            alpha=0.6,
+            color="tab:blue",
         )
     else:
         cats = df_active.loc[emb_df.index, color_var].astype("category")
@@ -1884,7 +1912,15 @@ def plot_scatter_3d(
                 color=color,
                 label=str(cat),
             )
-        ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        if str(color_var).lower().startswith("sous-"):
+            ax.legend(
+                title=color_var,
+                bbox_to_anchor=(0.5, -0.1),
+                loc="upper center",
+                ncol=3,
+            )
+        else:
+            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -1998,11 +2034,12 @@ def plot_scree(
         color=sns.color_palette("deep")[0],
         edgecolor="black",
     )
-    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
+    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="#C04000")
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+    thresh = 0.8 if ratios.max() <= 1 else 80
+    ax.axhline(thresh, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
@@ -2056,6 +2093,7 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     df[["F1", "F2"]].plot(kind="bar", ax=ax)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_ylabel("% Contribution")
     ax.set_title("Contributions des variables – FAMD (F1 et F2)")
     ax.legend(title="Axe")
@@ -2174,7 +2212,6 @@ def generate_figures(
                 labels, tuned_k = tune_kmeans_clusters(
                     emb.iloc[:, :2].values, range(2, cluster_k + 1)
                 )
-                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"
@@ -2241,7 +2278,6 @@ def generate_figures(
                 labels, tuned_k = tune_kmeans_clusters(
                     emb.iloc[:, :2].values, range(2, cluster_k + 1)
                 )
-                cluster_k = tuned_k
             k_used = len(np.unique(labels))
             title = (
                 f"Projection {method.upper()} – coloration par clusters (k={k_used})"

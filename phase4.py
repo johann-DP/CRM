@@ -158,11 +158,11 @@ def build_pdf_report(
         ax.axis("off")
         ax.text(
             0.5,
-            0.02,
+            -0.04,
             _format_caption(dataset, img_path.name),
             transform=ax.transAxes,
             ha="center",
-            va="bottom",
+            va="top",
             fontsize=8,
             color="gray",
         )
