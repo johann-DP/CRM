@@ -48,6 +48,13 @@ def test_run_phate_decay_alias():
     assert res_decay["params"]["a"] == 5
 
 
+def test_run_phate_knn_auto():
+    df = sample_df()
+    res = pf.run_phate(df, knn="auto")
+    # invalid string should fall back to default (15 from BEST_PARAMS)
+    assert res["params"]["k"] == 15
+
+
 def test_run_pacmap_basic():
     df = sample_df()
     res = pf.run_pacmap(df)

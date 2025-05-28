@@ -1300,7 +1300,13 @@ def run_phate(
             }
 
     if knn is not None:
-        k = knn
+        if isinstance(knn, str):
+            try:
+                k = int(knn)
+            except ValueError:  # invalid string like "auto"
+                logger.warning("Invalid PHATE knn value '%s'; using default", knn)
+        else:
+            k = knn
     if decay is not None:
         a = decay
 
