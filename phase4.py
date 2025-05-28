@@ -27,6 +27,7 @@ import logging
 import random
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+import os
 
 import datetime
 import matplotlib.pyplot as plt
@@ -97,6 +98,22 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
         if key.startswith(prefix) and value is not None:
             params[key[len(prefix) :]] = value
     return params
+
+
+def set_blas_threads(n_jobs: int = -1) -> int:
+    """Set thread count for common BLAS libraries."""
+    if n_jobs is None or n_jobs < 1:
+        n_jobs = os.cpu_count() or 1
+    for var in [
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+        "BLIS_NUM_THREADS",
+    ]:
+        os.environ[var] = str(n_jobs)
+    return n_jobs
 
 
 def build_pdf_report(
@@ -236,6 +253,8 @@ def build_pdf_report(
 def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     output_dir = Path(config.get("output_dir", "phase4_output"))
     _setup_logging(output_dir)
+    n_jobs = int(config.get("n_jobs", -1))
+    set_blas_threads(n_jobs)
 
     logging.info("Loading datasets...")
     datasets = load_datasets(config)
