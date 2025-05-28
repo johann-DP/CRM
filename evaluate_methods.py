@@ -205,7 +205,7 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         df_norm,
         annot=df_metrics,
         fmt=".2f",
-        cmap="viridis",
+        cmap="coolwarm",
         vmin=0,
         vmax=1,
     )

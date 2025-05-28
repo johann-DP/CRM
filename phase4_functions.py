@@ -304,6 +304,124 @@ def prepare_data(
 
     return df_clean
 
+
+"""Utility functions for selecting active variables for CRM analyses."""
+
+
+import logging
+from typing import List, Tuple
+
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+
+
+def select_variables(df: pd.DataFrame, min_modalite_freq: int = 5) -> Tuple[pd.DataFrame, List[str], List[str]]:
+    """Return the dataframe restricted to relevant variables.
+
+    Parameters
+    ----------
+    df:
+        Cleaned dataframe coming from ``prepare_data``.
+    min_modalite_freq:
+        Minimum frequency below which categorical levels are grouped in
+        ``"Autre"``.
+
+    Returns
+    -------
+    tuple
+        ``(df_active, quantitative_vars, qualitative_vars)`` where
+        ``df_active`` contains the scaled numeric columns and categorical
+        columns cast to ``category``.
+    """
+    logger = logging.getLogger(__name__)
+
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame")
+
+    df = df.copy()
+
+    # Columns explicitly ignored based on the data dictionary / prior phases
+    exclude = {
+        "Code",
+        "ID",
+        "Id",
+        "Identifiant",
+        "Client",
+        "Contact principal",
+        "Titre",
+        "texte",
+        "commentaire",
+        "Commentaires",
+    }
+
+    # Drop constant columns and those in the exclusion list
+    n_unique = df.nunique(dropna=False)
+    constant_cols = n_unique[n_unique <= 1].index.tolist()
+    drop_cols = set(constant_cols) | {c for c in df.columns if c in exclude}
+
+    # Remove datetime columns
+    drop_cols.update([c for c in df.select_dtypes(include="datetime").columns])
+
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+
+    quantitative_vars: List[str] = []
+    qualitative_vars: List[str] = []
+
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            series = pd.to_numeric(df[col], errors="coerce")
+            if series.var(skipna=True) == 0 or series.isna().all():
+                logger.warning("Variable quantitative '%s' exclue", col)
+                continue
+            df[col] = series.astype(float)
+            quantitative_vars.append(col)
+        else:
+            series = df[col].astype("category")
+            unique_ratio = series.nunique(dropna=False) / len(series)
+            if unique_ratio > 0.8:
+                logger.warning("Variable textuelle '%s' exclue", col)
+                continue
+            counts = series.value_counts(dropna=False)
+            if len(series) < min_modalite_freq:
+                threshold = 0  # no grouping on tiny samples
+            else:
+                threshold = min_modalite_freq
+            rares = counts[counts < threshold].index
+            if len(rares) > 0:
+                logger.info(
+                    "%d modalités rares dans '%s' regroupées en 'Autre'",
+                    len(rares),
+                    col,
+                )
+                if "Autre" not in series.cat.categories:
+                    series = series.cat.add_categories(["Autre"])
+                series = series.apply(lambda x: "Autre" if x in rares else x).astype("category")
+            if series.nunique(dropna=False) <= 1:
+                logger.warning("Variable qualitative '%s' exclue", col)
+                continue
+            df[col] = series
+            qualitative_vars.append(col)
+
+    df_active = df[quantitative_vars + qualitative_vars].copy()
+
+    if quantitative_vars:
+        scaler = StandardScaler()
+        df_active[quantitative_vars] = scaler.fit_transform(df_active[quantitative_vars])
+
+    for col in qualitative_vars:
+        df_active[col] = df_active[col].astype("category")
+
+    logger.info("DataFrame actif avec %d variables", len(df_active.columns))
+    return df_active, quantitative_vars, qualitative_vars
+
+
+"""Utility functions for factorial analyses (PCA, MCA, FAMD, MFA).
+
+This module implements standalone wrappers around ``scikit-learn`` and
+``prince`` to run the main factorial analysis methods used in the project.
+The functions do not depend on other local modules so they can be reused
+"""
+
 # ---------------------------------------------------------------------------
 # dataset_comparison.py
 # ---------------------------------------------------------------------------
@@ -527,6 +645,7 @@ if __name__ == "__main__":  # pragma: no cover - manual testing helper
 This module implements standalone wrappers around ``scikit-learn`` and
 ``prince`` to run the main factorial analysis methods used in the project.
 The functions do not depend on other local modules so they can be reused
+>>>>>>> master
 independently of ``phase4v2.py`` or the fine-tuning scripts.
 """
 
@@ -1770,6 +1889,7 @@ def generate_figures(
 
     return figures
 
+
 # ---------------------------------------------------------------------------
 # unsupervised_cv.py
 # ---------------------------------------------------------------------------
@@ -1981,6 +2101,7 @@ def unsupervised_cv_and_temporal_tests(
 
     return {"cv_stability": cv_stability, "temporal_shift": temporal_shift}
 
+
 # ---------------------------------------------------------------------------
 # pdf_report.py
 # ---------------------------------------------------------------------------
@@ -2187,10 +2308,10 @@ def export_report_to_pdf(
 
     return out
 
+
 # ---------------------------------------------------------------------------
 # best_params.py
 # ---------------------------------------------------------------------------
-
 import csv
 import json
 from pathlib import Path
@@ -2237,116 +2358,1907 @@ def load_best_params(csv_path: Path | str = Path(__file__).with_name("best_param
 
 
 BEST_PARAMS = load_best_params()
+"""Dataset comparison utilities for CRM analyses.
 
-# ---------------------------------------------------------------------------
-# variable_selection.py
-# ---------------------------------------------------------------------------
-"""Utility functions for selecting active variables for CRM analyses."""
+This module implements a `compare_datasets_versions` function applying the
+complete dimensionality reduction pipeline on multiple dataset versions. It
+re-uses the standalone helper functions provided in this repository (data
+preparation, variable selection, factor methods, non-linear methods and
+metrics evaluation) and does **not** depend on legacy scripts such as
+``phase4v2.py`` or ``fine_tune_*``.
+"""
 
 
 import logging
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+
+# The following helpers are defined earlier in this file.
+# They remain in the code here to keep this module standalone when the
+# original files are removed.
+# from data_preparation import prepare_data
+# from variable_selection import select_variables
+# from factor_methods import run_pca, run_mca, run_famd, run_mfa
+# from nonlinear_methods import run_all_nonlinear
+# from evaluate_methods import evaluate_methods
+# from visualization import generate_figures
+
+logger = logging.getLogger(__name__)
 
 
-def select_variables(df: pd.DataFrame, min_modalite_freq: int = 5) -> Tuple[pd.DataFrame, List[str], List[str]]:
-    """Return the dataframe restricted to relevant variables.
+# ---------------------------------------------------------------------------
+# Missing value handling (copied from phase4v2.py)
+# ---------------------------------------------------------------------------
+
+def handle_missing_values(df: pd.DataFrame, quant_vars: List[str], qual_vars: List[str]) -> pd.DataFrame:
+    """Impute and drop remaining NA values if needed.
 
     Parameters
     ----------
-    df:
-        Cleaned dataframe coming from ``prepare_data``.
-    min_modalite_freq:
-        Minimum frequency below which categorical levels are grouped in
-        ``"Autre"``.
+    df : pandas.DataFrame
+        DataFrame to process.
+    quant_vars : list of str
+        Names of quantitative variables.
+    qual_vars : list of str
+        Names of qualitative variables.
 
     Returns
     -------
-    tuple
-        ``(df_active, quantitative_vars, qualitative_vars)`` where
-        ``df_active`` contains the scaled numeric columns and categorical
-        columns cast to ``category``.
+    pandas.DataFrame
+        DataFrame with missing values handled.
     """
     logger = logging.getLogger(__name__)
+    na_count = int(df.isna().sum().sum())
+    if na_count > 0:
+        logger.info("Imputation des %d valeurs manquantes restantes", na_count)
+        if quant_vars:
+            df[quant_vars] = df[quant_vars].fillna(df[quant_vars].median())
+        for col in qual_vars:
+            if df[col].dtype.name == "category" and "Non renseigné" not in df[col].cat.categories:
+                df[col] = df[col].cat.add_categories("Non renseigné")
+            df[col] = df[col].fillna("Non renseigné").astype("category")
+        remaining = int(df.isna().sum().sum())
+        if remaining > 0:
+            logger.warning(
+                "%d NA subsistent après imputation → suppression des lignes concernées",
+                remaining,
+            )
+            df.dropna(inplace=True)
+        # After dropping rows, remove categories that may no longer be present
+        for col in qual_vars:
+            if df[col].dtype.name == "category":
+                df[col] = df[col].cat.remove_unused_categories()
+    else:
+        logger.info("Aucune valeur manquante détectée après sanity_check")
 
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError("df must be a pandas DataFrame")
+    # Ensure no stray unused categories remain even if no imputation occurred
+    for col in qual_vars:
+        if df[col].dtype.name == "category":
+            df[col] = df[col].cat.remove_unused_categories()
 
-    df = df.copy()
+    if df.isna().any().any():
+        logger.error("Des NA demeurent dans df après traitement")
+    else:
+        logger.info("DataFrame sans NA prêt pour FAMD")
+    return df
 
-    # Columns explicitly ignored based on the data dictionary / prior phases
-    exclude = {
-        "Code",
-        "ID",
-        "Id",
-        "Identifiant",
-        "Client",
-        "Contact principal",
-        "Titre",
-        "texte",
-        "commentaire",
-        "Commentaires",
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def compare_datasets_versions(
+    datasets: Dict[str, pd.DataFrame],
+    *,
+    exclude_lost: bool = True,
+    min_modalite_freq: int = 5,
+    output_dir: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    """Compare dimensionality reduction results between dataset versions.
+
+    Parameters
+    ----------
+    datasets : dict
+        Mapping of version name to raw ``DataFrame``.
+    exclude_lost : bool, default ``True``
+        Whether to remove lost/cancelled opportunities during preparation.
+    min_modalite_freq : int, default ``5``
+        Frequency threshold passed to :func:`variable_selection.select_variables`.
+    output_dir : str or Path, optional
+        Base directory where figures will be saved. A subdirectory per dataset
+        version is created when provided.
+
+    Returns
+    -------
+    dict
+        Dictionary with two keys:
+        ``"metrics"`` containing the concatenated metrics table and
+        ``"details"`` mapping each version name to its individual results
+        (metrics, figures and intermediate objects).
+    """
+    if not isinstance(datasets, dict):
+        raise TypeError("datasets must be a dictionary")
+
+    results_by_version: Dict[str, Any] = {}
+    metrics_frames: List[pd.DataFrame] = []
+    base_dir = Path(output_dir) if output_dir is not None else None
+
+    for name, df in datasets.items():
+        logger.info("Processing dataset version '%s'", name)
+        df_prep = prepare_data(df, exclude_lost=exclude_lost)
+        df_active, quant_vars, qual_vars = select_variables(
+            df_prep, min_modalite_freq=min_modalite_freq
+        )
+        df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+
+        # Factorial methods
+        factor_results: Dict[str, Any] = {}
+        if quant_vars:
+            factor_results["pca"] = run_pca(df_active, quant_vars, optimize=True)
+        if qual_vars:
+            factor_results["mca"] = run_mca(df_active, qual_vars, optimize=True)
+        if quant_vars and qual_vars:
+            try:
+                factor_results["famd"] = run_famd(
+                    df_active, quant_vars, qual_vars, optimize=True
+                )
+            except ValueError as exc:
+                logger.warning("FAMD skipped: %s", exc)
+        groups = []
+        if quant_vars:
+            groups.append(quant_vars)
+        if qual_vars:
+            groups.append(qual_vars)
+        if len(groups) > 1:
+            factor_results["mfa"] = run_mfa(df_active, groups, optimize=True)
+
+        # Non-linear methods
+        nonlin_results = run_all_nonlinear(df_active)
+
+        # Metrics and figures
+        cleaned_nonlin = {
+            k: v
+            for k, v in nonlin_results.items()
+            if "embeddings" in v and isinstance(v["embeddings"], pd.DataFrame) and not v["embeddings"].empty
+        }
+        all_results = {**factor_results, **cleaned_nonlin}
+        n_clusters = 3 if len(df_active) > 3 else 2
+        metrics = evaluate_methods(
+            all_results, df_active, quant_vars, qual_vars, n_clusters=n_clusters
+        )
+        metrics["dataset_version"] = name
+        try:
+            fig_dir = base_dir / name if base_dir is not None else None
+            figures = generate_figures(
+                factor_results,
+                nonlin_results,
+                df_active,
+                quant_vars,
+                qual_vars,
+                output_dir=fig_dir,
+            )
+        except Exception as exc:  # pragma: no cover - visualization failure
+            logger.warning("Figure generation failed: %s", exc)
+            figures = {}
+
+        results_by_version[name] = {
+            "metrics": metrics,
+            "figures": figures,
+            "factor_results": factor_results,
+            "nonlinear_results": nonlin_results,
+            "quant_vars": quant_vars,
+            "qual_vars": qual_vars,
+            "df_active": df_active,
+        }
+        metrics_frames.append(metrics)
+
+    combined = pd.concat(metrics_frames).reset_index().rename(columns={"index": "method"})
+    return {"metrics": combined, "details": results_by_version}
+
+
+if __name__ == "__main__":  # pragma: no cover - manual testing helper
+    import pprint
+
+    logging.basicConfig(level=logging.INFO)
+    # Example usage with dummy data
+    df = pd.DataFrame({
+        "Code": [1, 2, 3],
+        "Date de début actualisée": ["2024-01-01", "2024-01-02", "2024-01-03"],
+        "Date de fin réelle": ["2024-01-05", "2024-01-06", "2024-01-07"],
+        "Total recette réalisé": [1000, 2000, 1500],
+        "Budget client estimé": [1100, 2100, 1600],
+        "Charge prévisionnelle projet": [800, 1800, 1300],
+        "Statut commercial": ["Gagné", "Perdu", "Gagné"],
+        "Type opportunité": ["T1", "T2", "T1"],
+    })
+    datasets = {"v1": df, "v2": df.drop(1)}
+    out = compare_datasets_versions(datasets, output_dir=Path("figures"))
+    pprint.pprint(out["metrics"].head())
+import argparse
+import json
+import logging
+from pathlib import Path
+from time import time
+import yaml
+import pandas as pd
+from itertools import product
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score, calinski_harabasz_score
+
+try:  # Optional legacy helpers for the fine-tuning scripts
+    from standalone_utils import prepare_active_dataset  # type: ignore
+except Exception:  # pragma: no cover - missing legacy module
+    prepare_active_dataset = None  # type: ignore
+try:
+    from phase4v2 import run_mfa, export_mfa_results, load_data, prepare_data  # type: ignore
+except Exception:  # pragma: no cover - missing legacy module
+    run_mfa = export_mfa_results = load_data = None  # type: ignore
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+def load_config(path: Path) -> dict:
+    if path.suffix.lower() in {'.yaml', '.yml'}:
+        return yaml.safe_load(path.read_text())
+    return json.loads(path.read_text())
+
+
+def evaluate_embedding(emb: pd.DataFrame, k_range=range(2, 7)) -> tuple[float, float]:
+    best_sil = -1.0
+    best_ch = -1.0
+    for k in k_range:
+        labels = KMeans(n_clusters=k, random_state=None).fit_predict(emb.values)
+        sil = silhouette_score(emb.values, labels)
+        ch = calinski_harabasz_score(emb.values, labels)
+        if sil > best_sil:
+            best_sil = sil
+        if ch > best_ch:
+            best_ch = ch
+    return best_sil, best_ch
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Fine tune MFA")
+    p.add_argument("--config", help="YAML or JSON config file")
+    p.add_argument("--input", help="Cleaned multivariate CSV")
+    p.add_argument("--output", help="Output directory")
+    args = p.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    cfg = {}
+    if args.config:
+        cfg = load_config(Path(args.config))
+
+    if args.input:
+        cfg["input_file"] = args.input
+    if args.output:
+        cfg["output_dir"] = args.output
+
+    if "input_file" not in cfg or "output_dir" not in cfg:
+        p.error("Provide --input and --output or a config file with those fields")
+
+    input_file = cfg["input_file"]
+    out_dir = Path(cfg.get("output_dir", "phase4_output/fine_tuning_mfa"))
+    group_defs = cfg.get("group_defs")
+    mfa_cfg = cfg.get("mfa_params", {})
+    n_components_range = list(range(mfa_cfg.get("min_components", 2), mfa_cfg.get("max_components", 10) + 1))
+    weight_options = mfa_cfg.get("weights", [None])
+    n_iter = int(mfa_cfg.get("n_iter", 3))
+
+    df_active, quant_vars, qual_vars = prepare_active_dataset(input_file, out_dir)
+
+    # Keep segmentation columns by loading the full cleaned dataset
+    df_full = prepare_data(load_data(input_file))
+    df_full = df_full.loc[df_active.index]
+
+    results = []
+    best = None
+    best_metrics = (-1.0, -1.0)
+    for n_comp, weights in product(n_components_range, weight_options):
+        start = time()
+        model, rows = run_mfa(
+            df_active,
+            quant_vars,
+            qual_vars,
+            out_dir / f"mfa_{n_comp}",
+            n_components=n_comp,
+            groups=group_defs,
+            weights=weights,
+            n_iter=n_iter,
+        )
+        runtime = time() - start
+        inertia = sum(model.explained_inertia_)
+        sil, ch = evaluate_embedding(rows)
+        results.append({
+            "n_components": n_comp,
+            "weights": weights,
+            "runtime_s": runtime,
+            "cum_inertia": inertia,
+            "silhouette": sil,
+            "calinski": ch,
+        })
+        if inertia >= 0.8 and (sil > best_metrics[0] or ch > best_metrics[1]):
+            best_metrics = (sil, ch)
+            best = (model, rows, n_comp, weights)
+
+    pd.DataFrame(results).to_csv(out_dir / "mfa_grid_search.csv", index=False)
+
+    if best is None:
+        logging.warning("No configuration reached 80% inertia; keeping last one")
+        model, rows, _, _ = model, rows, n_comp, weights
+    else:
+        model, rows, n_comp, weights = best
+
+    export_mfa_results(
+        model,
+        rows,
+        out_dir / "best",
+        quant_vars,
+        qual_vars,
+        df_active=df_full,
+    )
+    best_params = {
+        "method": "MFA",
+        "params": {"n_components": int(n_comp), "weights": weights},
+    }
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best_params, fh, indent=2)
+    logging.info("Best MFA with %d components", n_comp)
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""Fine tune PCA on cleaned CRM data."""
+
+import argparse
+import logging
+from pathlib import Path
+import itertools
+import json
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+try:  # Optional legacy imports used by the old fine-tuning scripts
+    from phase4v2 import plot_correlation_circle, scatter_all_segments  # type: ignore
+except Exception:  # pragma: no cover
+    plot_correlation_circle = None  # type: ignore
+    scatter_all_segments = None  # type: ignore
+try:
+    from standalone_utils import prepare_active_dataset  # type: ignore
+except Exception:  # pragma: no cover
+    prepare_active_dataset = None  # type: ignore
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PCA")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+CANDIDATE_QUANT = [
+    "Total recette actualisé",
+    "Total recette réalisé",
+    "Total recette produit",
+    "Budget client estimé",
+    "duree_projet_jours",
+    "taux_realisation",
+    "marge_estimee",
+]
+
+N_COMPONENTS = [2, 3, 5, 8, 10]
+SVD_SOLVERS = ["auto", "full", "randomized"]
+WHITEN_OPTIONS = [False, True]
+
+plt.rcParams.update({"figure.figsize": (12, 6), "figure.dpi": 200})
+
+
+def load_quantitative_data(path: str) -> tuple[pd.DataFrame, list[str]]:
+    """Load CSV and return dataframe with numeric columns only."""
+    df = pd.read_csv(path)
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    quant_cols = [c for c in CANDIDATE_QUANT if c in numeric_cols]
+    if not quant_cols:
+        quant_cols = numeric_cols
+    df_quant = df[quant_cols].dropna()
+    return df_quant, quant_cols
+
+
+def run_pca_grid(X: np.ndarray, columns: list[str]):
+    """Run PCA for all parameter combinations."""
+    results = []
+    expl_rows = []
+    load_rows = []
+    contrib_rows = []
+    sil_rows = []
+    config_id = 0
+    max_comp = min(X.shape[0], X.shape[1])
+    for n_comp, solver, whiten in itertools.product(N_COMPONENTS, SVD_SOLVERS, WHITEN_OPTIONS):
+        if n_comp > max_comp:
+            continue
+        logging.info("PCA n_components=%d solver=%s whiten=%s", n_comp, solver, whiten)
+        try:
+            pca = PCA(n_components=n_comp, svd_solver=solver, whiten=whiten, random_state=None)
+            X_pca = pca.fit_transform(X)
+        except ValueError:
+            continue
+
+        cum_var = np.cumsum(pca.explained_variance_ratio_)
+        for i, (var_ratio, sv) in enumerate(zip(pca.explained_variance_ratio_, pca.singular_values_), 1):
+            expl_rows.append({
+                "config_id": config_id,
+                "n_components": n_comp,
+                "svd_solver": solver,
+                "whiten": whiten,
+                "component": f"F{i}",
+                "explained_variance_ratio": var_ratio,
+                "cumulative_variance_ratio": cum_var[i-1],
+                "singular_value": sv,
+            })
+
+        loadings = pca.components_.T * np.sqrt(pca.explained_variance_)
+        for j, col in enumerate(columns):
+            for i in range(pca.n_components):
+                loading_val = loadings[j, i]
+                contrib_val = (loading_val ** 2) / np.sum(loadings[:, i] ** 2) * 100
+                load_rows.append({
+                    "config_id": config_id,
+                    "n_components": n_comp,
+                    "svd_solver": solver,
+                    "whiten": whiten,
+                    "variable": col,
+                    "component": f"F{i+1}",
+                    "loading": loading_val,
+                })
+                contrib_rows.append({
+                    "config_id": config_id,
+                    "n_components": n_comp,
+                    "svd_solver": solver,
+                    "whiten": whiten,
+                    "variable": col,
+                    "component": f"F{i+1}",
+                    "contribution_pct": contrib_val,
+                })
+
+        for k in range(2, 11):
+            km = KMeans(n_clusters=k, n_init=10, random_state=None)
+            labels = km.fit_predict(X_pca)
+            sil = silhouette_score(X_pca, labels)
+            sil_rows.append({
+                "config_id": config_id,
+                "n_components": n_comp,
+                "svd_solver": solver,
+                "whiten": whiten,
+                "n_clusters": k,
+                "silhouette_score": sil,
+            })
+
+        results.append({
+            "config_id": config_id,
+            "n_components": n_comp,
+            "svd_solver": solver,
+            "whiten": whiten,
+            "cum_variance": cum_var[-1],
+            "scores": X_pca,
+            "loadings": loadings,
+        })
+        config_id += 1
+
+    return results, pd.DataFrame(expl_rows), pd.DataFrame(load_rows), pd.DataFrame(contrib_rows), pd.DataFrame(sil_rows)
+
+
+def export_csvs(out_dir: Path, exp_df: pd.DataFrame, load_df: pd.DataFrame, contrib_df: pd.DataFrame, sil_df: pd.DataFrame) -> None:
+    """Save all CSV outputs."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    exp_df.to_csv(out_dir / "explained_variance.csv", index=False)
+    load_df.to_csv(out_dir / "loadings.csv", index=False)
+    contrib_df.to_csv(out_dir / "contributions.csv", index=False)
+    sil_mean = sil_df.groupby(["n_components", "n_clusters"])["silhouette_score"].mean().reset_index()
+    sil_mean.to_csv(out_dir / "silhouette_scores.csv", index=False)
+
+
+def make_scree_plots(out_dir: Path, exp_df: pd.DataFrame) -> None:
+    """Generate scree plots for each solver/whiten."""
+    for solver in SVD_SOLVERS:
+        for whiten in WHITEN_OPTIONS:
+            subset = exp_df[(exp_df.svd_solver == solver) & (exp_df.whiten == whiten) & (exp_df.n_components == max(N_COMPONENTS))]
+            if subset.empty:
+                continue
+            ratios = subset.sort_values("component")["explained_variance_ratio"].values
+            axes = range(1, len(ratios) + 1)
+            plt.figure()
+            plt.bar(axes, ratios * 100, edgecolor="black")
+            plt.plot(axes, np.cumsum(ratios) * 100, "-o", color="orange")
+            plt.xlabel("Composante")
+            plt.ylabel("% variance expliquée")
+            plt.title(f"Scree plot – solver={solver} whiten={whiten}")
+            plt.xticks(axes)
+            plt.tight_layout()
+            fname = f"scree_{solver}_w{int(whiten)}.png"
+            plt.savefig(out_dir / fname)
+            plt.close()
+
+
+def plot_correlation_and_contrib(out_dir: Path, loadings: np.ndarray, columns: list[str], suffix: str) -> None:
+    if loadings.shape[1] < 2:
+        return
+    coords = pd.DataFrame(loadings[:, :2], index=columns, columns=["F1", "F2"])
+    plt.figure()
+    ax = plt.gca()
+    plot_correlation_circle(ax, coords, "Cercle des corrélations F1–F2")
+    plt.tight_layout()
+    plt.savefig(out_dir / f"correlation_circle_{suffix}.png")
+    plt.close()
+
+    contrib = ((loadings[:, :2] ** 2) / np.sum(loadings[:, :2] ** 2, axis=0)) * 100
+    contrib_df = pd.DataFrame(contrib, index=columns, columns=["F1", "F2"])
+    fig, axes = plt.subplots(1, 2)
+    for i, ax in enumerate(axes):
+        axis = f"F{i+1}"
+        if axis in contrib_df.columns:
+            top = contrib_df[axis].sort_values(ascending=False)
+            ax.bar(top.index.astype(str), top.values)
+            ax.set_title(f"Contributions {axis}")
+            ax.tick_params(axis="x", rotation=45)
+    plt.tight_layout()
+    plt.savefig(out_dir / f"contributions_{suffix}.png")
+    plt.close()
+
+
+def plot_silhouette_curves(out_dir: Path, sil_df: pd.DataFrame) -> None:
+    pivot_nc = sil_df.pivot_table(index="n_components", columns="n_clusters", values="silhouette_score", aggfunc="mean")
+    plt.figure()
+    pivot_nc.plot(marker="o")
+    plt.xlabel("n_components")
+    plt.ylabel("Silhouette moyen")
+    plt.title("Silhouette vs n_components")
+    plt.tight_layout()
+    plt.savefig(out_dir / "silhouette_vs_components.png")
+    plt.close()
+
+    pivot_k = sil_df.pivot_table(index="n_clusters", columns="n_components", values="silhouette_score", aggfunc="mean")
+    plt.figure()
+    pivot_k.plot(marker="o")
+    plt.xlabel("n_clusters")
+    plt.ylabel("Silhouette moyen")
+    plt.title("Silhouette vs n_clusters")
+    plt.tight_layout()
+    plt.savefig(out_dir / "silhouette_vs_clusters.png")
+    plt.close()
+
+
+def plot_best_clusters(out_dir: Path, scores: np.ndarray, n_clusters: int) -> None:
+    if scores.shape[1] < 2:
+        return
+    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=None)
+    labels = km.fit_predict(scores[:, :2])
+    plt.figure()
+    sns.scatterplot(x=scores[:, 0], y=scores[:, 1], hue=labels, palette="tab10", s=10)
+    plt.xlabel("F1")
+    plt.ylabel("F2")
+    plt.title("Projection PCA F1–F2 par cluster")
+    plt.tight_layout()
+    plt.savefig(out_dir / "clusters_scatter.png")
+    plt.close()
+
+
+def write_index(out_dir: Path) -> None:
+    paths = []
+    for p in out_dir.rglob("*"):
+        if p.is_file():
+            paths.append(p.relative_to(out_dir))
+    with open(out_dir / "index_fine_tune_pca.txt", "w", encoding="utf-8") as f:
+        for p in sorted(paths):
+            f.write(str(p) + "\n")
+
+
+def main() -> None:
+    args = parse_args()
+    data_path = args.input
+    out_dir = Path(args.output)
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    df_active, quant_cols, _ = prepare_active_dataset(data_path, out_dir)
+    logging.info("Variables quantitatives utilisées : %s", quant_cols)
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(df_active[quant_cols])
+
+    results, exp_df, load_df, contrib_df, sil_df = run_pca_grid(X, quant_cols)
+
+    export_csvs(out_dir, exp_df, load_df, contrib_df, sil_df)
+    make_scree_plots(out_dir, exp_df)
+    plot_silhouette_curves(out_dir, sil_df)
+
+    # Identify best configurations
+    exp_summary = exp_df.groupby("config_id")["cumulative_variance_ratio"].max()
+    eligible = exp_summary[exp_summary >= 0.80]
+    best_var_id = eligible.idxmax() if not eligible.empty else exp_summary.idxmax()
+    sil_max = sil_df.groupby("config_id")["silhouette_score"].max()
+    best_sil_id = sil_max.idxmax()
+    best_k = sil_df[sil_df.config_id == best_sil_id].sort_values("silhouette_score", ascending=False).iloc[0]["n_clusters"]
+
+    best_var_res = next(r for r in results if r["config_id"] == best_var_id)
+    best_sil_res = next(r for r in results if r["config_id"] == best_sil_id)
+
+    plot_correlation_and_contrib(out_dir, best_var_res["loadings"], quant_cols, "best_variance")
+    plot_correlation_and_contrib(out_dir, best_sil_res["loadings"], quant_cols, "best_silhouette")
+    plot_best_clusters(out_dir, best_sil_res["scores"], int(best_k))
+
+    scores_df = pd.DataFrame(best_sil_res["scores"][:, :2], index=df_active.index, columns=["F1", "F2"])
+    scatter_all_segments(scores_df, df_active, out_dir, "pca_best")
+
+    write_index(out_dir)
+
+    best_params = {
+        "method": "PCA",
+        "params": {
+            "n_components": int(best_sil_res["n_components"]),
+            "svd_solver": best_sil_res["svd_solver"],
+            "whiten": bool(best_sil_res["whiten"]),
+        },
+    }
+    with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best_params, fh, indent=2)
+
+    logging.info(
+        "Meilleure config variance >=80%% : id=%d (solver=%s, whiten=%s, n_comp=%d, variance=%.2f%%)",
+        best_var_res["config_id"], best_var_res["svd_solver"], best_var_res["whiten"], best_var_res["n_components"], best_var_res["cum_variance"]*100,
+    )
+    logging.info(
+        "Meilleure config silhouette : id=%d (solver=%s, whiten=%s, n_comp=%d, silhouette=%.3f)",
+        best_sil_res["config_id"], best_sil_res["svd_solver"], best_sil_res["whiten"], best_sil_res["n_components"], sil_max[best_sil_id],
+    )
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""Fine-tune t-SNE embeddings for the CRM dataset.
+
+The script loads the cleaned multivariate CSV, performs preprocessing,
+optionally reduces the dimensionality with PCA and runs a random search
+over several t-SNE parameters. The best configuration is selected using
+the silhouette score after clustering with KMeans. The final model and
+embeddings are exported along with basic scatter plots.
+"""
+
+
+import argparse
+import logging
+import pickle
+from pathlib import Path
+from typing import Dict, List
+import json
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+DEFAULT_INPUT = "/mnt/data/phase3_cleaned_multivariate.csv"
+DEFAULT_OUTPUT = "/mnt/data/phase4_output/fine_tuning_tsne"
+
+
+def load_preprocess(csv_path: str) -> tuple[pd.DataFrame, np.ndarray]:
+    """Load the dataset and return the preprocessed matrix."""
+    df = pd.read_csv(csv_path)
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+    # ensure booleans are strings for OneHotEncoder
+    for col in df.select_dtypes(include="bool").columns:
+        df[col] = df[col].astype(str)
+
+    # Imputation
+    df_num = df[num_cols]
+    df_num = df_num.loc[:, df_num.notna().any(axis=0)]
+    df_num = df_num.fillna(df_num.mean())
+
+    df_cat = df[cat_cols].fillna("unknown").astype(str)
+    for c in df_cat.columns:
+        if df_cat[c].dtype == "bool":
+            df_cat[c] = df_cat[c].astype(str)
+
+    # Encoding / scaling
+    scaler = StandardScaler()
+    X_num = scaler.fit_transform(df_num)
+
+    try:
+        encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    except TypeError:  # older scikit-learn
+        encoder = OneHotEncoder(handle_unknown="ignore")
+    X_cat = encoder.fit_transform(df_cat)
+
+    X_all = np.hstack([X_num, X_cat])
+    return df, X_all
+
+
+def run_random_search(X: np.ndarray, n_trials: int = 20) -> tuple[Dict[str, int | float | str], np.ndarray, pd.DataFrame]:
+    """Evaluate t-SNE with random parameter combinations."""
+    grid = {
+        "perplexity": [5, 10, 20, 30, 50],
+        "learning_rate": [10, 100, 200, 500],
+        "n_iter": [500, 1000, 2000],
+        "metric": ["euclidean", "cosine"],
     }
 
-    # Drop constant columns and those in the exclusion list
-    n_unique = df.nunique(dropna=False)
-    constant_cols = n_unique[n_unique <= 1].index.tolist()
-    drop_cols = set(constant_cols) | {c for c in df.columns if c in exclude}
+    rng = np.random.default_rng(42)
+    results: List[Dict[str, float]] = []
 
-    # Remove datetime columns
-    drop_cols.update([c for c in df.select_dtypes(include="datetime").columns])
+    for i in range(n_trials):
+        params = {
+            "perplexity": int(rng.choice(grid["perplexity"])),
+            "learning_rate": int(rng.choice(grid["learning_rate"])),
+            "n_iter": int(rng.choice(grid["n_iter"])),
+            "metric": str(rng.choice(grid["metric"])),
+        }
 
-    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+        logging.info("t-SNE trial %d/%d with params %s", i + 1, n_trials, params)
 
-    quantitative_vars: List[str] = []
-    qualitative_vars: List[str] = []
+        tsne = TSNE(
+            random_state=None,
+            init="pca",
+            perplexity=params["perplexity"],
+            learning_rate=params["learning_rate"],
+            n_iter=params["n_iter"],
+            metric=params["metric"],
+            n_jobs=-1,
+        )
+        emb = tsne.fit_transform(X)
+        labels = KMeans(n_clusters=6, random_state=None).fit_predict(emb)
+        sil = silhouette_score(emb, labels)
+        results.append({
+            **params,
+            "silhouette": sil,
+            "embedding": emb,
+        })
 
-    for col in df.columns:
-        if pd.api.types.is_numeric_dtype(df[col]):
-            series = pd.to_numeric(df[col], errors="coerce")
-            if series.var(skipna=True) == 0 or series.isna().all():
-                logger.warning("Variable quantitative '%s' exclue", col)
+    best = max(results, key=lambda r: r["silhouette"])
+    best_params = {k: best[k] for k in ["perplexity", "learning_rate", "n_iter", "metric"]}
+    best_emb = best["embedding"]
+
+    for r in results:
+        r.pop("embedding", None)
+
+    metrics_df = pd.DataFrame(results)
+    return best_params, best_emb, metrics_df
+
+
+def export_results(
+    df: pd.DataFrame,
+    embedding: np.ndarray,
+    params: Dict[str, int | float | str],
+    metrics_df: pd.DataFrame,
+    output_dir: Path,
+) -> None:
+    """Save model, embeddings and scatter plots."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save model
+    tsne_model = TSNE(random_state=None, init="pca", **params)
+    tsne_model.fit(embedding)
+    with open(output_dir / "tsne_model.pkl", "wb") as fh:
+        pickle.dump(tsne_model, fh)
+
+    # Save embeddings with labels
+    label_cols_all = [
+        "Catégorie",
+        "Entité opérationnelle",
+        "Pilier",
+        "Sous-catégorie",
+        "Statut commercial",
+        "Statut production",
+        "Type opportunité",
+    ]
+    label_cols = [c for c in label_cols_all if c in df.columns]
+
+    emb_df = pd.DataFrame(embedding[:, :2], columns=["TSNE1", "TSNE2"])
+    for col in label_cols:
+        emb_df[col] = df[col].values
+    emb_df.to_csv(output_dir / "tsne_embeddings.csv", index=False)
+
+    # Scatter plots
+    for col in label_cols:
+        plt.figure(figsize=(8, 6), dpi=200)
+        sns.scatterplot(
+            data=emb_df,
+            x="TSNE1",
+            y="TSNE2",
+            hue=col,
+            s=20,
+            alpha=0.7,
+            palette="tab10",
+        )
+        plt.title(f"t-SNE colored by {col}")
+        plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", title=col)
+        plt.tight_layout()
+        name = col.replace(" ", "_").replace("/", "_").lower()
+        plt.savefig(output_dir / f"tsne_{name}.png")
+        plt.close()
+
+    with open(output_dir / "tsne_metrics.txt", "w", encoding="utf-8") as fh:
+        fh.write(metrics_df.sort_values("silhouette", ascending=False).to_string(index=False))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Fine-tune t-SNE on CRM data")
+    parser.add_argument("--input", default=DEFAULT_INPUT, help="CSV file")
+    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="Output directory")
+    parser.add_argument("--n-trials", type=int, default=20, help="Number of random search iterations")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    out_dir = Path(args.output)
+
+    logging.info("Loading and preprocessing data")
+    df, X_all = load_preprocess(args.input)
+
+    logging.info("Running PCA for initialization")
+    n_components = min(50, X_all.shape[1])
+    X_pca = PCA(n_components=n_components, random_state=None).fit_transform(X_all)
+
+    logging.info("Starting t-SNE random search")
+    best_params, best_emb, metrics_df = run_random_search(X_pca, n_trials=args.n_trials)
+    logging.info("Best params: %s", best_params)
+
+    logging.info("Refitting t-SNE with best parameters")
+    final_tsne = TSNE(random_state=None, init="pca", **best_params)
+    final_emb = final_tsne.fit_transform(X_pca)
+
+    export_results(df, final_emb, best_params, metrics_df, out_dir)
+
+    best = {"method": "TSNE", "params": best_params}
+    best["params"]["n_components"] = 2
+    with open(Path(args.output) / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
+    logging.info("t-SNE fine-tuning complete")
+
+
+if __name__ == "__main__":
+    main()
+import argparse
+import os
+import time
+import logging
+from pathlib import Path
+
+import pandas as pd
+import numpy as np
+import json
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import prince
+
+try:  # optional legacy functions
+    from phase4v2 import plot_correlation_circle, scatter_all_segments  # type: ignore
+except Exception:  # pragma: no cover
+    plot_correlation_circle = None  # type: ignore
+    scatter_all_segments = None  # type: ignore
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+# ----------------------------------------------------------------------
+# Configuration paths
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune MCA")
+    parser.add_argument("--phase1", required=True, help="Phase1 categorical CSV")
+    parser.add_argument("--phase2", required=True, help="Phase2 categorical CSV")
+    parser.add_argument("--phase3", required=True, help="Phase3 multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+INPUT_FILES = []
+OUTPUT_ROOT = Path()
+FIG_DIR = Path()
+CSV_DIR = Path()
+
+QUAL_COLS = [
+    "Statut commercial",
+    "Statut production",
+    "Type opportunité",
+    "Catégorie",
+    "Sous-catégorie",
+    "Pilier",
+    "Entité opérationnelle",
+]
+
+
+# ----------------------------------------------------------------------
+def load_inputs(paths: list[str]) -> pd.DataFrame:
+    """Load input CSV files and keep qualitative columns."""
+    logger = logging.getLogger(__name__)
+    frames = []
+    for path in paths:
+        try:
+            df = pd.read_csv(path)
+        except FileNotFoundError:
+            logger.error("File not found: %s", path)
+            continue
+        frames.append(df)
+        logger.info("Loaded %s with shape %s", path, df.shape)
+
+    if not frames:
+        raise FileNotFoundError("No input files were loaded")
+
+    df_all = pd.concat(frames, ignore_index=True, sort=False)
+    existing = [c for c in QUAL_COLS if c in df_all.columns]
+    df_all = df_all[existing].copy()
+    df_all.fillna("Inconnu", inplace=True)
+    for col in existing:
+        df_all[col] = df_all[col].astype(str)
+    return df_all
+
+
+# ----------------------------------------------------------------------
+def ensure_dirs() -> None:
+    global FIG_DIR, CSV_DIR
+    FIG_DIR = OUTPUT_ROOT / "figures"
+    CSV_DIR = OUTPUT_ROOT / "csv"
+    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    CSV_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ----------------------------------------------------------------------
+def compute_contributions(coords: pd.DataFrame) -> pd.DataFrame:
+    contrib = (coords ** 2)
+    contrib = contrib.div(contrib.sum(axis=0), axis=1) * 100
+    return contrib
+
+
+# ----------------------------------------------------------------------
+def plot_scree_mca(inertia: np.ndarray, base: str) -> Path:
+    axes = range(1, len(inertia) + 1)
+    plt.figure(figsize=(12, 6), dpi=200)
+    plt.bar(axes, inertia * 100, edgecolor="black")
+    plt.plot(axes, np.cumsum(inertia) * 100, "-o", color="orange")
+    plt.xlabel("Composante")
+    plt.ylabel("% Inertie expliquée")
+    plt.title("Éboulis MCA")
+    plt.xticks(list(axes))
+    plt.tight_layout()
+    path = FIG_DIR / f"scree_{base}.png"
+    plt.savefig(path)
+    plt.close()
+    return path
+
+
+# ----------------------------------------------------------------------
+def plot_correlation(coords: pd.DataFrame, base: str, axes_pair: tuple[str, str]) -> Path:
+    if not set(axes_pair).issubset(coords.columns):
+        return Path()
+    fig = plt.figure(figsize=(12, 6), dpi=200)
+    ax = plt.gca()
+    subset = coords[list(axes_pair)].copy()
+    subset.columns = ["F1", "F2"]
+    plot_correlation_circle(
+        ax,
+        subset,
+        f"Cercle des corrélations ({axes_pair[0]}–{axes_pair[1]})",
+    )
+    plt.tight_layout()
+    path = FIG_DIR / f"circle_{axes_pair[0].lower()}_{axes_pair[1].lower()}_{base}.png"
+    plt.savefig(path)
+    plt.close(fig)
+    return path
+
+
+# ----------------------------------------------------------------------
+def plot_individuals(df_coords: pd.DataFrame, df_source: pd.DataFrame, base: str) -> tuple[Path, Path]:
+    p2 = p3 = None
+    if {"F1", "F2"}.issubset(df_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        cats = df_source.loc[df_coords.index, "Statut commercial"].astype(str)
+        palette = plt.get_cmap("tab10")(np.linspace(0, 1, cats.nunique()))
+        for color, cat in zip(palette, cats.unique()):
+            mask = cats == cat
+            plt.scatter(df_coords.loc[mask, "F1"], df_coords.loc[mask, "F2"], s=10, alpha=0.7, color=color, label=str(cat))
+        plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.title("MCA – individus (F1–F2)")
+        plt.tight_layout()
+        p2 = FIG_DIR / f"indiv_2d_{base}.png"
+        plt.savefig(p2)
+        plt.close()
+        scatter_all_segments(
+            df_coords[["F1", "F2"]],
+            df_source,
+            FIG_DIR,
+            f"indiv_{base}",
+        )
+    if {"F1", "F2", "F3"}.issubset(df_coords.columns):
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+        fig = plt.figure(figsize=(12, 6), dpi=200)
+        ax = fig.add_subplot(111, projection="3d")
+        cats = df_source.loc[df_coords.index, "Statut commercial"].astype(str)
+        palette = plt.get_cmap("tab10")(np.linspace(0, 1, cats.nunique()))
+        for color, cat in zip(palette, cats.unique()):
+            mask = cats == cat
+            ax.scatter(
+                df_coords.loc[mask, "F1"],
+                df_coords.loc[mask, "F2"],
+                df_coords.loc[mask, "F3"],
+                s=10,
+                alpha=0.7,
+                color=color,
+                label=str(cat),
+            )
+        ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+        ax.set_xlabel("F1"); ax.set_ylabel("F2"); ax.set_zlabel("F3")
+        ax.set_title("MCA – individus (3D)")
+        plt.tight_layout()
+        p3 = FIG_DIR / f"indiv_3d_{base}.png"
+        plt.savefig(p3)
+        plt.close()
+    return p2, p3
+
+
+# ----------------------------------------------------------------------
+def plot_modalities(col_coords: pd.DataFrame, base: str) -> tuple[Path, Path]:
+    p1 = p2 = None
+    if {"F1", "F2"}.issubset(col_coords.columns):
+        plt.figure(figsize=(12, 6), dpi=200)
+        var_names = [m.split("__", 1)[0] if "__" in m else m for m in col_coords.index]
+        palette = plt.get_cmap("tab10")(np.linspace(0, 1, len(set(var_names))))
+        color_map = {v: palette[i] for i, v in enumerate(sorted(set(var_names)))}
+        for mod, var in zip(col_coords.index, var_names):
+            plt.scatter(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+        for mod, var in zip(col_coords.index, var_names):
+            plt.text(col_coords.loc[mod, "F1"], col_coords.loc[mod, "F2"], mod.replace("__", "="), fontsize=8)
+        plt.xlabel("F1"); plt.ylabel("F2")
+        plt.title("MCA – modalités (F1–F2)")
+        plt.tight_layout()
+        p1 = FIG_DIR / f"modalities_{base}.png"
+        plt.savefig(p1)
+        plt.close()
+        # Zoom on near-origin modalities
+        radius = np.sqrt(col_coords["F1"] ** 2 + col_coords["F2"] ** 2)
+        thresh = radius.quantile(0.1)
+        near = col_coords[radius <= thresh]
+        if not near.empty:
+            plt.figure(figsize=(12, 6), dpi=200)
+            for mod, var in zip(near.index, [m.split("__", 1)[0] if "__" in m else m for m in near.index]):
+                plt.scatter(near.loc[mod, "F1"], near.loc[mod, "F2"], color=color_map[var], s=20, alpha=0.7)
+                plt.text(near.loc[mod, "F1"], near.loc[mod, "F2"], mod.replace("__", "="), fontsize=8)
+            plt.xlabel("F1"); plt.ylabel("F2")
+            plt.title("MCA – modalités proches (zoom)")
+            plt.tight_layout()
+            p2 = FIG_DIR / f"modalities_zoom_{base}.png"
+            plt.savefig(p2)
+            plt.close()
+    return p1, p2
+
+
+# ----------------------------------------------------------------------
+def save_csvs(base: str, inertia: np.ndarray, row_coords: pd.DataFrame, col_coords: pd.DataFrame, contrib: pd.DataFrame) -> None:
+    df_var = pd.DataFrame({
+        "axe": [f"F{i+1}" for i in range(len(inertia))],
+        "variance_%": inertia * 100,
+    })
+    df_var["variance_cum_%"] = df_var["variance_%"].cumsum()
+    df_var.to_csv(CSV_DIR / f"explained_inertia_{base}.csv", index=False)
+    row_coords.to_csv(CSV_DIR / f"individuals_coords_{base}.csv", index=True)
+    col_coords.to_csv(CSV_DIR / f"modalities_coords_{base}.csv", index=True)
+    contrib.to_csv(CSV_DIR / f"modalities_contrib_{base}.csv", index=True)
+
+
+# ----------------------------------------------------------------------
+def assemble_pdf(figures: list[Path], pdf_path: Path) -> None:
+    with PdfPages(pdf_path) as pdf:
+        for fig_path in figures:
+            if not fig_path or not fig_path.exists():
                 continue
-            df[col] = series.astype(float)
-            quantitative_vars.append(col)
-        else:
-            series = df[col].astype("category")
-            unique_ratio = series.nunique(dropna=False) / len(series)
-            if unique_ratio > 0.8:
-                logger.warning("Variable textuelle '%s' exclue", col)
-                continue
-            counts = series.value_counts(dropna=False)
-            if len(series) < min_modalite_freq:
-                threshold = 0  # no grouping on tiny samples
-            else:
-                threshold = min_modalite_freq
-            rares = counts[counts < threshold].index
-            if len(rares) > 0:
+            img = plt.imread(fig_path)
+            fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+            ax.imshow(img)
+            ax.axis("off")
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+
+# ----------------------------------------------------------------------
+def main() -> None:
+    args = parse_args()
+    global INPUT_FILES, OUTPUT_ROOT
+    INPUT_FILES = [args.phase1, args.phase2, args.phase3]
+    OUTPUT_ROOT = Path(args.output)
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    ensure_dirs()
+    df = load_inputs(INPUT_FILES)
+
+    results = []
+    all_figs: list[Path] = []
+
+    for n_comp in [5, 10, 15]:
+        for normalize in [True, False]:
+            corr = "benzecri" if normalize else None
+            for n_iter in [3, 5, 10]:
+                base = f"n{n_comp}_norm{normalize}_iter{n_iter}"
+                logging.info("Running MCA %s", base)
+                start = time.perf_counter()
+                mca = prince.MCA(n_components=n_comp, n_iter=n_iter, correction=corr, random_state=None)
+                mca = mca.fit(df)
+                duration = time.perf_counter() - start
+
+                inertia = mca.eigenvalues_ / mca.eigenvalues_.sum()
+                rows = mca.row_coordinates(df)
+                cols = mca.column_coordinates(df)
+                cols.index = cols.index.str.replace("__", "=")
+                rows.columns = [f"F{i+1}" for i in range(rows.shape[1])]
+                cols.columns = [f"F{i+1}" for i in range(cols.shape[1])]
+                contrib = compute_contributions(cols)
+
+                # Save CSV
+                save_csvs(base, inertia, rows, cols, contrib)
+
+                # Figures
+                fig_paths = []
+                fig_paths.append(plot_scree_mca(inertia, base))
+                fig_path = plot_correlation(cols, base, ("F1", "F2"))
+                if fig_path:
+                    fig_paths.append(fig_path)
+                if "F3" in cols.columns:
+                    fig_paths.append(plot_correlation(cols, base, ("F1", "F3")))
+                indiv2d, indiv3d = plot_individuals(rows, df, base)
+                mod, mod_zoom = plot_modalities(cols, base)
+                fig_paths.extend([indiv2d, indiv3d, mod, mod_zoom])
+                all_figs.extend([p for p in fig_paths if p])
+
+                results.append({
+                    "n_components": n_comp,
+                    "normalize": normalize,
+                    "n_iter": n_iter,
+                    "explained_variance_cum": float(np.cumsum(inertia)[-1]),
+                    "time_seconds": duration,
+                })
+
+    assemble_pdf(all_figs, OUTPUT_ROOT / "mca_fine_tuning_results.pdf")
+    df_res = pd.DataFrame(results)
+    df_res.to_csv(OUTPUT_ROOT / "tuning_report.csv", index=False)
+
+    if not df_res.empty:
+        best_row = df_res.sort_values("explained_variance_cum", ascending=False).iloc[0]
+        best = {
+            "method": "MCA",
+            "params": {
+                "n_components": int(best_row["n_components"]),
+                "normalize": bool(best_row["normalize"]),
+                "n_iter": int(best_row["n_iter"]),
+            },
+        }
+        with open(OUTPUT_ROOT / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best, fh, indent=2)
+
+    logging.info("Fine-tuning MCA complete")
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""Fine-tuning UMAP on the cleaned CRM dataset."""
+
+
+import argparse
+import logging
+import pickle
+from pathlib import Path
+import json
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+import umap
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune UMAP")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+DATA_PATH = Path()
+OUTPUT_DIR = Path()
+RANDOM_STATE = None
+
+
+def setup_logger() -> logging.Logger:
+    logger = logging.getLogger("fine_tuning_umap")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        fmt = "%(asctime)s - %(levelname)s - %(message)s"
+        handler.setFormatter(logging.Formatter(fmt))
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    return logger
+
+
+def load_and_preprocess(df: pd.DataFrame) -> np.ndarray:
+    """Impute, encode and scale the dataframe."""
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    categorical_cols = df.select_dtypes(exclude="number").columns.tolist()
+
+    num_imputer = SimpleImputer(strategy="mean")
+    cat_imputer = SimpleImputer(strategy="most_frequent")
+    X_num = num_imputer.fit_transform(df[numeric_cols])
+    X_cat = cat_imputer.fit_transform(df[categorical_cols])
+    for i, col in enumerate(categorical_cols):
+        if df[col].dtype == "bool":
+            X_cat[:, i] = X_cat[:, i].astype(str)
+
+    try:
+        encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # for older scikit-learn
+        encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = encoder.fit_transform(X_cat)
+
+    scaler = StandardScaler()
+    X_num = scaler.fit_transform(X_num)
+
+    X = np.hstack([X_num, X_cat])
+    return X
+
+
+def grid_search_umap(X: np.ndarray, logger: logging.Logger):
+    param_grid = {
+        "n_neighbors": [5, 10, 15, 30],
+        "min_dist": [0.1, 0.3, 0.5],
+        "metric": ["euclidean", "cosine"],
+    }
+    results = []
+    best = None
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    for nn in param_grid["n_neighbors"]:
+        for md in param_grid["min_dist"]:
+            for metric in param_grid["metric"]:
                 logger.info(
-                    "%d modalités rares dans '%s' regroupées en 'Autre'",
-                    len(rares),
-                    col,
+                    "Training UMAP: n_neighbors=%d, min_dist=%.2f, metric=%s",
+                    nn,
+                    md,
+                    metric,
                 )
-                if "Autre" not in series.cat.categories:
-                    series = series.cat.add_categories(["Autre"])
-                series = series.apply(lambda x: "Autre" if x in rares else x).astype("category")
-            if series.nunique(dropna=False) <= 1:
-                logger.warning("Variable qualitative '%s' exclue", col)
-                continue
-            df[col] = series
-            qualitative_vars.append(col)
+                kwargs = dict(n_neighbors=nn, min_dist=md, metric=metric)
+                if RANDOM_STATE is not None:
+                    kwargs["random_state"] = RANDOM_STATE
+                reducer = umap.UMAP(**kwargs)
+                emb = reducer.fit_transform(X)
+                labels = KMeans(n_clusters=5, random_state=RANDOM_STATE).fit_predict(emb)
+                score = silhouette_score(emb, labels)
+                logger.info("Silhouette: %.3f", score)
+                results.append({
+                    "n_neighbors": nn,
+                    "min_dist": md,
+                    "metric": metric,
+                    "silhouette": score,
+                })
+                emb_path = OUTPUT_DIR / f"embeddings_nn{nn}_dist{md}_metric{metric}.csv"
+                pd.DataFrame(emb, columns=["UMAP1", "UMAP2"]).to_csv(emb_path, index=False)
+                if best is None or score > best[0]:
+                    best = (score, nn, md, metric)
 
-    df_active = df[quantitative_vars + qualitative_vars].copy()
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(OUTPUT_DIR / "grid_search_scores.csv", index=False)
 
-    if quantitative_vars:
-        scaler = StandardScaler()
-        df_active[quantitative_vars] = scaler.fit_transform(df_active[quantitative_vars])
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x="silhouette", y=results_df.index, data=results_df, orient="h")
+    plt.yticks(
+        results_df.index,
+        [f"nn={r['n_neighbors']}, md={r['min_dist']}, {r['metric']}" for r in results],
+    )
+    plt.xlabel("Silhouette score")
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / "silhouette_scores.png")
+    plt.close()
 
-    for col in qualitative_vars:
-        df_active[col] = df_active[col].astype("category")
+    return best
 
-    logger.info("DataFrame actif avec %d variables", len(df_active.columns))
-    return df_active, quantitative_vars, qualitative_vars
 
+def export_scatter(embedding: np.ndarray, df: pd.DataFrame, column: str):
+    if column not in df.columns:
+        return
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=embedding[:, 0], y=embedding[:, 1], hue=df[column], s=10, alpha=0.7)
+    plt.title(f"UMAP colored by {column}")
+    plt.tight_layout()
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.savefig(OUTPUT_DIR / f"umap_{column}.png")
+    plt.close()
+
+
+def main() -> None:
+    args = parse_args()
+    global DATA_PATH, OUTPUT_DIR
+    DATA_PATH = Path(args.input)
+    OUTPUT_DIR = Path(args.output)
+
+    logger = setup_logger()
+    if not DATA_PATH.exists():
+        logger.error("File not found: %s", DATA_PATH)
+        return
+    df = pd.read_csv(DATA_PATH)
+    logger.info("Dataset loaded: %d rows x %d columns", df.shape[0], df.shape[1])
+    X = load_and_preprocess(df)
+    best = grid_search_umap(X, logger)
+    if best is None:
+        logger.error("No UMAP result")
+        return
+    score, nn, md, metric = best
+    logger.info(
+        "Best parameters: n_neighbors=%d, min_dist=%.2f, metric=%s (silhouette=%.3f)",
+        nn,
+        md,
+        metric,
+        score,
+    )
+    kwargs = dict(n_neighbors=nn, min_dist=md, metric=metric)
+    if RANDOM_STATE is not None:
+        kwargs["random_state"] = RANDOM_STATE
+    final_model = umap.UMAP(**kwargs)
+    embedding = final_model.fit_transform(X)
+    pd.DataFrame(embedding, columns=["UMAP1", "UMAP2"]).to_csv(
+        OUTPUT_DIR / "umap_embeddings.csv", index=False
+    )
+    with open(OUTPUT_DIR / "umap_model.pkl", "wb") as f:
+        pickle.dump(final_model, f)
+
+    best = {
+        "method": "UMAP",
+        "params": {
+            "n_neighbors": int(nn),
+            "min_dist": float(md),
+            "metric": metric,
+            "n_components": 2,
+        },
+    }
+    with open(OUTPUT_DIR / "best_params.json", "w", encoding="utf-8") as fh:
+        json.dump(best, fh, indent=2)
+
+    for col in ["Pilier", "Sous-catégorie", "Catégorie", "Statut commercial"]:
+        export_scatter(embedding, df, col)
+
+    logger.info("UMAP fine-tuning complete")
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""Grid search fine-tuning for PaCMAP on cleaned CRM data."""
+
+
+import argparse
+import itertools
+import inspect
+import time
+from pathlib import Path
+import json
+
+import joblib
+import pandas as pd
+from sklearn.manifold import trustworthiness
+from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+import pacmap
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+try:
+    pacmap.PaCMAP(init="pca")
+    _PACMAP_HAS_INIT = True
+except TypeError:  # pragma: no cover - older pacmap
+    _PACMAP_HAS_INIT = False
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PaCMAP")
+    parser.add_argument("--input", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+
+def prepare_dataset(path: Path) -> tuple[pd.DataFrame, list[str], list[str], pd.Series]:
+    """Load CSV and return processed dataset with target column."""
+
+    df = pd.read_csv(path)
+
+    # convert object columns to categories
+    for col in df.select_dtypes(include="object"):
+        df[col] = df[col].astype("category")
+
+    df_active, quant_vars, qual_vars = select_variables(df)
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+
+    y = df_active["Statut commercial"].astype("category") if "Statut commercial" in df_active.columns else pd.Series()
+
+    return df_active, quant_vars, qual_vars, y
+
+
+def preprocess(df: pd.DataFrame, quant_vars: list[str], qual_vars: list[str]):
+    """Return scaled numeric and encoded categorical matrix."""
+
+    X_num = StandardScaler().fit_transform(df[quant_vars]) if quant_vars else pd.DataFrame()
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # older scikit-learn
+        enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+    X_cat = enc.fit_transform(df[qual_vars]) if qual_vars else pd.DataFrame()
+
+    import numpy as np
+
+    if quant_vars and qual_vars:
+        X = np.hstack([X_num, X_cat])
+    elif quant_vars:
+        X = X_num
+    else:
+        X = X_cat
+    return X
+
+
+def main() -> None:
+    args = parse_args()
+    input_file = Path(args.input)
+    out_dir = Path(args.output)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = out_dir / "figures"
+    fig_dir.mkdir(exist_ok=True)
+
+    df_active, quant_vars, qual_vars, y = prepare_dataset(input_file)
+    X = preprocess(df_active, quant_vars, qual_vars)
+
+    results = []
+    generated_files = []
+
+    supports_init = "init" in inspect.signature(pacmap.PaCMAP).parameters
+    param_grid = {
+        "n_neighbors": [5, 15, 30, 50],
+        "MN_ratio": [0.5, 1.0, 2.0],
+        "n_components": [2, 3],
+    }
+    has_init = "init" in pacmap.PaCMAP.__init__.__code__.co_varnames
+    if has_init:
+        param_grid["init"] = ["pca", "random"]
+
+    iter_args = [param_grid["n_neighbors"], param_grid["MN_ratio"], param_grid["n_components"]]
+    if has_init:
+        iter_args.append(param_grid["init"])
+    for combo in itertools.product(*iter_args):
+        if has_init:
+            nn, mn, nc, ini = combo
+        else:
+            nn, mn, nc = combo
+            ini = None
+        start = time.time()
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=None)
+        if has_init:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
+        embedding = model.fit_transform(X)
+        runtime = time.time() - start
+
+        tw = trustworthiness(X, embedding)
+        ct = trustworthiness(embedding, X)
+        acc = float(
+            cross_val_score(
+                KNeighborsClassifier(n_neighbors=5),
+                embedding,
+                y,
+                cv=5,
+            ).mean()
+        )
+
+        rec = {
+            "n_neighbors": nn,
+            "MN_ratio": mn,
+            "n_components": nc,
+            "trustworthiness": tw,
+            "continuity": ct,
+            "knn_accuracy": acc,
+            "runtime_s": runtime,
+        }
+        if ini is not None:
+            rec["init"] = ini
+        results.append(rec)
+
+    metrics_df = pd.DataFrame(results)
+    metrics_path = out_dir / "pacmap_tuning_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+    generated_files.append(metrics_path)
+
+    if not metrics_df.empty:
+        best_row = metrics_df.sort_values("trustworthiness", ascending=False).iloc[0]
+        best_params = {
+            "method": "PaCMAP",
+            "params": {
+                "n_neighbors": int(best_row["n_neighbors"]),
+                "MN_ratio": float(best_row["MN_ratio"]),
+                "n_components": int(best_row["n_components"]),
+            },
+        }
+        if "init" in best_row:
+            best_params["params"]["init"] = best_row["init"]
+        with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best_params, fh, indent=2)
+
+    # Select best two configs by trustworthiness
+    top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)
+
+    for _, row in top.iterrows():
+        nn = int(row["n_neighbors"])
+        mn = float(row["MN_ratio"])
+        nc = int(row["n_components"])
+        ini = row.get("init") if has_init else None
+        kwargs = dict(n_components=nc, n_neighbors=nn, MN_ratio=mn, FP_ratio=2.0, random_state=None)
+        if has_init:
+            kwargs["init"] = ini
+        model = pacmap.PaCMAP(**kwargs)
+        embedding = model.fit_transform(X)
+
+        # Save coordinates
+        coord_df = pd.DataFrame(
+            embedding,
+            index=df_active.index,
+            columns=[f"PACMAP{i+1}" for i in range(nc)],
+        )
+        coords_path = out_dir / f"pacmap_coords_{nn}_{mn}_{nc}D.csv"
+        coord_df.to_csv(coords_path, index=True)
+        generated_files.append(coords_path)
+
+        # Save model
+        model_path = out_dir / f"pacmap_model_{nn}_{mn}_{nc}D.joblib"
+        joblib.dump(model, model_path)
+        generated_files.append(model_path)
+
+        # 2D scatter
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        if nc >= 2:
+            plt.figure(figsize=(12, 6), dpi=200)
+            cats = y.astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    coord_df.loc[mask, "PACMAP1"],
+                    coord_df.loc[mask, "PACMAP2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.xlabel("PACMAP1")
+            plt.ylabel("PACMAP2")
+            plt.title("PaCMAP - 2D")
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            fig_path = fig_dir / f"pacmap_{nn}_{mn}_2D.png"
+            plt.savefig(fig_path)
+            plt.close()
+            generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PACMAP1", "PACMAP2"]],
+                df_active,
+                fig_dir,
+                f"pacmap_{nn}_{mn}",
+            )
+
+        if nc >= 3:
+            from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+            fig = plt.figure(figsize=(12, 6), dpi=200)
+            ax = fig.add_subplot(111, projection="3d")
+            cats = y.astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                ax.scatter(
+                    coord_df.loc[mask, "PACMAP1"],
+                    coord_df.loc[mask, "PACMAP2"],
+                    coord_df.loc[mask, "PACMAP3"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            ax.set_xlabel("PACMAP1")
+            ax.set_ylabel("PACMAP2")
+            ax.set_zlabel("PACMAP3")
+            ax.set_title("PaCMAP - 3D")
+            ax.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            fig_path = fig_dir / f"pacmap_{nn}_{mn}_3D.png"
+            plt.savefig(fig_path)
+            plt.close()
+            generated_files.append(fig_path)
+
+    # Write index file
+    index_path = out_dir / "index_pacmap.txt"
+    with open(index_path, "w", encoding="utf-8") as f:
+        for p in generated_files:
+            f.write(str(Path(p).resolve()) + "\n")
+
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""Grid search fine-tuning for PHATE on cleaned CRM data."""
+
+
+import argparse
+import itertools
+import time
+from pathlib import Path
+import json
+
+import joblib
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.manifold import trustworthiness
+from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+import phate
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Fine tune PHATE")
+    parser.add_argument("--multi", required=True, help="Cleaned multivariate CSV")
+    parser.add_argument("--univ", required=False, help="Cleaned univariate CSV")
+    parser.add_argument("--output", required=True, help="Output directory")
+    return parser.parse_args()
+
+
+def prepare_dataset(path: Path) -> tuple[pd.DataFrame, list[str], list[str], pd.Series]:
+    """Load CSV and return processed dataset with target column."""
+
+    df = pd.read_csv(path)
+
+    for col in df.select_dtypes(include="object"):
+        df[col] = df[col].astype("category")
+
+    df_active, quant_vars, qual_vars = select_variables(df)
+    df_active = handle_missing_values(df_active, quant_vars, qual_vars)
+
+    y = (
+        df_active["Statut commercial"].astype("category")
+        if "Statut commercial" in df_active.columns
+        else pd.Series()
+    )
+
+    return df_active, quant_vars, qual_vars, y
+
+
+def preprocess(df: pd.DataFrame, quant_vars: list[str], qual_vars: list[str]) -> np.ndarray:
+    """Return scaled numeric and encoded categorical matrix."""
+
+    X_num = StandardScaler().fit_transform(df[quant_vars]) if quant_vars else pd.DataFrame()
+    try:
+        enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+    except TypeError:  # older scikit-learn
+        enc = OneHotEncoder(handle_unknown="ignore")
+    X_cat = enc.fit_transform(df[qual_vars]) if qual_vars else pd.DataFrame()
+
+    if quant_vars and qual_vars:
+        X = np.hstack([X_num, X_cat])
+    elif quant_vars:
+        X = X_num
+    else:
+        X = X_cat
+    return X
+
+
+# ---------------------------------------------------------------------------
+# Main logic
+
+
+def main() -> None:
+    args = parse_args()
+    input_file = Path(args.multi)
+    out_dir = Path(args.output)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = out_dir / "figures"
+    fig_dir.mkdir(exist_ok=True)
+
+    df_active, quant_vars, qual_vars, y = prepare_dataset(input_file)
+    X = preprocess(df_active, quant_vars, qual_vars)
+
+    # Parameter grid
+    param_grid = {
+        "n_components": [2, 3],
+        "knn": [5, 15, 30],
+        "t": [5, 20],
+        "decay": [10, 20],
+    }
+
+    results: list[dict[str, float | int]] = []
+    generated_files: list[Path] = []
+
+    combos = itertools.product(
+        param_grid["n_components"],
+        param_grid["knn"],
+        param_grid["t"],
+        param_grid["decay"],
+    )
+
+    for nc, nn, tt, dc in combos:
+        start = time.time()
+        model = phate.PHATE(
+            n_components=nc,
+            knn=nn,
+            t=tt,
+            decay=dc,
+            n_jobs=-1,
+            random_state=None,
+        )
+        emb = model.fit_transform(X)
+        runtime = time.time() - start
+
+        tw = trustworthiness(X, emb)
+        ct = trustworthiness(emb, X)
+        if not y.empty:
+            acc = float(
+                cross_val_score(KNeighborsClassifier(n_neighbors=5), emb, y, cv=5).mean()
+            )
+        else:
+            acc = float("nan")
+
+        results.append(
+            {
+                "n_components": nc,
+                "knn": nn,
+                "t": tt,
+                "decay": dc,
+                "trustworthiness": tw,
+                "continuity": ct,
+                "knn_accuracy": acc,
+                "runtime_s": runtime,
+            }
+        )
+
+    metrics_df = pd.DataFrame(results)
+    metrics_path = out_dir / "phate_tuning_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+    generated_files.append(metrics_path)
+
+    if not metrics_df.empty:
+        br = metrics_df.sort_values("trustworthiness", ascending=False).iloc[0]
+        best_params = {
+            "method": "PHATE",
+            "params": {
+                "n_components": int(br["n_components"]),
+                "knn": int(br["knn"]),
+                "t": int(br["t"]),
+                "decay": int(br["decay"]),
+            },
+        }
+        with open(out_dir / "best_params.json", "w", encoding="utf-8") as fh:
+            json.dump(best_params, fh, indent=2)
+
+    # Select best two configs by trustworthiness
+    top = metrics_df.sort_values("trustworthiness", ascending=False).head(2)
+
+    for _, row in top.iterrows():
+        nc = int(row["n_components"])
+        nn = int(row["knn"])
+        tt = int(row["t"])
+        dc = int(row["decay"])
+        model = phate.PHATE(
+            n_components=nc,
+            knn=nn,
+            t=tt,
+            decay=dc,
+            n_jobs=-1,
+            random_state=None,
+        )
+        embedding = model.fit_transform(X)
+
+        coord_df = pd.DataFrame(
+            embedding,
+            index=df_active.index,
+            columns=[f"PHATE{i+1}" for i in range(nc)],
+        )
+        coords_path = out_dir / f"phate_coords_{nc}D_knn{nn}_t{tt}_decay{dc}.csv"
+        coord_df.to_csv(coords_path, index=True)
+        generated_files.append(coords_path)
+
+        model_path = out_dir / f"phate_model_{nc}D_knn{nn}_t{tt}_decay{dc}.joblib"
+        joblib.dump(model, model_path)
+        generated_files.append(model_path)
+
+        if nc >= 2 and not y.empty:
+            plt.figure(figsize=(12, 6), dpi=200)
+            cats = y.astype("category")
+            palette = sns.color_palette("tab10", len(cats.cat.categories))
+            for cat, color in zip(cats.cat.categories, palette):
+                mask = cats == cat
+                plt.scatter(
+                    coord_df.loc[mask, "PHATE1"],
+                    coord_df.loc[mask, "PHATE2"],
+                    s=10,
+                    alpha=0.7,
+                    color=color,
+                    label=str(cat),
+                )
+            plt.xlabel("PHATE1")
+            plt.ylabel("PHATE2")
+            plt.title("PHATE - 2D")
+            plt.legend(title="Statut commercial", bbox_to_anchor=(1.05, 1), loc="upper left")
+            plt.tight_layout()
+            fig_path = fig_dir / f"phate_{nc}D_knn{nn}_t{tt}.png"
+            plt.savefig(fig_path)
+            plt.close()
+            generated_files.append(fig_path)
+
+            scatter_all_segments(
+                coord_df[["PHATE1", "PHATE2"]],
+                df_active,
+                fig_dir,
+                f"phate_{nc}D_knn{nn}_t{tt}",
+            )
+
+    index_path = out_dir / "index_phate.txt"
+    with open(index_path, "w", encoding="utf-8") as f:
+        for p in generated_files:
+            f.write(str(Path(p).resolve()) + "\n")
+
+
+if __name__ == "__main__":
+    main()
