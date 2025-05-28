@@ -114,11 +114,18 @@ def load_datasets(config: Optional[Mapping[str, Any]] = None) -> Dict[str, pd.Da
             df.shape[1],
         )
 
-    ref_cols = set(datasets["raw"].columns)
+    ref_cols = list(datasets["raw"].columns)
+    ref_set = set(ref_cols)
     for name, df in list(datasets.items()):
-        extra = set(df.columns) - ref_cols
-        if extra:
-            logger.debug("%s has %d additional columns", name, len(extra))
+        cols = set(df.columns)
+        missing = ref_set - cols
+        extra = cols - ref_set
+        if missing or extra:
+            raise ValueError(
+                f"{name} columns mismatch: missing {missing or None}, extra {extra or None}"
+            )
+        # reorder columns so all datasets share the same order
+        datasets[name] = df[ref_cols]
     return datasets
 
 # ---------------------------------------------------------------------------
