@@ -1276,12 +1276,14 @@ def run_phate(
     *,
     t: str | int = "auto",
     knn: int | None = None,
+    decay: int | None = None,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active``.
 
     The dataframe is encoded numerically via :func:`_encode_mixed` before
-    fitting PHATE.  The ``knn`` keyword is accepted as an alias for ``k``.
-    Returns an empty result if the library is unavailable.
+    fitting PHATE.  The ``knn`` keyword is accepted as an alias for ``k`` and
+    ``decay`` can be used as an alias for ``a``. Returns an empty result if the
+    library is unavailable.
     """
     global phate
     if phate is None:
@@ -1299,6 +1301,8 @@ def run_phate(
 
     if knn is not None:
         k = knn
+    if decay is not None:
+        a = decay
 
     start = time.perf_counter()
     X = _encode_mixed(df_active)
