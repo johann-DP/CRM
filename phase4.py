@@ -471,21 +471,11 @@ def run_pipeline_parallel(
     backend: str = "multiprocessing",
 ) -> Dict[str, Dict[str, Any]]:
     """Run :func:`run_pipeline` on several datasets in parallel."""
-
-    def _single(name: str) -> tuple[str, Dict[str, Any]]:
-        cfg = dict(config)
-        cfg["dataset"] = name
-        if "output_dir" in cfg:
-            base = Path(cfg["output_dir"])
-            cfg["output_dir"] = str(base / name)
-        if "output_pdf" in cfg:
-            pdf = Path(cfg["output_pdf"])
-            cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
-        return name, run_pipeline(cfg)
+    from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
     results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_single)(ds) for ds in datasets
+        delayed(_run_pipeline_single)(config, ds) for ds in datasets
     )
     return dict(results)
 
