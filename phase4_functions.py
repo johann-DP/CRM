@@ -1671,7 +1671,11 @@ from sklearn.cluster import KMeans
 
 
 def plot_correlation_circle(
-    factor_model: Any, quant_vars: Sequence[str], output_path: str | Path
+    factor_model: Any,
+    quant_vars: Sequence[str],
+    output_path: str | Path,
+    *,
+    coords: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Generate and save a correlation circle for ``factor_model``.
 
@@ -1683,10 +1687,19 @@ def plot_correlation_circle(
         Names of quantitative variables to include.
     output_path:
         Destination path for the created figure.
+    coords : pandas.DataFrame, optional
+        Pre-computed coordinates for the variables. When provided, the
+        ``factor_model`` is only used to extract the explained variance for the
+        title and may lack ``components_`` or ``column_correlations_``.
     """
 
-    if hasattr(factor_model, "column_correlations_"):
-        coords = pd.DataFrame(factor_model.column_correlations_, columns=["F1", "F2"])
+    if coords is not None:
+        coords = coords.loc[[v for v in quant_vars if v in coords.index], ["F1", "F2"]]
+    elif hasattr(factor_model, "column_correlations_"):
+        coords = pd.DataFrame(
+            factor_model.column_correlations_,
+            columns=["F1", "F2"],
+        )
         coords = coords.loc[[v for v in quant_vars if v in coords.index]]
     elif hasattr(factor_model, "components_"):
         comps = np.asarray(factor_model.components_, dtype=float)
@@ -1698,6 +1711,10 @@ def plot_correlation_circle(
             load = comps[:2].T
         coords = pd.DataFrame(load, index=names, columns=["F1", "F2"])
         coords = coords.loc[[v for v in quant_vars if v in coords.index]]
+    elif hasattr(factor_model, "column_coordinates_"):
+        tmp = pd.DataFrame(factor_model.column_coordinates_, copy=True)
+        tmp.columns = ["F" + str(i + 1) for i in range(tmp.shape[1])]
+        coords = tmp.loc[[v for v in quant_vars if v in tmp.index], ["F1", "F2"]]
     else:  # pragma: no cover - unexpected model type
         raise AttributeError("factor_model lacks components")
 
@@ -2101,7 +2118,9 @@ def generate_figures(
                 if output_dir
                 else Path(f"{method}_correlation.png")
             )
-            path = plot_correlation_circle(res["model"], quant_vars, dest)
+            path = plot_correlation_circle(
+                res["model"], quant_vars, dest, coords=qcoords
+            )
             figures[f"{method}_correlation"] = path
         inertia = res.get("inertia")
         if isinstance(inertia, pd.Series) and not inertia.empty:
