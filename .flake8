@@ -1,4 +1,4 @@
 [flake8]
 max-line-length = 120
 extend-ignore = E203,E266,W503
-exclude = old,phase2.py,phase3.py,phase4.py,phase4_fine_tune_phate.py,phase4_validation.py,phase4_functions.py
+exclude = old,phase2.py,phase3.py,phase4.py,phase4_functions.py
