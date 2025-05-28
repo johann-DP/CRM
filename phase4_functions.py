@@ -744,7 +744,6 @@ def run_pca(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    random_state: Optional[int] = 0,
     whiten: Optional[bool] = None,
     svd_solver: Optional[str] = None,
 ) -> Dict[str, object]:
@@ -764,8 +763,6 @@ def run_pca(
         not provided.
     variance_threshold : float, default ``0.8``
         Cumulative explained variance ratio threshold when ``optimize`` is true.
-    random_state : int, optional
-        Random state forwarded to :class:`sklearn.decomposition.PCA`.
     whiten : bool, optional
         If provided, sets the ``whiten`` parameter of :class:`~sklearn.decomposition.PCA`.
     svd_solver : str, optional
@@ -783,7 +780,7 @@ def run_pca(
     max_dim = min(X.shape)
 
     if optimize and n_components is None:
-        tmp = PCA(n_components=max_dim, random_state=random_state).fit(X)
+        tmp = PCA(n_components=max_dim).fit(X)
         n_components = _select_n_components(
             tmp.explained_variance_, threshold=variance_threshold
         )
@@ -795,7 +792,7 @@ def run_pca(
         kwargs["whiten"] = whiten
     if svd_solver is not None:
         kwargs["svd_solver"] = svd_solver
-    pca = PCA(n_components=n_components, random_state=random_state, **kwargs)
+    pca = PCA(n_components=n_components, **kwargs)
     emb = pca.fit_transform(X)
 
     inertia = pd.Series(
@@ -835,7 +832,6 @@ def run_mca(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    random_state: Optional[int] = 0,
     normalize: bool = True,
     n_iter: int = 3,
 ) -> Dict[str, object]:
@@ -854,8 +850,6 @@ def run_mca(
         Activate automatic selection of ``n_components`` when not provided.
     variance_threshold : float, default ``0.8``
         Cumulative inertia threshold when ``optimize`` is enabled.
-    random_state : int, optional
-        Random state passed to :class:`prince.MCA`.
     normalize : bool, default ``True``
         If ``True`` applies the Benzecri correction (``correction='benzecri'``).
     n_iter : int, default ``3``
@@ -868,7 +862,7 @@ def run_mca(
 
     if optimize and n_components is None:
         max_dim = sum(df_cat[c].nunique() - 1 for c in df_cat.columns)
-        tmp = prince.MCA(n_components=max_dim, random_state=random_state).fit(df_cat)
+        tmp = prince.MCA(n_components=max_dim).fit(df_cat)
         eig = getattr(tmp, "eigenvalues_", None)
         if eig is None:
             eig = np.asarray(_get_explained_inertia(tmp)) * max_dim
@@ -881,7 +875,6 @@ def run_mca(
         n_components=n_components,
         n_iter=n_iter,
         correction=corr,
-        random_state=random_state,
     )
     mca = mca.fit(df_cat)
 
@@ -914,7 +907,6 @@ def run_famd(
     *,
     optimize: bool = False,
     variance_threshold: float = 0.8,
-    random_state: Optional[int] = 0,
     weighting: Optional[str] = None,
     n_components_rule: Optional[str] = None,
 ) -> Dict[str, object]:
@@ -947,9 +939,7 @@ def run_famd(
 
     if optimize and n_components is None:
         max_dim = df_mix.shape[1]
-        tmp = prince.FAMD(
-            n_components=max_dim, n_iter=3, random_state=random_state
-        ).fit(df_mix)
+        tmp = prince.FAMD(n_components=max_dim, n_iter=3).fit(df_mix)
         eig = getattr(tmp, "eigenvalues_", None)
         if eig is None:
             eig = np.asarray(_get_explained_inertia(tmp)) * max_dim
@@ -957,7 +947,7 @@ def run_famd(
         logger.info("FAMD: selected %d components automatically", n_components)
 
     n_components = n_components or df_mix.shape[1]
-    famd = prince.FAMD(n_components=n_components, n_iter=3, random_state=random_state)
+    famd = prince.FAMD(n_components=n_components, n_iter=3)
     famd = famd.fit(df_mix)
 
     inertia = pd.Series(
@@ -1003,7 +993,6 @@ def run_mfa(
     optimize: bool = False,
     variance_threshold: float = 0.8,
     normalize: bool = True,
-    random_state: Optional[int] = 0,
     n_iter: int = 3,
 ) -> Dict[str, object]:
     """Run Multiple Factor Analysis.
@@ -1068,7 +1057,7 @@ def run_mfa(
 
     if optimize and n_components is None:
         max_dim = df_all.shape[1]
-        tmp = prince.MFA(n_components=max_dim, n_iter=n_iter, random_state=random_state)
+        tmp = prince.MFA(n_components=max_dim, n_iter=n_iter)
         tmp = tmp.fit(df_all, groups=groups_dict)
         eig = getattr(tmp, "eigenvalues_", None)
         if eig is None:
@@ -1079,9 +1068,7 @@ def run_mfa(
         logger.info("MFA: selected %d components automatically", n_components)
 
     n_components = n_components or 5
-    mfa = prince.MFA(
-        n_components=n_components, n_iter=n_iter, random_state=random_state
-    )
+    mfa = prince.MFA(n_components=n_components, n_iter=n_iter)
     mfa = mfa.fit(df_all, groups=groups_dict)
     mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
     embeddings = mfa.row_coordinates(df_all)
@@ -1196,7 +1183,7 @@ def run_umap(
     min_dist: float = 0.1,
     *,
     metric: str = "euclidean",
-    random_state: Optional[int] = 42,
+    n_jobs: int = -1,
 ) -> Dict[str, Any]:
     """Run UMAP on ``df_active`` and return model and embeddings.
 
@@ -1220,7 +1207,7 @@ def run_umap(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
         metric=metric,
-        random_state=random_state,
+        n_jobs=n_jobs,
     )
     embedding = reducer.fit_transform(X)
     runtime = time.perf_counter() - start
@@ -1249,7 +1236,6 @@ def run_phate(
     a: int = 40,
     *,
     t: str | int = "auto",
-    random_state: Optional[int] = 42,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active``.
 
@@ -1279,7 +1265,6 @@ def run_phate(
         decay=a,
         t=t,
         n_jobs=-1,
-        random_state=random_state,
         verbose=False,
     )
     embedding = op.fit_transform(X)
@@ -1300,7 +1285,6 @@ def run_pacmap(
     MN_ratio: float = 0.5,
     FP_ratio: float = 2.0,
     num_iters: Tuple[int, int, int] = (10, 10, 10),
-    random_state: Optional[int] = 42,
 ) -> Dict[str, Any]:
     """Run PaCMAP on ``df_active``.
 
@@ -1332,7 +1316,6 @@ def run_pacmap(
             MN_ratio=MN_ratio,
             FP_ratio=FP_ratio,
             num_iters=num_iters,
-            random_state=random_state,
             verbose=False,
             apply_pca=True,
         )
@@ -1393,6 +1376,7 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 
 from pathlib import Path
 from typing import Any, Dict, Sequence
+from joblib import Parallel, delayed
 
 import logging
 
@@ -1483,7 +1467,11 @@ def evaluate_methods(
     rows = []
     n_features = len(quant_vars) + len(qual_vars)
 
-    for method, info in results_dict.items():
+    logger = logging.getLogger(__name__)
+
+    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, Dict[str, Any]]:
+        method, info = item
+
         inertias = info.get("inertia")
         if inertias is None:
             inertias = []
@@ -1491,7 +1479,6 @@ def evaluate_methods(
             inertias = inertias.tolist()
         inertias = list(inertias)
 
-        logger = logging.getLogger(__name__)
         if inertias and inertias[0] > 0.5:
             logger.warning(
                 "Attention : l'axe F1 de %s explique %.1f%% de la variance",
@@ -1515,8 +1502,7 @@ def evaluate_methods(
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
         X_low = info["embeddings"].values
-        labels = KMeans(n_clusters=n_clusters, random_state=0).fit_predict(X_low)
-        info["cluster_labels"] = labels
+        labels = KMeans(n_clusters=n_clusters).fit_predict(X_low)
         if len(labels) <= n_clusters or len(set(labels)) < 2:
             sil = float("nan")
             dunn = float("nan")
@@ -1549,19 +1535,23 @@ def evaluate_methods(
             info.get("runtime_seconds") or info.get("runtime_s") or info.get("runtime")
         )
 
-        rows.append(
-            {
-                "method": method,
-                "variance_cumulee_%": cum_inertia,
-                "nb_axes_kaiser": kaiser,
-                "silhouette": sil,
-                "dunn_index": dunn,
-                "trustworthiness": T,
-                "continuity": C,
-                "runtime_seconds": runtime,
-            }
-        )
+        row = {
+            "method": method,
+            "variance_cumulee_%": cum_inertia,
+            "nb_axes_kaiser": kaiser,
+            "silhouette": sil,
+            "dunn_index": dunn,
+            "trustworthiness": T,
+            "continuity": C,
+            "runtime_seconds": runtime,
+        }
+        return method, labels, row
 
+    parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
+    rows = []
+    for method, labels, row in parallel_res:
+        results_dict[method]["cluster_labels"] = labels
+        rows.append(row)
     df_metrics = pd.DataFrame(rows).set_index("method")
     return df_metrics
 
@@ -2020,7 +2010,7 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                km = KMeans(n_clusters=cluster_k, random_state=0)
+                km = KMeans(n_clusters=cluster_k)
                 labels = km.fit_predict(emb.iloc[:, :2].values)
             k_used = len(np.unique(labels))
             title = (
@@ -2083,7 +2073,7 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                km = KMeans(n_clusters=cluster_k, random_state=0)
+                km = KMeans(n_clusters=cluster_k)
                 labels = km.fit_predict(emb.iloc[:, :2].values)
             k_used = len(np.unique(labels))
             title = (
@@ -2210,7 +2200,6 @@ def unsupervised_cv_and_temporal_tests(
     qual_vars: Sequence[str],
     *,
     n_splits: int = 5,
-    random_state: Optional[int] = None,
 ) -> Dict[str, Dict[str, float]]:
     """Assess stability of PCA/UMAP with cross-validation and temporal splits."""
 
@@ -2224,7 +2213,7 @@ def unsupervised_cv_and_temporal_tests(
         logger.warning("n_splits < 2; skipping cross-validation")
         kf = None
     else:
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        kf = KFold(n_splits=n_splits, shuffle=True)
 
     pca_axis_scores: list[float] = []
     pca_dist_scores: list[float] = []
@@ -2238,7 +2227,7 @@ def unsupervised_cv_and_temporal_tests(
         umap = None  # type: ignore
 
     if kf is not None:
-        for train_idx, test_idx in kf.split(df_active):
+        def _process_split(train_idx: np.ndarray, test_idx: np.ndarray) -> tuple[float, float, float, float]:
             df_train = df_active.iloc[train_idx]
             df_test = df_active.iloc[test_idx]
 
@@ -2246,28 +2235,37 @@ def unsupervised_cv_and_temporal_tests(
             X_test = _transform(df_test, quant_vars, qual_vars, scaler, encoder)
 
             n_comp = min(2, X_train.shape[1]) or 1
-            pca_train = PCA(n_components=n_comp, random_state=random_state).fit(X_train)
+            pca_train = PCA(n_components=n_comp).fit(X_train)
             emb_proj = pca_train.transform(X_test)
 
-            pca_test = PCA(n_components=n_comp, random_state=random_state)
+            pca_test = PCA(n_components=n_comp)
             emb_test = pca_test.fit_transform(X_test)
 
-            pca_axis_scores.append(
-                _axis_similarity(pca_train.components_, pca_test.components_)
-            )
-            pca_dist_scores.append(_distance_discrepancy(emb_proj, emb_test))
-            if pca_train.explained_variance_ratio_.size:
-                pca_var_ratio.append(float(pca_train.explained_variance_ratio_[0]))
+            axis_score = _axis_similarity(pca_train.components_, pca_test.components_)
+            dist_score = _distance_discrepancy(emb_proj, emb_test)
+            var_ratio = float(pca_train.explained_variance_ratio_[0]) if pca_train.explained_variance_ratio_.size else float("nan")
 
+            umap_score = float("nan")
             if umap is not None:
-                reducer_train = umap.UMAP(n_components=2, random_state=random_state)
+                reducer_train = umap.UMAP(n_components=2, n_jobs=-1)
                 reducer_train.fit(X_train)
                 emb_umap_proj = reducer_train.transform(X_test)
-                reducer_test = umap.UMAP(n_components=2, random_state=random_state)
+                reducer_test = umap.UMAP(n_components=2, n_jobs=-1)
                 emb_umap_test = reducer_test.fit_transform(X_test)
-                umap_dist_scores.append(
-                    _distance_discrepancy(emb_umap_proj, emb_umap_test)
-                )
+                umap_score = _distance_discrepancy(emb_umap_proj, emb_umap_test)
+
+            return axis_score, dist_score, var_ratio, umap_score
+
+        results = Parallel(n_jobs=-1)(
+            delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
+        )
+        for axis, dist, var, um in results:
+            pca_axis_scores.append(axis)
+            pca_dist_scores.append(dist)
+            if not np.isnan(var):
+                pca_var_ratio.append(var)
+            if not np.isnan(um):
+                umap_dist_scores.append(um)
 
     cv_stability = {
         "pca_axis_corr_mean": (
@@ -2309,10 +2307,10 @@ def unsupervised_cv_and_temporal_tests(
         X_new = _transform(df_new, quant_vars, qual_vars, scaler, encoder)
 
         n_comp = min(2, X_old.shape[1]) or 1
-        pca_old = PCA(n_components=n_comp, random_state=random_state).fit(X_old)
+        pca_old = PCA(n_components=n_comp).fit(X_old)
         emb_proj = pca_old.transform(X_new)
 
-        pca_new = PCA(n_components=n_comp, random_state=random_state)
+        pca_new = PCA(n_components=n_comp)
         emb_new = pca_new.fit_transform(X_new)
 
         axis_corr = _axis_similarity(pca_old.components_, pca_new.components_)
@@ -2325,10 +2323,10 @@ def unsupervised_cv_and_temporal_tests(
 
         umap_dist = float("nan")
         if umap is not None:
-            reducer_old = umap.UMAP(n_components=2, random_state=random_state)
+            reducer_old = umap.UMAP(n_components=2, n_jobs=-1)
             reducer_old.fit(X_old)
             emb_proj_umap = reducer_old.transform(X_new)
-            reducer_new = umap.UMAP(n_components=2, random_state=random_state)
+            reducer_new = umap.UMAP(n_components=2, n_jobs=-1)
             emb_new_umap = reducer_new.fit_transform(X_new)
             umap_dist = _distance_discrepancy(emb_proj_umap, emb_new_umap)
 

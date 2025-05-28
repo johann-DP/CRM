@@ -17,7 +17,7 @@ def generate_data(shift: float = 0.0, n: int = 200, seed: int = 0):
 def test_unsupervised_cv_temporal_keys_and_ranges():
     df = generate_data()
     res = pf.unsupervised_cv_and_temporal_tests(
-        df, ["num1", "num2"], ["cat"], n_splits=5, random_state=42
+        df, ["num1", "num2"], ["cat"], n_splits=5
     )
 
     cv = res["cv_stability"]
@@ -53,10 +53,10 @@ def test_unsupervised_cv_temporal_detects_shift():
     df_shift = generate_data(shift=3.0)
 
     res_ref = pf.unsupervised_cv_and_temporal_tests(
-        df_ref, ["num1", "num2"], ["cat"], n_splits=5, random_state=42
+        df_ref, ["num1", "num2"], ["cat"], n_splits=5
     )
     res_shift = pf.unsupervised_cv_and_temporal_tests(
-        df_shift, ["num1", "num2"], ["cat"], n_splits=5, random_state=42
+        df_shift, ["num1", "num2"], ["cat"], n_splits=5
     )
 
     assert res_shift["temporal_shift"]["pca_mean_shift"] > res_ref["temporal_shift"]["pca_mean_shift"] + 2
