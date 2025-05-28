@@ -758,6 +758,11 @@ def run_pca(
     """
     start = time.perf_counter()
     logger = logging.getLogger(__name__)
+    stds = df_active[quant_vars].std()
+    zero_std = stds[stds == 0].index.tolist()
+    if zero_std:
+        logger.warning("Variables constantes exclues du scaling : %s", zero_std)
+        quant_vars = [c for c in quant_vars if c not in zero_std]
 
     X = StandardScaler().fit_transform(df_active[quant_vars])
     max_dim = min(X.shape)
@@ -817,6 +822,7 @@ def run_mca(
     variance_threshold: float = 0.8,
     normalize: bool = True,
     n_iter: int = 3,
+    max_components: int = 10,
 ) -> Dict[str, object]:
     """Run Multiple Correspondence Analysis on qualitative variables.
 
@@ -839,27 +845,37 @@ def run_mca(
         Number of iterations for the underlying algorithm.
     """
     start = time.perf_counter()
-    logger = logging.getLogger(__name__)
 
     df_cat = df_active[qual_vars].astype("category")
 
-    if optimize and n_components is None:
-        max_dim = sum(df_cat[c].nunique() - 1 for c in df_cat.columns)
-        tmp = prince.MCA(n_components=max_dim).fit(df_cat)
-        eig = getattr(tmp, "eigenvalues_", None)
-        if eig is None:
-            eig = np.asarray(_get_explained_inertia(tmp)) * max_dim
-        n_components = _select_n_components(eig, threshold=variance_threshold)
-        logger.info("MCA: selected %d components automatically", n_components)
+    max_dim = sum(df_cat[c].nunique() - 1 for c in df_cat.columns)
+    max_limit = min(max_dim, max_components)
 
-    n_components = n_components or 5
-    corr = "benzecri" if normalize else None
     mca = prince.MCA(
-        n_components=n_components,
+        n_components=max_limit,
         n_iter=n_iter,
-        correction=corr,
-    )
-    mca = mca.fit(df_cat)
+        correction="benzecri" if normalize else None,
+    ).fit(df_cat)
+
+    if optimize and n_components is None:
+        ev = getattr(mca, "eigenvalues_", None)
+        if ev is None:
+            ev = np.asarray(mca.explained_inertia_) * len(mca.explained_inertia_)
+        components = [i + 1 for i, v in enumerate(ev) if v > 1.0]
+        if components:
+            n_components = min(max(components), max_limit)
+        else:
+            n_components = min(len(ev), max_limit)
+        logger.info("MCA: selected %d components automatically", n_components)
+    else:
+        n_components = n_components or max_limit
+
+    if n_components != mca.n_components:
+        mca = prince.MCA(
+            n_components=n_components,
+            n_iter=n_iter,
+            correction="benzecri" if normalize else None,
+        ).fit(df_cat)
 
     inertia = pd.Series(
         _get_explained_inertia(mca), index=[f"F{i+1}" for i in range(mca.n_components)]
@@ -910,7 +926,12 @@ def run_famd(
         )
 
     scaler = StandardScaler()
-    X_quanti = scaler.fit_transform(df_active[quant_vars])
+    stds = df_active[quant_vars].std()
+    zero_std = stds[stds == 0].index.tolist()
+    if zero_std:
+        logger.warning("Variables constantes exclues du scaling : %s", zero_std)
+        quant_vars = [c for c in quant_vars if c not in zero_std]
+    X_quanti = scaler.fit_transform(df_active[quant_vars]) if quant_vars else np.empty((len(df_active), 0))
     df_quanti = pd.DataFrame(X_quanti, index=df_active.index, columns=quant_vars)
     df_mix = pd.concat([df_quanti, df_active[qual_vars].astype("category")], axis=1)
 
@@ -967,7 +988,7 @@ def run_famd(
 
 def run_mfa(
     df_active: pd.DataFrame,
-    groups: Union[Mapping[str, Sequence[str]], Sequence[Sequence[str]]],
+    groups: Union[Mapping[str, Sequence[str]], Sequence[Sequence[str]]] | None = None,
     n_components: Optional[int] = None,
     *,
     segment_col: Optional[str] = None,
@@ -987,10 +1008,14 @@ def run_mfa(
     multiplying its (optionally normalised) columns by the specified factor.
     """
     start = time.perf_counter()
-    logger = logging.getLogger(__name__)
 
-    if segment_col is not None:
-        logger.info("MFA segment_col=%s ignored (not implemented)", segment_col)
+    if segment_col:
+        df_active = df_active.copy()
+        df_active["__segment__"] = df_active[segment_col]
+        groups = [[c for c in df_active.columns if c != "__segment__"], ["__segment__"]]
+
+    if groups is None:
+        groups = [df_active.columns.tolist()]
 
     if isinstance(groups, Mapping):
         group_names = list(groups.keys())
@@ -1059,14 +1084,28 @@ def run_mfa(
 
     if normalize:
         scaler = StandardScaler()
-        for name, cols in groups_dict.items():
-            if cols:
-                df_all[cols] = scaler.fit_transform(df_all[cols])
+        for name, cols in list(groups_dict.items()):
+            if not cols:
+                continue
+            stds = df_all[cols].std()
+            zero_std = stds[stds == 0].index.tolist()
+            if zero_std:
+                logger.warning("Variables constantes exclues du scaling : %s", zero_std)
+                cols = [c for c in cols if c not in zero_std]
+                df_all.drop(columns=zero_std, inplace=True)
+            if not cols:
+                del groups_dict[name]
+                continue
+            df_all[cols] = scaler.fit_transform(df_all[cols])
+            groups_dict[name] = cols
             w = weights_map.get(name)
             if w is not None and w != 1.0:
                 df_all[cols] = df_all[cols] * w
     else:
-        for name, cols in groups_dict.items():
+        for name, cols in list(groups_dict.items()):
+            if not cols:
+                del groups_dict[name]
+                continue
             w = weights_map.get(name)
             if w is not None and w != 1.0:
                 df_all[cols] = df_all[cols] * w
@@ -1081,9 +1120,12 @@ def run_mfa(
         n_components = _select_n_components(
             np.asarray(eig), threshold=variance_threshold
         )
+        max_limit = min(max_dim, 10)
+        n_components = min(n_components, max_limit)
         logger.info("MFA: selected %d components automatically", n_components)
 
-    n_components = n_components or 5
+    max_limit = min(df_all.shape[1], 10)
+    n_components = n_components or max_limit
     mfa = prince.MFA(n_components=n_components, n_iter=n_iter)
     mfa = mfa.fit(df_all, groups=groups_dict)
     mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
@@ -1156,6 +1198,13 @@ def _encode_mixed(df: pd.DataFrame) -> np.ndarray:
 
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+
+    if numeric_cols:
+        stds = df[numeric_cols].std()
+        zero_std = stds[stds == 0].index.tolist()
+        if zero_std:
+            logger.warning("Variables constantes exclues du scaling : %s", zero_std)
+            numeric_cols = [c for c in numeric_cols if c not in zero_std]
 
     X_num = (
         StandardScaler().fit_transform(df[numeric_cols])

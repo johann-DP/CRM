@@ -22,22 +22,17 @@ environment before executing the pipeline.
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import logging
-import random
+import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
-import os
 
-import datetime
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-
-from sklearn.preprocessing import StandardScaler
-
-import numpy as np
 import pandas as pd
 import yaml
+from matplotlib.backends.backend_pdf import PdfPages
 
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
