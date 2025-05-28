@@ -1218,7 +1218,7 @@ def run_umap(
     n_neighbors: int = 15,
     min_dist: float = 0.1,
     *,
-    metric: str = "euclidean",
+    metric: str | None = "euclidean",
     n_jobs: int = -1,
 ) -> Dict[str, Any]:
     """Run UMAP on ``df_active`` and return model and embeddings.
@@ -1237,6 +1237,9 @@ def run_umap(
 
     start = time.perf_counter()
     X = _encode_mixed(df_active)
+
+    if metric is None:
+        metric = "euclidean"
 
     reducer = umap.UMAP(
         n_components=n_components,
