@@ -42,6 +42,12 @@ def test_run_phate_knn_alias():
     assert res_knn["params"]["k"] == 3
 
 
+def test_run_phate_decay_alias():
+    df = sample_df()
+    res_decay = pf.run_phate(df, decay=5)
+    assert res_decay["params"]["a"] == 5
+
+
 def test_run_pacmap_basic():
     df = sample_df()
     res = pf.run_pacmap(df)
