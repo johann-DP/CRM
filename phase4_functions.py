@@ -994,7 +994,6 @@ def run_mfa(
     optimize: bool = False,
     variance_threshold: float = 0.8,
     normalize: bool = True,
-    weights: Optional[Union[Mapping[str, float], Sequence[float]]] = None,
     n_iter: int = 3,
 ) -> Dict[str, object]:
     """Run Multiple Factor Analysis.
