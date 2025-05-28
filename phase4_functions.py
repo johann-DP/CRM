@@ -1951,18 +1951,41 @@ def plot_scree(
 
 
 def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
-    """Return a bar plot of variable contributions to F1 and F2."""
+    """Return a bar plot of variable contributions to F1 and F2.
+
+    ``contrib`` is typically obtained from ``prince.FAMD.column_contributions``
+    and may have integer component labels.  The function is tolerant to the
+    number of components provided and only uses the first two.  When only one
+    component is present a zero-filled second component is added to avoid index
+    errors.
+    """
+
+    # Normalise column names to ``F1``/``F2`` ------------------------------
     if not {"F1", "F2"}.issubset(contrib.columns):
-        cols = contrib.columns[:2]
-        contrib = contrib.rename(columns={cols[0]: "F1", cols[1]: "F2"})
+        cols = list(contrib.columns[:2])
+        rename = {}
+        if cols:
+            rename[cols[0]] = "F1"
+        if len(cols) > 1:
+            rename[cols[1]] = "F2"
+        contrib = contrib.rename(columns=rename)
+    if "F2" not in contrib.columns:
+        contrib["F2"] = 0.0
+
+    # Aggregate contributions by variable --------------------------------
     grouped: dict[str, pd.Series] = {}
     for idx in contrib.index:
         var = idx.split("__", 1)[0]
         grouped.setdefault(var, pd.Series(dtype=float))
-        grouped[var] = grouped[var].add(contrib.loc[idx, ["F1", "F2"]], fill_value=0)
+        grouped[var] = grouped[var].add(
+            contrib.loc[idx, ["F1", "F2"]], fill_value=0
+        )
     df = pd.DataFrame(grouped).T.fillna(0)
+
+    # Order by total contribution and keep top ``n`` ---------------------
     sort_index = df.sum(axis=1).sort_values(ascending=False).index
     df = df.loc[sort_index].iloc[:n]
+
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     df[["F1", "F2"]].plot(kind="bar", ax=ax)
     ax.set_ylabel("% Contribution")
