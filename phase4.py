@@ -376,7 +376,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         metrics = pd.DataFrame()
     else:
         logging.info("Computing metrics...")
-        k_max = 3 if len(df_active) > 3 else 2
+        k_max = min(10, max(2, len(df_active) - 1))
         metrics = evaluate_methods(
             all_results,
             df_active,

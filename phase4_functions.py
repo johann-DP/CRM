@@ -637,13 +637,13 @@ def compare_datasets_versions(
             and not v["embeddings"].empty
         }
         all_results = {**factor_results, **cleaned_nonlin}
-        n_clusters = 3 if len(df_active) > 3 else 2
+        k_max = min(10, max(2, len(df_active) - 1))
         metrics = evaluate_methods(
             all_results,
             df_active,
             quant_vars,
             qual_vars,
-            k_range=range(2, n_clusters + 1),
+            k_range=range(2, k_max + 1),
         )
         metrics["dataset_version"] = name
         try:
@@ -1716,19 +1716,13 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
     annot = df_metrics.copy()
+    if "variance_cumulee_%" in annot:
+        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype(int)
+    if "nb_axes_kaiser" in annot:
+        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype(int)
     for col in annot.columns:
-        if col == "variance_cumulee_%":
-            annot[col] = annot[col].map(
-                lambda x: f"{int(round(x))}" if pd.notna(x) else ""
-            )
-        elif col == "nb_axes_kaiser":
-            annot[col] = annot[col].map(
-                lambda x: f"{int(x)}" if pd.notna(x) else ""
-            )
-        else:
-            annot[col] = annot[col].map(
-                lambda x: f"{x:.2f}" if pd.notna(x) else ""
-            )
+        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(
@@ -2200,7 +2194,7 @@ def generate_figures(
     qual_vars: List[str],
     output_dir: Optional[Path] = None,
     *,
-    cluster_k: int = 3,
+    cluster_k: int | None = None,
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -2208,8 +2202,10 @@ def generate_figures(
     ----------
     output_dir : Path or None, optional
         Directory where figures will be saved.
-    cluster_k : int, default ``3``
-        Maximum number of clusters tested when none are provided.
+    cluster_k : int or None, optional
+        If ``None``, the number of clusters is tuned automatically up to a
+        maximum of 10. Otherwise ``cluster_k`` is treated as the upper bound for
+        the search range.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
@@ -2234,8 +2230,10 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
+                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
                 labels, tuned_k = tune_kmeans_clusters(
-                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                    emb.iloc[:, :2].values,
+                    range(2, max_k + 1),
                 )
             k_used = len(np.unique(labels))
             title = (
@@ -2300,8 +2298,10 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
+                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
                 labels, tuned_k = tune_kmeans_clusters(
-                    emb.iloc[:, :2].values, range(2, cluster_k + 1)
+                    emb.iloc[:, :2].values,
+                    range(2, max_k + 1),
                 )
             k_used = len(np.unique(labels))
             title = (
