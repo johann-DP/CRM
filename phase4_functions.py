@@ -1146,9 +1146,14 @@ def run_umap(
     min_dist: float = 0.1,
     *,
     metric: str = "euclidean",
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = 42,
 ) -> Dict[str, Any]:
-    """Run UMAP on ``df_active`` and return model and embeddings."""
+    """Run UMAP on ``df_active`` and return model and embeddings.
+
+    The mixed-type dataframe is converted to a purely numeric matrix using
+    :func:`_encode_mixed` (standardising numeric columns and one-hot encoding
+    categoricals) before fitting UMAP.
+    """
     if umap is None:  # pragma: no cover - optional dependency may be absent
         logger.warning("UMAP is not installed; skipping")
         return {
@@ -1170,7 +1175,7 @@ def run_umap(
     embedding = reducer.fit_transform(X)
     runtime = time.perf_counter() - start
 
-    cols = [f"Dim{i + 1}" for i in range(n_components)]
+    cols = [f"U{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
 
     params = {
@@ -1194,11 +1199,12 @@ def run_phate(
     a: int = 40,
     *,
     t: str | int = "auto",
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = 42,
 ) -> Dict[str, Any]:
     """Run PHATE on ``df_active``.
 
-    Returns an empty result if PHATE is not installed.
+    The dataframe is encoded numerically via :func:`_encode_mixed` before
+    fitting PHATE.  Returns an empty result if the library is unavailable.
     """
     global phate
     if phate is None:
@@ -1224,7 +1230,7 @@ def run_phate(
     embedding = op.fit_transform(X)
     runtime = time.perf_counter() - start
 
-    cols = [f"Dim{i + 1}" for i in range(n_components)]
+    cols = [f"P{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
 
     params = {"n_components": n_components, "k": k, "a": a, "t": t}
@@ -1239,12 +1245,13 @@ def run_pacmap(
     MN_ratio: float = 0.5,
     FP_ratio: float = 2.0,
     num_iters: Tuple[int, int, int] = (10, 10, 10),
-    random_state: Optional[int] = None,
+    random_state: Optional[int] = 42,
 ) -> Dict[str, Any]:
     """Run PaCMAP on ``df_active``.
 
-    If PaCMAP is unavailable or fails, ``model`` is ``None`` and the embeddings
-    DataFrame is empty.
+    ``df_active`` is encoded to numeric form via :func:`_encode_mixed` prior to
+    fitting. If PaCMAP is unavailable or fails, ``model`` is ``None`` and the
+    returned embeddings are empty.
     """
     global pacmap
     if pacmap is None:
@@ -1276,7 +1283,7 @@ def run_pacmap(
         return {"model": None, "embeddings": pd.DataFrame(index=df_active.index), "params": {}}
 
     runtime = time.perf_counter() - start
-    cols = [f"Dim{i + 1}" for i in range(n_components)]
+    cols = [f"C{i + 1}" for i in range(n_components)]
     emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
     params.pop("verbose")
     params.pop("apply_pca")
