@@ -34,6 +34,10 @@ import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
     load_datasets,

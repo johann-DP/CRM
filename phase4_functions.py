@@ -18,6 +18,10 @@ from typing import Any, Dict, Mapping, Optional
 
 import pandas as pd
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 def _read_dataset(path: Path) -> pd.DataFrame:
     """Read a CSV or Excel file with basic type handling."""
