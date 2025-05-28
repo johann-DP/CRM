@@ -652,7 +652,6 @@ if __name__ == "__main__":  # pragma: no cover - manual testing helper
 This module implements standalone wrappers around ``scikit-learn`` and
 ``prince`` to run the main factorial analysis methods used in the project.
 The functions do not depend on other local modules so they can be reused
->>>>>>> master
 independently of ``phase4v2.py`` or the fine-tuning scripts.
 """
 
@@ -2601,7 +2600,7 @@ except Exception:  # pragma: no cover - missing legacy module
 try:
     from phase4v2 import run_mfa, export_mfa_results, load_data, prepare_data  # type: ignore
 except Exception:  # pragma: no cover - missing legacy module
-    run_mfa = export_mfa_results = load_data = None  # type: ignore
+    run_mfa_legacy = export_mfa_results = load_data = None  # type: ignore
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -2975,6 +2974,19 @@ def write_index(out_dir: Path) -> None:
 
 
 def main() -> None:
+    global pacmap, _PACMAP_HAS_INIT
+    if pacmap is None:
+        try:  # pragma: no cover - optional dependency
+            import pacmap as _pacmap  # type: ignore
+            pacmap = _pacmap
+            try:
+                pacmap.PaCMAP(init="pca")
+                _PACMAP_HAS_INIT = True
+            except TypeError:
+                _PACMAP_HAS_INIT = False
+        except Exception:
+            raise RuntimeError("pacmap is not installed")
+
     args = parse_args()
     data_path = args.input
     out_dir = Path(args.output)
@@ -3495,6 +3507,14 @@ def assemble_pdf(figures: list[Path], pdf_path: Path) -> None:
 
 # ----------------------------------------------------------------------
 def main() -> None:
+    global phate
+    if phate is None:
+        try:  # pragma: no cover - optional dependency
+            import phate as _phate  # type: ignore
+            phate = _phate
+        except Exception:
+            raise RuntimeError("phate is not installed")
+
     args = parse_args()
     global INPUT_FILES, OUTPUT_ROOT
     INPUT_FILES = [args.phase1, args.phase2, args.phase3]
@@ -3786,18 +3806,12 @@ from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-import pacmap
-
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-
-try:
-    pacmap.PaCMAP(init="pca")
-    _PACMAP_HAS_INIT = True
-except TypeError:  # pragma: no cover - older pacmap
-    _PACMAP_HAS_INIT = False
+pacmap = None
+_PACMAP_HAS_INIT = False
 
 
 def parse_args() -> argparse.Namespace:
@@ -4053,11 +4067,11 @@ from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
-import phate
-
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+phate = None
 
 
 # ---------------------------------------------------------------------------
