@@ -91,6 +91,13 @@ def _setup_logging(output_dir: Path, level: str = "INFO") -> logging.Logger:
     output_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(level)
+    # Remove existing handlers to avoid duplicate log lines when running the
+    # pipeline multiple times within the same process.
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        with suppress(Exception):
+            h.close()
+
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     file_handler = logging.FileHandler(output_dir / "phase4.log", encoding="utf-8")
     file_handler.setFormatter(fmt)
@@ -998,6 +1005,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     logging.info("Analysis complete")
+    logging.shutdown()
     return {
         "metrics": metrics,
         "figures": figures,
@@ -1058,6 +1066,7 @@ def run_pipeline_parallel(
         combined = pdf.with_name(f"{pdf.stem}_combined{pdf.suffix}")
         concat_pdf_reports(base_dir, combined)
 
+    logging.shutdown()
     return results
 
 
