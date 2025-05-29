@@ -1740,6 +1740,46 @@ def cluster_evaluation_metrics(
     return df, best_k
 
 
+def optimize_clusters(
+    method: str,
+    X: np.ndarray,
+    k_range: Iterable[int] = range(2, 16),
+) -> tuple[np.ndarray, int, pd.DataFrame]:
+    """Return labels and evaluation curves for ``method``.
+
+    Parameters
+    ----------
+    method : {"kmeans", "agglomerative", "gmm"}
+        Clustering algorithm to use.
+    X : array-like of shape (n_samples, n_features)
+        Input data to cluster.
+    k_range : iterable of int, default ``range(2, 16)``
+        Candidate numbers of clusters to evaluate.
+
+    Returns
+    -------
+    labels : ndarray of shape (n_samples,)
+        Cluster labels obtained with the optimal ``k``.
+    int
+        Value of ``k`` giving the best silhouette score.
+    pandas.DataFrame
+        Evaluation table as returned by :func:`cluster_evaluation_metrics`.
+    """
+
+    curves, best_k = cluster_evaluation_metrics(X, method, k_range)
+
+    if method == "kmeans":
+        labels = KMeans(n_clusters=best_k).fit_predict(X)
+    elif method == "agglomerative":
+        labels = AgglomerativeClustering(n_clusters=best_k).fit_predict(X)
+    elif method == "gmm":
+        labels = GaussianMixture(n_components=best_k, covariance_type="full").fit_predict(X)
+    else:  # pragma: no cover - defensive
+        raise ValueError(f"Unknown method '{method}'")
+
+    return labels, best_k, curves
+
+
 def dbscan_evaluation_metrics(
     X: np.ndarray,
     eps_values: Iterable[float],
@@ -2860,8 +2900,15 @@ def _factor_method_figures(
         figures[f"{method}_scatter_2d"] = fig
         _save(fig, f"{method}_scatter_2d")
         max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-        km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-        ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        km_labels, km_k, km_curve = optimize_clusters(
+            "kmeans", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
+        ag_labels, ag_k, ag_curve = optimize_clusters(
+            "agglomerative", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
+        gmm_labels, gmm_k, gmm_curve = optimize_clusters(
+            "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
         db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
 
         grid_fig = plot_cluster_grid(
@@ -2876,6 +2923,18 @@ def _factor_method_figures(
         )
         figures[f"{method}_cluster_comparison"] = grid_fig
         _save(grid_fig, f"{method}_cluster_comparison")
+
+        km_eval = plot_cluster_evaluation(km_curve, "kmeans")
+        figures[f"{method}_kmeans_silhouette"] = km_eval
+        _save(km_eval, f"{method}_kmeans_silhouette")
+
+        ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative")
+        figures[f"{method}_agglomerative_silhouette"] = ag_eval
+        _save(ag_eval, f"{method}_agglomerative_silhouette")
+
+        gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm")
+        figures[f"{method}_gmm_silhouette"] = gmm_eval
+        _save(gmm_eval, f"{method}_gmm_silhouette")
 
         labels = km_labels
         dist_fig = plot_cluster_distribution(
@@ -2971,8 +3030,15 @@ def _nonlin_method_figures(
         figures[f"{method}_scatter_2d"] = fig
         _save(fig, f"{method}_scatter_2d")
         max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-        km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-        ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        km_labels, km_k, km_curve = optimize_clusters(
+            "kmeans", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
+        ag_labels, ag_k, ag_curve = optimize_clusters(
+            "agglomerative", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
+        gmm_labels, gmm_k, gmm_curve = optimize_clusters(
+            "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
+        )
         db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
 
         grid_fig = plot_cluster_grid(
@@ -3114,6 +3180,7 @@ from scipy.spatial.distance import pdist
 __all__ = [
     "unsupervised_cv_and_temporal_tests",
     "cluster_evaluation_metrics",
+    "optimize_clusters",
     "dbscan_evaluation_metrics",
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
