@@ -2729,39 +2729,6 @@ def plot_cluster_scatter(
     return fig
 
 
-def plot_cluster_scatter_3d(
-    emb_df: pd.DataFrame, labels: np.ndarray, title: str
-) -> plt.Figure:
-    """Return a 3D scatter plot coloured by clusters."""
-    fig = plt.figure(figsize=(12, 6), dpi=200)
-    ax = fig.add_subplot(111, projection="3d")
-    unique = np.unique(labels)
-    try:
-        cmap = matplotlib.colormaps.get_cmap("tab10")
-    except AttributeError:  # pragma: no cover - older Matplotlib
-        cmap = matplotlib.cm.get_cmap("tab10")
-    n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
-    for i, lab in enumerate(unique):
-        mask = labels == lab
-        ax.scatter(
-            emb_df.loc[mask, emb_df.columns[0]],
-            emb_df.loc[mask, emb_df.columns[1]],
-            emb_df.loc[mask, emb_df.columns[2]],
-            s=10,
-            alpha=0.6,
-            color=cmap(i % n_colors),
-            label=str(lab),
-        )
-    handles, labels = ax.get_legend_handles_labels()
-    if labels:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
-    ax.set_xlabel(emb_df.columns[0])
-    ax.set_ylabel(emb_df.columns[1])
-    ax.set_zlabel(emb_df.columns[2])
-    ax.set_title(title)
-    ax.view_init(elev=20, azim=60)
-    fig.tight_layout()
-    return fig
 
 
 def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
