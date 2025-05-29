@@ -2312,11 +2312,11 @@ def plot_scree(
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    if method_name.upper() == "MFA":
-        n80 = int(np.searchsorted(cum, 0.8) + 1)
-        ax.axvline(n80, color="green", ls="--", lw=0.8, label="80% cumul")
-    else:
-        ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+
+    # The 80% cumulative inertia marker is shown as a horizontal line at 80
+    # percent.  For MFA this replaces a former vertical line placed at the
+    # component index where cumulative inertia reached 80%.
+    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
