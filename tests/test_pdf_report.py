@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
-from PyPDF2 import PdfReader
 from matplotlib.backends.backend_pdf import PdfPages
+from pathlib import Path
+from PyPDF2 import PdfReader
 from phase4 import build_pdf_report, concat_pdf_reports
 
 
@@ -27,6 +28,15 @@ def test_build_pdf_report(tmp_path):
     assert len(reader.pages) >= 5
 
 
+def _make_simple_pdf(path: Path, text: str) -> None:
+    with PdfPages(path) as pdf:
+        fig, ax = plt.subplots()
+        ax.axis("off")
+        ax.text(0.5, 0.5, text, ha="center", va="center")
+        pdf.savefig(fig)
+        plt.close(fig)
+
+
 def test_concat_pdf_reports(tmp_path):
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -38,22 +48,19 @@ def test_concat_pdf_reports(tmp_path):
         "phase4_report_cleaned_3_multi.pdf",
     ]
 
-    for name in names:
-        fig, ax = plt.subplots()
-        ax.plot([0, 1], [0, 1])
-        with PdfPages(out_dir / name) as pdf:
-            pdf.savefig(fig)
-        plt.close(fig)
+    for i, name in enumerate(names):
+        _make_simple_pdf(out_dir / name, str(i))
 
     seg_dir = out_dir / "old" / "segments"
     seg_dir.mkdir(parents=True)
     fig, ax = plt.subplots()
-    ax.plot([1, 2], [2, 1])
+    ax.plot([0, 1], [1, 0])
     fig.savefig(seg_dir / "seg.png")
     plt.close(fig)
 
     final_pdf = tmp_path / "final.pdf"
     concat_pdf_reports(out_dir, final_pdf)
 
+    assert final_pdf.exists() and final_pdf.stat().st_size > 0
     reader = PdfReader(str(final_pdf))
-    assert len(reader.pages) == 6
+    assert len(reader.pages) == len(names) + 1
