@@ -62,6 +62,7 @@ from phase4_functions import (
     run_pacmap,
     evaluate_methods,
     plot_methods_heatmap,
+    plot_general_heatmap,
     generate_figures,
     select_variables,
     unsupervised_cv_and_temporal_tests,
@@ -161,6 +162,8 @@ def build_pdf_report(
             desc = f"Segmentation K-means sur projection {method}"
         elif "scatter_3d" in suffix:
             desc = f"Nuage 3D – {method}"
+        elif "general_heatmap" in name:
+            desc = "Heatmap générale des métriques"
         else:
             desc = name
         return f"{dataset} – {desc}"
@@ -346,6 +349,10 @@ def build_pdf_report(
         heatmap_path = output_dir / "methods_heatmap.png"
         if heatmap_path.exists():
             _add_image(pdf, heatmap_path, dataset_order[0])
+
+        general_heatmap = output_dir / "general_heatmap.png"
+        if general_heatmap.exists():
+            _add_image(pdf, general_heatmap, "Synthèse")
 
         # Segment summary pages -------------------------------------------------
         def _add_segment_page(path: Path, title: str) -> None:
@@ -675,6 +682,14 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
         if path.exists():
             merger.append(str(path))
 
+    general_img = output_dir / "general_heatmap.png"
+    tmp_gen = None
+    if general_img.exists():
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_gen = Path(tmp.name)
+        _images_to_pdf([general_img], tmp_gen, "Synthèse générale des métriques")
+        merger.append(str(tmp_gen))
+
     segments_dir = output_dir / "old" / "segments"
     tmp_pdf = None
     if segments_dir.exists():
@@ -693,6 +708,9 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
     if tmp_pdf is not None:
         with suppress(OSError):
             os.remove(tmp_pdf)
+    if tmp_gen is not None:
+        with suppress(OSError):
+            os.remove(tmp_gen)
 
     return output_pdf
 
@@ -944,6 +962,18 @@ def run_pipeline_parallel(
         delayed(_run_pipeline_single)(config, ds) for ds in datasets
     )
     results = dict(results)
+
+    metrics_frames = []
+    for name, res in results.items():
+        df_m = res.get("metrics")
+        if isinstance(df_m, pd.DataFrame) and not df_m.empty:
+            df_m = df_m.reset_index().rename(columns={"index": "method"})
+            df_m["dataset"] = name
+            metrics_frames.append(df_m)
+
+    if metrics_frames:
+        all_metrics = pd.concat(metrics_frames, ignore_index=True)
+        plot_general_heatmap(all_metrics, Path(config.get("output_dir", "phase4_output")))
 
     if "output_pdf" in config:
         base_dir = Path(config.get("output_dir", "phase4_output"))

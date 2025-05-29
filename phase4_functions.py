@@ -2322,6 +2322,50 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
     plt.close(fig)
 
 
+def plot_general_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> None:
+    """Plot a heatmap comparing all datasets and methods."""
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    output = Path(output_path)
+    output.mkdir(parents=True, exist_ok=True)
+
+    if "dataset" not in df_metrics.columns:
+        raise ValueError("df_metrics must contain a 'dataset' column")
+
+    df = df_metrics.copy()
+    df["row"] = df["dataset"] + " – " + df["method"].str.upper()
+    df = df.set_index("row")
+    df_numeric = df.select_dtypes(include=[np.number])
+
+    norm = df_numeric.copy()
+    for col in norm.columns:
+        cmin, cmax = norm[col].min(), norm[col].max()
+        if pd.isna(cmin) or cmax == cmin:
+            norm[col] = 0.0
+        else:
+            norm[col] = (norm[col] - cmin) / (cmax - cmin)
+
+    annot = df_numeric.copy()
+    if "variance_cumulee_%" in annot:
+        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype("Int64")
+    if "nb_axes_kaiser" in annot:
+        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
+    for col in annot.columns:
+        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
+    sns.heatmap(norm, annot=annot, fmt="", cmap="coolwarm", vmin=0, vmax=1, ax=ax, cbar=False)
+    ax.set_title("Synthèse globale des métriques")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+    ax.set_ylabel("Dataset – Méthode")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    fig.savefig(output / "general_heatmap.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # visualization.py
 # ---------------------------------------------------------------------------

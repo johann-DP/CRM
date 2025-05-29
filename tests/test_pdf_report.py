@@ -36,12 +36,18 @@ def test_build_pdf_report(tmp_path):
     fig.savefig(comp_dir / "pca_analysis_summary.png")
     plt.close(fig)
 
+    fig, ax = plt.subplots()
+    ax.imshow([[0, 1], [1, 0]])
+    ax.axis("off")
+    fig.savefig(out_dir / "general_heatmap.png")
+    plt.close(fig)
+
     pdf_path = tmp_path / "report.pdf"
     build_pdf_report(out_dir, pdf_path, ["main", "v1"], {})
 
     assert pdf_path.exists() and pdf_path.stat().st_size > 0
     reader = PdfReader(str(pdf_path))
-    assert len(reader.pages) == 13
+    assert len(reader.pages) == 14
 
 
 def _make_simple_pdf(path: Path, text: str) -> None:
