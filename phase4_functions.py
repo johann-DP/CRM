@@ -2544,25 +2544,17 @@ def plot_cluster_grid(
     km_labels: np.ndarray,
     ag_labels: np.ndarray,
     db_labels: np.ndarray,
+    gmm_labels: np.ndarray,
     method: str,
     km_k: int,
     ag_k: int,
+    gmm_k: int,
     db_eps: float,
 ) -> plt.Figure:
     """Return a 2x2 grid comparing clustering algorithms."""
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 12), dpi=200)
     axes = axes.ravel()
-
-    # Baseline
-    axes[0].scatter(
-        emb_df.iloc[:, 0],
-        emb_df.iloc[:, 1],
-        s=10,
-        alpha=0.6,
-        color="tab:blue",
-    )
-    axes[0].set_title(f"{method.upper()} \u2013 No Clustering")
 
     def _plot(ax: plt.Axes, labels: np.ndarray, title: str) -> None:
         unique = np.unique(labels)
@@ -2587,19 +2579,24 @@ def plot_cluster_grid(
         ax.set_title(title)
 
     _plot(
-        axes[1],
+        axes[0],
         km_labels,
         f"{method.upper()} \u2013 K-Means (k={km_k})",
     )
     _plot(
-        axes[2],
+        axes[1],
         ag_labels,
         f"{method.upper()} \u2013 Agglomerative (n={ag_k})",
     )
     _plot(
-        axes[3],
+        axes[2],
         db_labels,
         f"{method.upper()} \u2013 DBSCAN (ε={db_eps:g})",
+    )
+    _plot(
+        axes[3],
+        gmm_labels,
+        f"{method.upper()} \u2013 Gaussian Mixture (k={gmm_k})",
     )
 
     for ax in axes:
@@ -2984,13 +2981,15 @@ def _factor_method_figures(
             km_labels,
             ag_labels,
             db_labels,
+            gmm_labels,
             method,
             km_k,
             ag_k,
+            gmm_k,
             db_eps,
         )
-        figures[f"{method}_cluster_comparison"] = grid_fig
-        _save(grid_fig, f"{method}_cluster_comparison")
+        figures[f"{method}_cluster_grid"] = grid_fig
+        _save(grid_fig, f"{method}_cluster_grid")
 
         km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
         ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
@@ -3135,11 +3134,15 @@ def _nonlin_method_figures(
             km_labels,
             ag_labels,
             db_labels,
+            gmm_labels,
             method,
             km_k,
             ag_k,
+            gmm_k,
             db_eps,
         )
+        figures[f"{method}_cluster_grid"] = grid_fig
+        _save(grid_fig, f"{method}_cluster_grid")
         labels = km_labels
         title = f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
         save_name = f"{method}_clusters_kmeans_k{km_k}"
