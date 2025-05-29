@@ -10,14 +10,30 @@ def test_build_pdf_report(tmp_path):
     (out_dir / "pca").mkdir(parents=True)
     fig, ax = plt.subplots()
     ax.plot([0, 1], [0, 1])
-    fig.savefig(out_dir / "pca" / "plot.png")
+    fig.savefig(out_dir / "pca" / "pca_scatter_2d.png")
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [1, 0])
+    fig.savefig(out_dir / "pca" / "pca_cluster_grid.png")
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    ax.plot([1, 0], [0, 1])
+    fig.savefig(out_dir / "pca" / "pca_analysis_summary.png")
     plt.close(fig)
 
     comp_dir = out_dir / "comparisons" / "v1" / "pca"
     comp_dir.mkdir(parents=True)
     fig, ax = plt.subplots()
     ax.plot([1, 0], [0, 1])
-    fig.savefig(comp_dir / "plot.png")
+    fig.savefig(comp_dir / "pca_scatter_2d.png")
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [1, 0])
+    fig.savefig(comp_dir / "pca_cluster_grid.png")
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [0, 1])
+    fig.savefig(comp_dir / "pca_analysis_summary.png")
     plt.close(fig)
 
     pdf_path = tmp_path / "report.pdf"
@@ -25,7 +41,7 @@ def test_build_pdf_report(tmp_path):
 
     assert pdf_path.exists() and pdf_path.stat().st_size > 0
     reader = PdfReader(str(pdf_path))
-    assert len(reader.pages) >= 5
+    assert len(reader.pages) == 9
 
 
 def _make_simple_pdf(path: Path, text: str) -> None:

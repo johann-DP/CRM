@@ -233,31 +233,89 @@ def build_pdf_report(
 
         segments_dir = output_dir / "old" / "segments"
 
-        def _add_cluster_grid(method_dir: Path, dataset: str) -> None:
-            patterns = [
-                ("scatter_2d", "Sans clustering"),
-                ("clusters_kmeans", "K-means"),
-                ("clusters_agglomerative", "Agglomerative"),
-                ("clusters_dbscan", "DBSCAN"),
-            ]
-            paths = []
-            for pat, _ in patterns:
-                candidates = sorted(method_dir.glob(f"*{pat}*.png"))
-                paths.append(candidates[0] if candidates else None)
-            if not any(p is not None for p in paths):
-                return
+        def _first_image(method_dir: Path, pattern: str) -> Path | None:
+            files = sorted(method_dir.glob(pattern))
+            return files[0] if files else None
 
-            fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
-            for ax, (path, (_, title)) in zip(axes.flat, zip(paths, patterns)):
-                if path is not None and path.exists():
-                    img = plt.imread(path)
-                    ax.imshow(img)
+        def _add_raw_scatter(method_dir: Path, dataset: str) -> None:
+            img2d = _first_image(method_dir, "*scatter_2d*.png")
+            if img2d is None:
+                return
+            img3d = _first_image(method_dir, "*scatter_3d*.png")
+            if img3d is None:
+                fig, ax = plt.subplots(figsize=(11, 8.5), dpi=200)
+                ax.imshow(plt.imread(img2d))
+                ax.axis("off")
+                fig.suptitle(
+                    f"{dataset} – {method_dir.name.upper()} – Nuages de points bruts",
+                    fontsize=12,
+                )
+            else:
+                fig, axes = plt.subplots(1, 2, figsize=(11, 8.5), dpi=200)
+                for ax, img in zip(axes, [img2d, img3d]):
+                    ax.imshow(plt.imread(img))
                     ax.axis("off")
-                    ax.set_title(title, fontsize=9)
-                else:
+                fig.suptitle(
+                    f"{dataset} – {method_dir.name.upper()} – Nuages de points bruts",
+                    fontsize=12,
+                )
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        def _add_cluster_page(method_dir: Path, dataset: str) -> None:
+            grid = _first_image(method_dir, "*cluster_grid*.png")
+            if grid is None:
+                grid = _first_image(method_dir, "*cluster_comparison*.png")
+            if grid is None:
+                pats = [
+                    "*clusters_kmeans*.png",
+                    "*clusters_agglomerative*.png",
+                    "*clusters_dbscan*.png",
+                    "*clusters_gmm*.png",
+                ]
+                imgs = [
+                    _first_image(method_dir, pat)
+                    for pat in pats
+                ]
+                if not any(imgs):
+                    return
+                fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
+                titles = ["K-means", "Agglomerative", "DBSCAN", "Gaussian Mixture"]
+                for ax, img, title in zip(axes.ravel(), imgs, titles):
+                    if img is not None and Path(img).exists():
+                        ax.imshow(plt.imread(img))
+                        ax.set_title(title, fontsize=9)
                     ax.axis("off")
-            fig.suptitle(f"Dataset: {dataset} – {method_dir.name.upper()}", fontsize=12)
-            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+                fig.suptitle(
+                    f"{dataset} – {method_dir.name.upper()} – Nuages clusterisés",
+                    fontsize=12,
+                )
+            else:
+                fig, ax = plt.subplots(figsize=(11, 8.5), dpi=200)
+                ax.imshow(plt.imread(grid))
+                ax.axis("off")
+                fig.suptitle(
+                    f"{dataset} – {method_dir.name.upper()} – Nuages clusterisés",
+                    fontsize=12,
+                )
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        def _add_analysis_page(method_dir: Path, dataset: str) -> None:
+            img = _first_image(method_dir, "*analysis_summary*.png")
+            if img is None:
+                return
+            data = plt.imread(img)
+            fig, ax = plt.subplots(figsize=(11, 8.5), dpi=200)
+            ax.imshow(data)
+            ax.axis("off")
+            fig.suptitle(
+                f"{dataset} – {method_dir.name.upper()} – Analyse détaillée",
+                fontsize=12,
+            )
+            fig.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)
 
@@ -278,19 +336,10 @@ def build_pdf_report(
 
             method_dirs = sorted(p for p in base_dir.iterdir() if p.is_dir())
             for method_dir in method_dirs:
-                _add_cluster_grid(method_dir, name)
-                for img in sorted(method_dir.glob("*.png")):
-                    if any(x in img.name for x in ["scatter_2d", "clusters_kmeans", "clusters_agglomerative", "clusters_dbscan"]):
-                        # already included in grid
-                        continue
-                    _add_image(pdf, img, name)
+                _add_raw_scatter(method_dir, name)
+                _add_cluster_page(method_dir, name)
+                _add_analysis_page(method_dir, name)
 
-            for img in sorted(base_dir.glob("*.png")):
-                if img.name == "methods_heatmap.png":
-                    continue
-                if segments_dir.exists() and img.is_relative_to(segments_dir):
-                    continue
-                _add_image(pdf, img, name)
 
         heatmap_path = output_dir / "methods_heatmap.png"
         if heatmap_path.exists():
