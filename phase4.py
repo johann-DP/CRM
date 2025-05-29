@@ -30,6 +30,7 @@ import os
 os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+import re
 import tempfile
 from contextlib import suppress
 
@@ -345,19 +346,66 @@ def build_pdf_report(
 # PDF concatenation helpers
 # ---------------------------------------------------------------------------
 
+def _derive_seg_titles(filename: str) -> tuple[str, str]:
+    """Return a title and caption for a segment figure filename."""
+    base = Path(filename).stem
+    m = re.match(r"(.*)_cluster_(\d+)$", base)
+    if m:
+        prefix, cluster = m.groups()
+        title = f"{prefix.replace('_', ' ').title()} – Cluster {cluster}"
+        caption = f"Distribution of segment assignments for cluster {cluster}"
+    else:
+        title = base.replace("_", " ").title()
+        caption = title
+    return title, caption
+
+
 def _images_to_pdf(images: Sequence[Path], pdf_path: Path) -> Path:
-    """Save all ``images`` into a simple PDF file."""
+    """Save ``images`` into ``pdf_path`` with titles and captions."""
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    with PdfPages(pdf_path) as pdf:
+
+    try:
+        from fpdf import FPDF  # type: ignore
+
+        pdf = FPDF(format="A4", unit="mm")
+        pdf.set_auto_page_break(auto=False)
         for img in images:
             if not img.exists():
                 continue
-            data = plt.imread(img)
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
-            ax.imshow(data)
-            ax.axis("off")
-            pdf.savefig(fig)
-            plt.close(fig)
+            title, caption = _derive_seg_titles(img.name)
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.cell(0, 10, txt=title, ln=1, align="C")
+            pdf.image(str(img), x=15, w=180)
+            pdf.set_y(-20)
+            pdf.set_font("Helvetica", size=10)
+            pdf.cell(0, 10, txt=caption, ln=1, align="C")
+        pdf.output(str(pdf_path))
+
+    except Exception:
+        with PdfPages(pdf_path) as pdf:
+            for img in images:
+                if not img.exists():
+                    continue
+                title, caption = _derive_seg_titles(img.name)
+                data = plt.imread(img)
+                fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+                ax.imshow(data)
+                ax.axis("off")
+                ax.set_title(title)
+                ax.text(
+                    0.5,
+                    -0.05,
+                    caption,
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="top",
+                    fontsize=10,
+                    color="gray",
+                )
+                pdf.savefig(fig)
+                plt.close(fig)
+
     return pdf_path
 
 
