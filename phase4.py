@@ -345,6 +345,27 @@ def build_pdf_report(
         if heatmap_path.exists():
             _add_image(pdf, heatmap_path, dataset_order[0])
 
+        # Segment summary pages -------------------------------------------------
+        def _add_segment_page(path: Path, title: str) -> None:
+            if path.exists():
+                img = plt.imread(path)
+                fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
+                ax.imshow(img)
+                ax.axis("off")
+                ax.set_title(title, fontsize=12)
+                fig.tight_layout()
+            else:
+                fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
+                ax.axis("off")
+                ax.text(0.5, 0.5, f"{title} (donn\xe9es manquantes)", ha="center", va="center", fontsize=12)
+            pdf.savefig(fig)
+            plt.close(fig)
+
+        seg1 = output_dir / "segment_summary_1.png"
+        seg2 = output_dir / "segment_summary_2.png"
+        _add_segment_page(seg1, "Synth\xe8se segmentaire 1")
+        _add_segment_page(seg2, "Synth\xe8se segmentaire 2")
+
         if tables:
             for tname, df in tables.items():
                 fig = _table_to_fig(df, tname)
