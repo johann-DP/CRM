@@ -1847,6 +1847,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from matplotlib.lines import Line2D
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -1910,14 +1911,30 @@ def plot_correlation_circle(
     # simplifies the visualisation.
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
-    circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
-    ax.add_patch(circle)
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
+        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
+        ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
+
     offset = 0.05 * scale
-    for var in coords.index:
+    palette = sns.color_palette("husl", len(coords))
+    handles: list[Line2D] = []
+    for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        ax.arrow(0, 0, x, y, head_width=0.02 * scale, length_includes_head=True, color="black")
+        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
+        ax.arrow(
+            0,
+            0,
+            x,
+            y,
+            head_width=0.02 * scale,
+            length_includes_head=True,
+            width=0.002 * scale,
+            linewidth=0.8,
+            color=color,
+            alpha=alpha,
+        )
         ax.text(
             x + (offset if x >= 0 else -offset),
             y + (offset if y >= 0 else -offset),
@@ -1926,6 +1943,15 @@ def plot_correlation_circle(
             ha="left" if x >= 0 else "right",
             va="bottom" if y >= 0 else "top",
         )
+        handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
+
+    ax.legend(
+        handles=handles,
+        loc="upper right",
+        bbox_to_anchor=(1.3, 1.0),
+        frameon=False,
+        fontsize="small",
+    )
     ax.set_xlim(-scale * 1.1, scale * 1.1)
     ax.set_ylim(-scale * 1.1, scale * 1.1)
     ax.set_xlabel("F1")
