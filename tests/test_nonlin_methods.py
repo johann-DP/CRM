@@ -80,4 +80,3 @@ def test_run_pacmap_missing(monkeypatch):
     res = pf.run_pacmap(df)
     assert res["model"] is None
     assert res["embeddings"].empty
-

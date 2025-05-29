@@ -24,4 +24,3 @@ def test_method_params_ignore_none():
     params = phase4._method_params("umap", cfg)
     assert params["metric"] == "cosine"
     assert params["n_neighbors"] == 30
-

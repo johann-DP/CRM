@@ -1813,17 +1813,48 @@ def dbscan_evaluation_metrics(
     return df, float(best_eps)
 
 
-def plot_cluster_evaluation(df: pd.DataFrame, method: str) -> plt.Figure:
-    """Plot silhouette and Dunn index curves for ``method``."""
+def plot_cluster_evaluation(
+    df: pd.DataFrame, method: str, k_opt: int | None = None
+) -> plt.Figure:
+    """Plot silhouette and Dunn index curves for ``method``.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Table returned by :func:`cluster_evaluation_metrics`.
+    method : str
+        Name of the clustering algorithm.
+    k_opt : int or None, optional
+        Value of ``k`` considered optimal. When provided, it is highlighted on
+        the silhouette curve.
+    """
 
     fig, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
     ax2 = ax1.twinx()
-    ax1.plot(df["k"], df["silhouette"], marker="o", color="tab:blue", label="Silhouette")
-    ax2.plot(df["k"], df["dunn_index"], marker="s", color="tab:orange", label="Dunn index")
+
+    ax1.plot(
+        df["k"],
+        df["silhouette"],
+        marker="o",
+        color="tab:blue",
+        label="Silhouette",
+    )
+    ax2.bar(
+        df["k"],
+        df["dunn_index"],
+        color="tab:orange",
+        alpha=0.3,
+        label="Dunn index",
+    )
+
+    if k_opt is not None and k_opt in df["k"].values:
+        ax1.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
+
     ax1.set_xlabel("k")
     ax1.set_ylabel("Silhouette")
     ax2.set_ylabel("Dunn index")
     ax1.set_title(f"Évaluation clustering – {method.upper()}")
+
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
@@ -1851,6 +1882,40 @@ def plot_combined_silhouette(
     handles, labels = ax.get_legend_handles_labels()
     if labels:
         ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_analysis_summary(
+    correlation: Path | plt.Figure | None,
+    scree: Path | plt.Figure | None,
+    silhouette: Path | plt.Figure | None,
+    contributions: Path | plt.Figure | None = None,
+) -> plt.Figure:
+    """Combine analysis figures into a single 2x2 layout."""
+
+    def _to_image(src: Path | plt.Figure | None) -> np.ndarray | None:
+        if src is None:
+            return None
+        if isinstance(src, (str, Path)):
+            return plt.imread(str(src))
+        buf = io.BytesIO()
+        src.savefig(buf, format="png", dpi=200)
+        buf.seek(0)
+        img = plt.imread(buf)
+        buf.close()
+        return img
+
+    imgs = [contributions, correlation, scree, silhouette]
+    imgs = [_to_image(i) for i in imgs]
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
+    for ax, img in zip(axes.ravel(), imgs):
+        if img is None:
+            ax.axis("off")
+            continue
+        ax.imshow(img)
+        ax.axis("off")
     fig.tight_layout()
     return fig
 
@@ -2086,6 +2151,7 @@ from matplotlib.lines import Line2D
 import pandas as pd
 import seaborn as sns
 import numpy as np
+import io
 from typing import Dict, Any, List, Optional, Sequence
 from sklearn.cluster import KMeans
 
@@ -2885,13 +2951,15 @@ def _factor_method_figures(
 ) -> Dict[str, plt.Figure]:
     figures: Dict[str, plt.Figure] = {}
 
-    def _save(fig: plt.Figure, name: str) -> None:
+    def _save(fig: plt.Figure, name: str) -> Optional[Path]:
         if out is None:
-            return
+            return None
         sub = out / method.lower()
         sub.mkdir(parents=True, exist_ok=True)
-        fig.savefig(sub / f"{name}.png", dpi=300)
+        path = sub / f"{name}.png"
+        fig.savefig(path, dpi=300)
         plt.close(fig)
+        return path
 
     emb = res.get("embeddings")
     if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
@@ -2924,16 +2992,18 @@ def _factor_method_figures(
         figures[f"{method}_cluster_comparison"] = grid_fig
         _save(grid_fig, f"{method}_cluster_comparison")
 
-        km_eval = plot_cluster_evaluation(km_curve, "kmeans")
+        km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
+        ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
+        gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
         figures[f"{method}_kmeans_silhouette"] = km_eval
-        _save(km_eval, f"{method}_kmeans_silhouette")
-
-        ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative")
         figures[f"{method}_agglomerative_silhouette"] = ag_eval
-        _save(ag_eval, f"{method}_agglomerative_silhouette")
-
-        gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm")
         figures[f"{method}_gmm_silhouette"] = gmm_eval
+
+        summary_fig = plot_analysis_summary(None, None, km_eval)
+        figures[f"{method}_analysis_summary"] = summary_fig
+        _save(summary_fig, f"{method}_analysis_summary")
+        _save(km_eval, f"{method}_kmeans_silhouette")
+        _save(ag_eval, f"{method}_agglomerative_silhouette")
         _save(gmm_eval, f"{method}_gmm_silhouette")
 
         labels = km_labels
@@ -2983,23 +3053,40 @@ def _factor_method_figures(
         dest = (
             out / method.lower() / f"{method}_correlation.png" if out else Path(f"{method}_correlation.png")
         )
-        path = plot_correlation_circle(
+        corr_path = plot_correlation_circle(
             res["model"], quant_vars, dest, coords=qcoords
         )
-        figures[f"{method}_correlation"] = path
+        figures[f"{method}_correlation"] = corr_path
     inertia = res.get("inertia")
     if isinstance(inertia, pd.Series) and not inertia.empty:
         dest = (
             out / method.lower() / f"{method}_scree.png" if out else Path(f"{method}_scree.png")
         )
-        path = plot_scree(inertia, method.upper(), dest)
-        figures[f"{method}_scree"] = path
+        scree_path = plot_scree(inertia, method.upper(), dest)
+        figures[f"{method}_scree"] = scree_path
+    contrib_fig = None
     if method == "famd":
         contrib = res.get("contributions")
         if isinstance(contrib, pd.DataFrame) and not contrib.empty:
-            fig_contrib = plot_famd_contributions(contrib)
-            figures[f"{method}_contributions"] = fig_contrib
-            _save(fig_contrib, f"{method}_contributions")
+            contrib_fig = plot_famd_contributions(contrib)
+            figures[f"{method}_contributions"] = contrib_fig
+
+    # Combined analysis summary page ------------------------------------
+    summary_fig = plot_analysis_summary(
+        corr_path if 'corr_path' in locals() else None,
+        scree_path if 'scree_path' in locals() else None,
+        km_eval,
+        contrib_fig,
+    )
+    figures[f"{method}_analysis_summary"] = summary_fig
+    _save(summary_fig, f"{method}_analysis_summary")
+
+    _save(km_eval, f"{method}_kmeans_silhouette")
+    _save(gmm_eval, f"{method}_gmm_silhouette")
+
+    # Save individual contribution figure if available -------------------
+    if contrib_fig is not None:
+        _save(contrib_fig, f"{method}_contributions")
 
     return figures
 
@@ -3015,13 +3102,15 @@ def _nonlin_method_figures(
 ) -> Dict[str, plt.Figure]:
     figures: Dict[str, plt.Figure] = {}
 
-    def _save(fig: plt.Figure, name: str) -> None:
+    def _save(fig: plt.Figure, name: str) -> Optional[Path]:
         if out is None:
-            return
+            return None
         sub = out / method.lower()
         sub.mkdir(parents=True, exist_ok=True)
-        fig.savefig(sub / f"{name}.png", dpi=300)
+        path = sub / f"{name}.png"
+        fig.savefig(path, dpi=300)
         plt.close(fig)
+        return path
 
     emb = res.get("embeddings")
     if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
@@ -3057,6 +3146,20 @@ def _nonlin_method_figures(
         cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
         figures[save_name] = cfig
         _save(cfig, save_name)
+
+        km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
+        ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
+        gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
+        figures[f"{method}_kmeans_silhouette"] = km_eval
+        figures[f"{method}_agglomerative_silhouette"] = ag_eval
+        figures[f"{method}_gmm_silhouette"] = gmm_eval
+
+        summary_fig = plot_analysis_summary(None, None, km_eval)
+        figures[f"{method}_analysis_summary"] = summary_fig
+        _save(summary_fig, f"{method}_analysis_summary")
+        _save(km_eval, f"{method}_kmeans_silhouette")
+        _save(ag_eval, f"{method}_agglomerative_silhouette")
+        _save(gmm_eval, f"{method}_gmm_silhouette")
         if segments is not None:
             table = cluster_segment_table(labels, segments.loc[emb.index])
             heat = plot_cluster_segment_heatmap(
