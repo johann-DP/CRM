@@ -2475,6 +2475,8 @@ def generate_figures(
     color_var = None
     figures: Dict[str, plt.Figure] = {}
     out = Path(output_dir) if output_dir is not None else None
+    first_3d_factor = False
+    first_3d_nonlin = False
 
     def _save(fig: plt.Figure, method: str, name: str) -> None:
         if out is None:

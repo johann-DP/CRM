@@ -24,3 +24,37 @@ def test_plot_embedding_file(tmp_path):
     out = tmp_path / "emb.png"
     pf.plot_embedding(coords, color_by=["x", "y"], title="test", output_path=out)
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_generate_figures_handles_3d(tmp_path):
+    df_active = pd.DataFrame({
+        "num1": [1, 2, 3],
+        "num2": [4, 5, 6],
+        "cat": ["a", "b", "a"],
+    })
+    factor_results = {
+        "pca": {
+            "embeddings": pd.DataFrame(
+                np.random.rand(3, 3), columns=["F1", "F2", "F3"]
+            ),
+            "cluster_labels": np.array([0, 1, 0]),
+        }
+    }
+    nonlin_results = {
+        "umap": {
+            "embeddings": pd.DataFrame(
+                np.random.rand(3, 3), columns=["U1", "U2", "U3"]
+            ),
+            "cluster_labels": np.array([0, 1, 0]),
+        }
+    }
+    figs = pf.generate_figures(
+        factor_results,
+        nonlin_results,
+        df_active,
+        ["num1", "num2"],
+        ["cat"],
+        output_dir=None,
+        cluster_k=2,
+    )
+    assert figs
