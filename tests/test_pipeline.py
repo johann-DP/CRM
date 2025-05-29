@@ -66,6 +66,7 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         return wrapper
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(phase4, "plot_general_heatmap", lambda *a, **k: None)
     monkeypatch.setattr(phase4, "Parallel", FakeParallel)
     monkeypatch.setattr(phase4, "delayed", fake_delayed)
 
@@ -113,6 +114,7 @@ def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
         return pdf_path
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(phase4, "plot_general_heatmap", lambda *a, **k: None)
     monkeypatch.setattr(phase4, "concat_pdf_reports", fake_concat)
     monkeypatch.setattr(phase4, "Parallel", FakeParallel)
     monkeypatch.setattr(phase4, "delayed", fake_delayed)
