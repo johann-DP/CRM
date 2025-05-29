@@ -1774,6 +1774,7 @@ def evaluate_methods(
             "trustworthiness": T,
             "continuity": C,
             "runtime_seconds": runtime,
+            "cluster_k": best_k,
             "cluster_algo": algo,
         }
         return method, labels, row
