@@ -9,11 +9,16 @@ diptest~=0.9.0
 matplotlib-venn
 prince==0.16
 openpyxl
-umap-learn
+umap-learn~=0.5.7
 phate~=1.0.11
-PyYAML
+PyYAML~=6.0.2
 pacmap~=0.8.0
-pypdf2
-pytest
+pypdf2~=3.0.1
+pytest~=8.3.5
 
 flake8
+
+pathlib~=1.0.1
+joblib~=1.5.1
+
+hdbscan

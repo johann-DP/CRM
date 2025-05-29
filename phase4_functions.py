@@ -1201,8 +1201,6 @@ and do not depend on ``phase4v2.py`` or the fine-tuning scripts so that those
 files can be removed without breaking the pipeline.
 """
 
-
-import logging
 import time
 from typing import Any, Dict, Tuple
 
@@ -1494,14 +1492,14 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 """
 
 from pathlib import Path
-from typing import Any, Dict, Sequence, Iterable, Tuple, Optional
+from typing import Any, Dict, Sequence, Iterable, Tuple
 from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score, silhouette_samples
-from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
+from sklearn.cluster import AgglomerativeClustering, DBSCAN
 from sklearn.mixture import GaussianMixture
 
 
@@ -3871,7 +3869,7 @@ def export_report_to_pdf(
     figures: Mapping[str, Union[plt.Figure, str, Path]],
     tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
-) -> Path:
+) -> Path | None:
     """Create a structured PDF gathering all figures and tables from phase 4.
 
     The function tries to use :mod:`fpdf` for advanced layout. If ``fpdf`` is not
