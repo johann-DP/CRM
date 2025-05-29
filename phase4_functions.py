@@ -25,6 +25,11 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings(
+    "ignore",
+    message="No handles with labels found to put in legend",
+    module="matplotlib",
+)
 
 
 def _read_dataset(path: Path) -> pd.DataFrame:
@@ -1803,7 +1808,9 @@ def plot_combined_silhouette(
     ax.set_xlabel("k")
     ax.set_ylabel("Silhouette")
     ax.set_title("Comparaison des méthodes – silhouette")
-    ax.legend()
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend()
     fig.tight_layout()
     return fig
 
@@ -3025,6 +3032,7 @@ def generate_figures(
     cluster_k: int | None = None,
     segment_col: str | None = None,
     n_jobs: Optional[int] = None,
+    backend: str = "loky",
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -3042,6 +3050,9 @@ def generate_figures(
         each method.
     n_jobs : int or None, optional
         Number of parallel workers to use. Defaults to the number of methods.
+    backend : str, optional
+        Joblib backend used for parallelisation. Defaults to ``"loky"`` which
+        launches separate processes.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
@@ -3082,7 +3093,7 @@ def generate_figures(
         )
 
     n_jobs = n_jobs or len(tasks) or 1
-    for res_dict in Parallel(n_jobs=n_jobs, prefer="threads")(tasks):
+    for res_dict in Parallel(n_jobs=n_jobs, backend=backend)(tasks):
         figures.update(res_dict)
 
     return figures
