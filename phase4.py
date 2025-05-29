@@ -322,6 +322,129 @@ def build_pdf_report(
     return pdf_path
 
 
+def build_type_report(
+    base_dir: Path, pdf_path: Path, datasets: Sequence[str]
+) -> Path:
+    """Assemble figures by type in landscape orientation.
+
+    Figures are grouped in the following order: scatter plots, correlation
+    circles, clustering results and validation metrics.  Within each group the
+    images are ordered by ``datasets``. Up to four figures are arranged on each
+    page using a 2x2 grid.  An annex is appended with the segment figures,
+    cluster–segment heatmaps and clustering validation curves (silhouette, Dunn
+    or stability charts).
+    """
+
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
+    page_size = (11.69, 8.27)  # A4 landscape
+
+    def _grid_page(pdf: PdfPages, images: list[Path], title: str) -> None:
+        for i in range(0, len(images), 4):
+            fig, axes = plt.subplots(2, 2, figsize=page_size, dpi=200)
+            for ax, img in zip(axes.ravel(), images[i : i + 4]):
+                if img.exists():
+                    ax.imshow(plt.imread(img))
+                    ax.set_title(img.stem, fontsize=8)
+                ax.axis("off")
+            for ax in axes.ravel()[len(images[i : i + 4]) :]:
+                ax.axis("off")
+            fig.suptitle(title, fontsize=12)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    categories: list[tuple[str, Callable[[str], bool]]] = [
+        ("Nuages de points", lambda n: "scatter_2d" in n and "cluster" not in n),
+        ("Cercles de corrélation", lambda n: "correlation" in n),
+        (
+            "Résultats clustering",
+            lambda n: "cluster" in n
+            and "segments" not in n
+            and "silhouette" not in n
+            and "dunn" not in n,
+        ),
+        (
+            "Métriques de validation",
+            lambda n: any(k in n for k in ["scree", "contrib", "robustness"]),
+        ),
+    ]
+
+    annex_images: dict[str, list[Path]] = {
+        "segments": [],
+        "heatmaps": [],
+        "cluster_validation": [],
+    }
+
+    figures: dict[str, dict[str, list[Path]]] = {
+        key: {ds: [] for ds in datasets} for key, _ in categories
+    }
+
+    for ds in datasets:
+        root = base_dir / ds
+        if not root.exists():
+            continue
+        for img in sorted(root.rglob("*.png")):
+            name = img.name.lower()
+            if "cluster_segments" in name or name.endswith("_segments.png"):
+                annex_images["heatmaps"].append(img)
+                continue
+            if any(k in name for k in ["silhouette", "dunn", "stability"]):
+                annex_images["cluster_validation"].append(img)
+                continue
+            for title, cond in categories:
+                if cond(name):
+                    figures[title][ds].append(img)
+                    break
+
+    segments_dir = base_dir / "old" / "segments"
+    if segments_dir.exists():
+        annex_images["segments"] = sorted(segments_dir.glob("*.png"))
+
+    with PdfPages(pdf_path) as pdf:
+        fig, ax = plt.subplots(figsize=page_size, dpi=200)
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "Phase 4 Report",
+            ha="center",
+            va="center",
+            fontsize=16,
+            weight="bold",
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        for title, _ in categories:
+            fig, ax = plt.subplots(figsize=page_size, dpi=200)
+            ax.axis("off")
+            ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
+            pdf.savefig(fig)
+            plt.close(fig)
+            for ds in datasets:
+                imgs = figures[title][ds]
+                if not imgs:
+                    continue
+                _grid_page(pdf, imgs, f"{title} – {ds}")
+
+        if any(v for v in annex_images.values()):
+            fig, ax = plt.subplots(figsize=page_size, dpi=200)
+            ax.axis("off")
+            ax.text(0.5, 0.9, "Annexe", ha="center", va="top", fontsize=14, weight="bold")
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            if annex_images["segments"]:
+                _grid_page(pdf, annex_images["segments"], "Segments")
+            if annex_images["heatmaps"]:
+                _grid_page(pdf, annex_images["heatmaps"], "Clusters vs Segments")
+            if annex_images["cluster_validation"]:
+                _grid_page(pdf, annex_images["cluster_validation"], "Validation clustering")
+
+    return pdf_path
+
+
 # ---------------------------------------------------------------------------
 # PDF concatenation helpers
 # ---------------------------------------------------------------------------
