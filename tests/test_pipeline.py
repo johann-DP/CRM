@@ -81,4 +81,51 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         assert Path(calls[name]).name == name
     assert calls["n_jobs"] == 2
     assert calls["backend"] == "multiprocessing"
+
+
+def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
+    created = []
+    concat_calls = {}
+
+    def fake_run_pipeline(cfg):
+        path = Path(cfg["output_pdf"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("pdf")
+        created.append(path.name)
+        return {}
+
+    class FakeParallel:
+        def __init__(self, n_jobs=None, backend=None):
+            pass
+
+        def __call__(self, tasks):
+            return [task() for task in tasks]
+
+    def fake_delayed(func):
+        def wrapper(*args, **kwargs):
+            return lambda: func(*args, **kwargs)
+        return wrapper
+
+    def fake_concat(out_dir, pdf_path):
+        concat_calls["args"] = (out_dir, pdf_path)
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf_path.write_text("combined")
+        return pdf_path
+
+    monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(phase4, "concat_pdf_reports", fake_concat)
+    monkeypatch.setattr(phase4, "Parallel", FakeParallel)
+    monkeypatch.setattr(phase4, "delayed", fake_delayed)
+
+    cfg = {
+        "output_dir": str(tmp_path / "out"),
+        "input_file": "dummy",
+        "output_pdf": str(tmp_path / "out" / "phase4_report.pdf"),
+    }
+    datasets = ["raw", "cleaned_1", "cleaned_3_univ", "cleaned_3_multi"]
+
+    phase4.run_pipeline_parallel(cfg, datasets)
+
+    expected_final = Path(cfg["output_pdf"]).with_name("phase4_report_combined.pdf")
+    assert concat_calls["args"] == (Path(cfg["output_dir"]), expected_final)
     

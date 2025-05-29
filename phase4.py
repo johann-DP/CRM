@@ -633,7 +633,15 @@ def run_pipeline_parallel(
     results = Parallel(n_jobs=n_jobs, backend=backend)(
         delayed(_run_pipeline_single)(config, ds) for ds in datasets
     )
-    return dict(results)
+    results = dict(results)
+
+    if "output_pdf" in config:
+        base_dir = Path(config.get("output_dir", "phase4_output"))
+        pdf = Path(config["output_pdf"])
+        combined = pdf.with_name(f"{pdf.stem}_combined{pdf.suffix}")
+        concat_pdf_reports(base_dir, combined)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
