@@ -1579,40 +1579,28 @@ def tune_gmm_clusters(
 
 
 def auto_cluster_labels(
-    X: np.ndarray, k_range: Iterable[int] = range(2, 16)
+    X: np.ndarray, k_range: Iterable[int] = range(2, 11)
 ) -> Tuple[np.ndarray, int, str]:
-    """Select the best clustering among K-Means, Agglomerative and GMM."""
+    """Return automatic cluster labels using HDBSCAN when available.
+
+    If the optional :mod:`hdbscan` package is installed and produces at least
+    two distinct clusters, it is used. Otherwise the function falls back to a
+    K-Means clustering with the number of clusters tuned via silhouette score
+    over ``k_range``.
+    """
+
+    try:  # pragma: no cover - optional dependency
+        import hdbscan  # type: ignore
+
+        clusterer = hdbscan.HDBSCAN()
+        labels = clusterer.fit_predict(X)
+        if len(np.unique(labels)) > 1:
+            return labels, len(np.unique(labels)), "hdbscan"
+    except Exception:  # pragma: no cover - missing library
+        labels = None
 
     km_labels, km_k = tune_kmeans_clusters(X, k_range)
-    km_score = (
-        silhouette_score(X, km_labels) if len(np.unique(km_labels)) > 1 else -1.0
-    )
-
-    ag_labels, ag_k = tune_agglomerative_clusters(X, k_range)
-    ag_score = (
-        silhouette_score(X, ag_labels) if len(np.unique(ag_labels)) > 1 else -1.0
-    )
-
-    gmm_labels, gmm_k = tune_gmm_clusters(X, k_range)
-    gmm_score = (
-        silhouette_score(X, gmm_labels) if len(np.unique(gmm_labels)) > 1 else -1.0
-    )
-
-    best_algo = "kmeans"
-    best_score = km_score
-    best_labels = km_labels
-    best_k = km_k
-    if ag_score > best_score:
-        best_algo = "agglomerative"
-        best_score = ag_score
-        best_labels = ag_labels
-        best_k = ag_k
-    if gmm_score > best_score:
-        best_algo = "gmm"
-        best_score = gmm_score
-        best_labels = gmm_labels
-        best_k = gmm_k
-    return best_labels, best_k, best_algo
+    return km_labels, km_k, "kmeans"
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -2036,7 +2024,7 @@ def plot_scatter_2d(
                 emb_df.loc[mask, emb_df.columns[0]],
                 emb_df.loc[mask, emb_df.columns[1]],
                 s=10,
-                alpha=0.7,
+                alpha=0.6,
                 color=color,
                 label=str(cat),
             )
@@ -2081,7 +2069,7 @@ def plot_scatter_3d(
                 emb_df.loc[mask, emb_df.columns[1]],
                 emb_df.loc[mask, emb_df.columns[2]],
                 s=10,
-                alpha=0.7,
+                alpha=0.6,
                 color=color,
                 label=str(cat),
             )
@@ -2123,7 +2111,7 @@ def plot_cluster_scatter_3d(
             emb_df.loc[mask, emb_df.columns[1]],
             emb_df.loc[mask, emb_df.columns[2]],
             s=10,
-            alpha=0.7,
+            alpha=0.6,
             color=cmap(i % n_colors),
             label=str(lab),
         )
@@ -2178,7 +2166,7 @@ def plot_cluster_scatter(
             emb_df.loc[mask, emb_df.columns[0]],
             emb_df.loc[mask, emb_df.columns[1]],
             s=10,
-            alpha=0.7,
+            alpha=0.6,
             color=cmap(i % n_colors),
             label=str(lab),
         )
@@ -2222,7 +2210,7 @@ def plot_cluster_scatter_3d(
             emb_df.loc[mask, emb_df.columns[1]],
             emb_df.loc[mask, emb_df.columns[2]],
             s=10,
-            alpha=0.7,
+            alpha=0.6,
             color=cmap(i % n_colors),
             label=str(lab),
         )
@@ -2407,7 +2395,7 @@ def plot_embedding(
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     if color_by is None:
-        ax.scatter(coords_df.iloc[:, 0], coords_df.iloc[:, 1], s=10, alpha=0.7)
+        ax.scatter(coords_df.iloc[:, 0], coords_df.iloc[:, 1], s=10, alpha=0.6)
     else:
         labels = pd.Series(list(color_by), index=coords_df.index)
         if labels.dtype.kind in {"O", "b"} or str(labels.dtype).startswith("category"):
@@ -2419,7 +2407,7 @@ def plot_embedding(
                     coords_df.loc[mask, coords_df.columns[0]],
                     coords_df.loc[mask, coords_df.columns[1]],
                     s=10,
-                    alpha=0.7,
+                    alpha=0.6,
                     color=color,
                     label=str(cat),
                 )
@@ -2435,7 +2423,7 @@ def plot_embedding(
                 c=labels,
                 cmap="viridis",
                 s=10,
-                alpha=0.7,
+                alpha=0.6,
             )
             fig.colorbar(sc, ax=ax)
 
@@ -2475,8 +2463,6 @@ def generate_figures(
     color_var = None
     figures: Dict[str, plt.Figure] = {}
     out = Path(output_dir) if output_dir is not None else None
-    first_3d_factor = False
-    first_3d_nonlin = False
 
     def _save(fig: plt.Figure, method: str, name: str) -> None:
         if out is None:
@@ -2519,7 +2505,7 @@ def generate_figures(
             )
             figures[f"{method}_cluster_dist"] = dist_fig
             _save(dist_fig, method, f"{method}_cluster_dist_{algo}")
-            if not first_3d_factor and emb.shape[1] >= 3:
+            if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
                     df_active,
@@ -2535,7 +2521,6 @@ def generate_figures(
                 )
                 figures[f"{method}_clusters_3d"] = cfig3d
                 _save(cfig3d, method, f"{method}_clusters_{algo}_k{k_used}_3d")
-                first_3d_factor = True
         coords = res.get("loadings")
         if coords is None:
             coords = res.get("column_coords")
@@ -2600,7 +2585,7 @@ def generate_figures(
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[save_name] = cfig
             _save(cfig, method, save_name)
-            if not first_3d_nonlin and emb.shape[1] >= 3:
+            if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
                     df_active,
@@ -2616,7 +2601,6 @@ def generate_figures(
                 )
                 figures[f"{method}_clusters_3d"] = cfig3d
                 _save(cfig3d, method, f"{method}_clusters_{algo}_k{k_used}_3d")
-                first_3d_nonlin = True
 
     return figures
 
