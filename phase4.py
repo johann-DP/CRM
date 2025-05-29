@@ -903,10 +903,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             _run_method(name, func, args, kwargs) for name, func, args, kwargs in tasks
         ]
     else:
-        results = Parallel(n_jobs=n_jobs or len(tasks), backend=backend)(
-            delayed(_run_method)(name, func, args, kwargs)
-            for name, func, args, kwargs in tasks
-        )
+        with Parallel(n_jobs=n_jobs or len(tasks), backend=backend) as parallel:
+            results = parallel(
+                delayed(_run_method)(name, func, args, kwargs)
+                for name, func, args, kwargs in tasks
+            )
 
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
@@ -1041,9 +1042,10 @@ def run_pipeline_parallel(
     from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
-    results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_run_pipeline_single)(config, ds) for ds in datasets
-    )
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        results = parallel(
+            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+        )
     results = dict(results)
 
     metrics_frames = []
