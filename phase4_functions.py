@@ -32,6 +32,11 @@ warnings.filterwarnings(
     message="No handles with labels found to put in legend",
     module="matplotlib",
 )
+warnings.filterwarnings(
+    "ignore",
+    message=".*Tight layout not applied.*",
+    module="matplotlib",
+)
 
 
 def _read_dataset(path: Path) -> pd.DataFrame:
