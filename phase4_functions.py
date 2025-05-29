@@ -2092,7 +2092,6 @@ def plot_correlation_circle(
         raise AttributeError("factor_model lacks components")
 
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
-    scale = float(norms.max()) if len(norms) else 1.0
 
     # Use a single reference circle centred at the origin.  The radius is fixed
     # to 1 so that the correlation circle is not cluttered with additional
@@ -2109,16 +2108,16 @@ def plot_correlation_circle(
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.4 + 0.6 * (norm / scale) if scale else 1.0
+        alpha = 0.2 + 0.8 * min(1.0, norm)
         ax.arrow(
             0,
             0,
             x,
             y,
-            head_width=0.02 * scale,
+            head_width=0.02,
             length_includes_head=True,
-            width=0.001 * scale,
-            linewidth=0.5,
+            width=0.002,
+            linewidth=0.8,
             color=color,
             alpha=alpha,
         )
@@ -2126,14 +2125,13 @@ def plot_correlation_circle(
 
     ax.legend(
         handles=handles,
-        loc="upper right",
-        bbox_to_anchor=(1.3, 1.0),
+        bbox_to_anchor=(1.05, 1.0),
+        loc="upper left",
         frameon=False,
         fontsize="small",
     )
-    limit = max(scale, 1.0) * 1.1
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-1.0, 1.0)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
