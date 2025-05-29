@@ -2527,116 +2527,55 @@ def plot_cluster_segment_heatmap(
     return fig
 
 
-def plot_plain_scatter_2d(emb_df: pd.DataFrame, title: str) -> plt.Figure:
-    """Return a 2D scatter plot with all points in light gray."""
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    ax.scatter(
-        emb_df.iloc[:, 0],
-        emb_df.iloc[:, 1],
-        s=10,
-        alpha=0.6,
-        color="lightgray",
-    )
-    ax.set_xlabel(emb_df.columns[0])
-    ax.set_ylabel(emb_df.columns[1])
+def segment_profile_table(
+    df: pd.DataFrame,
+    segment_col: str,
+    variables: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Return a table of mean values per segment for ``variables``."""
+    if segment_col not in df.columns:
+        raise KeyError(segment_col)
+    if variables is None:
+        variables = [c for c in df.select_dtypes(include="number").columns if c != segment_col]
+    if not variables:
+        return pd.DataFrame(index=df[segment_col].unique())
+    table = df.groupby(segment_col)[list(variables)].mean()
+    return table
+
+
+def plot_segment_profile_bars(profile: pd.DataFrame, title: str) -> plt.Figure:
+    """Return a grouped bar chart from ``profile`` table."""
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    profile.T.plot(kind="bar", ax=ax)
+    ax.set_xlabel("Variable")
+    ax.set_ylabel("Mean value")
     ax.set_title(title)
+    ax.legend(title="Segment")
     fig.tight_layout()
     return fig
 
 
-def plot_plain_scatter_3d(emb_df: pd.DataFrame, title: str) -> plt.Figure:
-    """Return a 3D scatter plot with all points in light gray."""
-    fig = plt.figure(figsize=(12, 6), dpi=200)
-    ax = fig.add_subplot(111, projection="3d")
-    ax.scatter(
-        emb_df.iloc[:, 0],
-        emb_df.iloc[:, 1],
-        emb_df.iloc[:, 2],
-        s=10,
-        alpha=0.6,
-        color="lightgray",
-    )
-    ax.set_xlabel(emb_df.columns[0])
-    ax.set_ylabel(emb_df.columns[1])
-    ax.set_zlabel(emb_df.columns[2])
-    ax.set_title(title)
-    ax.view_init(elev=20, azim=60)
-    fig.tight_layout()
-    return fig
-
-
-def generate_scatter_plots(
-    emb_df: pd.DataFrame,
-    dataset_name: str,
-    reduction: str,
-    output_dir: str | Path,
-    *,
-    k_range: Iterable[int] = range(2, 11),
-) -> Dict[str, Path]:
-    """Save 2D/3D scatter plots with and without clustering.
-
-    The function computes optimal clusters using K-Means, Agglomerative and
-    Gaussian Mixture.  Scatter plots are saved in ``output_dir`` and the output
-    paths are returned in a dictionary.
-    """
-
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
-    paths: Dict[str, Path] = {}
-
-    fig = plot_plain_scatter_2d(
-        emb_df.iloc[:, :2], f"{dataset_name} – {reduction} 2D"
-    )
-    path = output / f"{dataset_name}_{reduction}_no_cluster_2D.png"
-    fig.savefig(path, dpi=300)
-    plt.close(fig)
-    paths["no_cluster_2d"] = path
-
-    if emb_df.shape[1] >= 3:
-        fig = plot_plain_scatter_3d(
-            emb_df.iloc[:, :3], f"{dataset_name} – {reduction} 3D"
-        )
-        path3d = output / f"{dataset_name}_{reduction}_no_cluster_3D.png"
-        fig.savefig(path3d, dpi=300)
-        plt.close(fig)
-        paths["no_cluster_3d"] = path3d
-
-    km_labels, km_k = tune_kmeans_clusters(emb_df.iloc[:, :2].values, k_range)
-    ag_labels, ag_k = tune_agglomerative_clusters(emb_df.iloc[:, :2].values, k_range)
-    gmm_labels, gmm_k = tune_gmm_clusters(emb_df.iloc[:, :2].values, k_range)
-
-    for algo, labels, k in [
-        ("kmeans", km_labels, km_k),
-        ("agglomerative", ag_labels, ag_k),
-        ("gmm", gmm_labels, gmm_k),
-    ]:
-        fig = plot_cluster_scatter(
-            emb_df.iloc[:, :2],
-            labels,
-            f"{dataset_name} – {reduction} – {algo.capitalize()} (k={k})",
-        )
-        out_p = output / f"{dataset_name}_{reduction}_{algo}_2D.png"
-        fig.savefig(out_p, dpi=300)
-        plt.close(fig)
-        paths[f"{algo}_2d"] = out_p
-
-    if emb_df.shape[1] >= 3:
-        for algo, labels, k in [
-            ("kmeans", km_labels, km_k),
-            ("agglomerative", ag_labels, ag_k),
-            ("gmm", gmm_labels, gmm_k),
-        ]:
-            fig = plot_cluster_scatter_3d(
-                emb_df.iloc[:, :3],
-                labels,
-                f"{dataset_name} – {reduction} – {algo.capitalize()} (k={k})",
-            )
-            out_p = output / f"{dataset_name}_{reduction}_{algo}_3D.png"
-            fig.savefig(out_p, dpi=300)
-            plt.close(fig)
-            paths[f"{algo}_3d"] = out_p
-
-    return paths
+def segment_image_figures(
+    image_dir: Path, segments: Sequence[str]
+) -> Dict[str, plt.Figure]:
+    """Return a figure per segment image with counts in the title."""
+    counts = pd.Series(segments).value_counts()
+    total = len(segments)
+    figures: Dict[str, plt.Figure] = {}
+    for path in sorted(Path(image_dir).glob("*.png")):
+        if not path.is_file():
+            continue
+        seg_name = path.stem.replace("_", " ")
+        n = int(counts.get(seg_name, 0))
+        pct = (n / total * 100) if total else 0.0
+        img = plt.imread(path)
+        fig, ax = plt.subplots(dpi=200)
+        ax.imshow(img)
+        ax.axis("off")
+        ax.set_title(f"{seg_name}: {n} obs ({pct:.0f}%)")
+        fig.tight_layout()
+        figures[seg_name] = fig
+    return figures
 
 
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:

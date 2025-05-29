@@ -94,6 +94,7 @@ def compare_datasets_versions(
     exclude_lost: bool = True,
     min_modalite_freq: int = 5,
     output_dir: Optional[str | Path] = None,
+    segment_col: str | None = None,
 ) -> Dict[str, Any]:
     """Compare dimensionality reduction results between dataset versions.
 
@@ -108,6 +109,9 @@ def compare_datasets_versions(
     output_dir : str or Path, optional
         Base directory where figures will be saved. A subdirectory per dataset
         version is created when provided.
+    segment_col : str or None, optional
+        Name of the column containing pre-defined business segments. When
+        provided, cluster/segment heatmaps are generated for each method.
 
     Returns
     -------
@@ -177,7 +181,7 @@ def compare_datasets_versions(
                 quant_vars,
                 qual_vars,
                 output_dir=fig_dir,
-                segment_col=None,
+                segment_col=segment_col,
             )
         except Exception as exc:  # pragma: no cover - visualization failure
             logger.warning("Figure generation failed: %s", exc)
