@@ -26,6 +26,8 @@ import datetime
 import json
 import logging
 import os
+# limite OpenBLAS à 24 threads (ou moins)
+os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 import tempfile
@@ -38,6 +40,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
+from PyPDF2 import PdfMerger
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -119,6 +122,66 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     ]:
         os.environ[var] = str(n_jobs)
     return n_jobs
+
+
+def _images_to_pdf(images: Sequence[Path], pdf_path: Path, title: str | None = None) -> Path:
+    """Convert a series of images into a simple PDF."""
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with PdfPages(pdf_path) as pdf:
+        if title:
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
+            pdf.savefig(fig)
+            plt.close(fig)
+        for img in images:
+            if not img.exists():
+                continue
+            data = plt.imread(img)
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.imshow(data)
+            ax.axis("off")
+            pdf.savefig(fig)
+            plt.close(fig)
+    return pdf_path
+
+
+def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
+    """Concatenate per-dataset reports and append segment count figures."""
+
+    order = [
+        output_dir / "phase4_report_raw.pdf",
+        output_dir / "phase4_report_cleaned_1.pdf",
+        output_dir / "phase4_report_cleaned_3_univ.pdf",
+        output_dir / "phase4_report_cleaned_3_multi.pdf",
+    ]
+
+    merger = PdfMerger()
+    for pdf in order:
+        if pdf.exists():
+            merger.append(str(pdf))
+
+    segments_dir = output_dir / "old" / "segments"
+    temp_seg_pdf = None
+    if segments_dir.exists():
+        images = sorted(segments_dir.glob("*.png"))
+        if images:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+                temp_seg_pdf = Path(fh.name)
+            _images_to_pdf(images, temp_seg_pdf, "Annexe – Comptage des segments")
+            merger.append(str(temp_seg_pdf))
+
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    merger.write(str(output_pdf))
+    merger.close()
+
+    if temp_seg_pdf:
+        try:
+            os.remove(temp_seg_pdf)
+        except OSError:
+            pass
+
+    return output_pdf
 
 
 def build_pdf_report(
@@ -377,46 +440,38 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
     ]
 
-    factor_results: Dict[str, Any] = {}
+    def _run_method(name: str, func, args: tuple, kwargs: dict) -> tuple[str, Any]:
+        logging.info("Running %s...", name.upper())
+        try:
+            return name, func(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - runtime failure
+            logging.warning("%s failed: %s", name.upper(), exc)
+            return name, {}
+
+    tasks: list[tuple[str, Any, tuple, dict]] = []
+    factor_names: list[str] = []
+    nonlin_names: list[str] = []
+
     if "pca" in methods and quant_vars:
-        logging.info("Running PCA...")
         params = _method_params("pca", config)
         if optimize:
             params.pop("n_components", None)
-        factor_results["pca"] = run_pca(
-            df_active,
-            quant_vars,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("pca", run_pca, (df_active, quant_vars), dict(optimize=optimize, **params)))
+        factor_names.append("pca")
 
     if "mca" in methods and qual_vars:
-        logging.info("Running MCA...")
         params = _method_params("mca", config)
         if optimize:
             params.pop("n_components", None)
-        factor_results["mca"] = run_mca(
-            df_active,
-            qual_vars,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("mca", run_mca, (df_active, qual_vars), dict(optimize=optimize, **params)))
+        factor_names.append("mca")
 
     if "famd" in methods and quant_vars and qual_vars:
-        logging.info("Running FAMD...")
         params = _method_params("famd", config)
         if optimize:
             params.pop("n_components", None)
-        try:
-            factor_results["famd"] = run_famd(
-                df_active,
-                quant_vars,
-                qual_vars,
-                optimize=optimize,
-                **params,
-            )
-        except ValueError as exc:
-            logging.warning("FAMD skipped: %s", exc)
+        tasks.append(("famd", run_famd, (df_active, quant_vars, qual_vars), dict(optimize=optimize, **params)))
+        factor_names.append("famd")
 
     groups = []
     if quant_vars:
@@ -424,35 +479,39 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if qual_vars:
         groups.append(qual_vars)
     if "mfa" in methods and len(groups) > 1:
-        logging.info("Running MFA...")
         params = _method_params("mfa", config)
         if optimize:
             params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
-        # ``mfa: {groups: [[...], [...]]}`` in the config overrides the default
-        # automatic grouping of quantitative and qualitative variables.
         if cfg_groups:
             groups = cfg_groups
-        factor_results["mfa"] = run_mfa(
-            df_active,
-            groups,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("mfa", run_mfa, (df_active, groups), dict(optimize=optimize, **params)))
+        factor_names.append("mfa")
 
-    nonlin_results: Dict[str, Any] = {}
     if "umap" in methods:
-        logging.info("Running UMAP...")
         params = _method_params("umap", config)
-        nonlin_results["umap"] = run_umap(df_active, **params)
+        tasks.append(("umap", run_umap, (df_active,), params))
+        nonlin_names.append("umap")
     if "phate" in methods:
-        logging.info("Running PHATE...")
         params = _method_params("phate", config)
-        nonlin_results["phate"] = run_phate(df_active, **params)
+        tasks.append(("phate", run_phate, (df_active,), params))
+        nonlin_names.append("phate")
     if "pacmap" in methods:
-        logging.info("Running PaCMAP...")
         params = _method_params("pacmap", config)
-        nonlin_results["pacmap"] = run_pacmap(df_active, **params)
+        tasks.append(("pacmap", run_pacmap, (df_active,), params))
+        nonlin_names.append("pacmap")
+
+    results = Parallel(n_jobs=n_jobs or len(tasks), prefer="threads")(
+        delayed(_run_method)(name, func, args, kwargs) for name, func, args, kwargs in tasks
+    )
+
+    factor_results: Dict[str, Any] = {}
+    nonlin_results: Dict[str, Any] = {}
+    for name, res in results:
+        if name in factor_names:
+            factor_results[name] = res
+        elif name in nonlin_names:
+            nonlin_results[name] = res
 
     valid_nonlin = {
         k: v
