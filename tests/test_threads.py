@@ -19,3 +19,15 @@ def test_set_blas_threads_caps_openblas(monkeypatch):
     monkeypatch.delenv('OPENBLAS_NUM_THREADS', raising=False)
     set_blas_threads(64)
     assert os.environ['OPENBLAS_NUM_THREADS'] == '24'
+
+
+def test_set_blas_threads_uses_threadpoolctl(monkeypatch):
+    calls = []
+
+    def fake_limits(n):
+        calls.append(n)
+
+    monkeypatch.setattr('phase4.threadpool_limits', fake_limits)
+    set_blas_threads(8)
+    assert calls == [8]
+    

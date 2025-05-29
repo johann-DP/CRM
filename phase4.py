@@ -27,6 +27,11 @@ import json
 import logging
 import os
 
+try:
+    from threadpoolctl import threadpool_limits
+except Exception:  # pragma: no cover - optional dependency
+    threadpool_limits = None
+
 # limite OpenBLAS à 24 threads (ou moins)
 os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
@@ -47,6 +52,11 @@ import warnings
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings(
+    "ignore",
+    message="Workbook contains no default style, apply openpyxl's default",
+    module="openpyxl",
+)
 
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
@@ -136,6 +146,9 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     ]:
         os.environ[var] = str(n_jobs)
     os.environ["OPENBLAS_NUM_THREADS"] = str(openblas_threads)
+    if threadpool_limits is not None:
+        # Also limit threads at runtime for loaded libraries
+        threadpool_limits(openblas_threads)
     return n_jobs
 
 
