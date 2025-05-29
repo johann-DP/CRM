@@ -2268,6 +2268,76 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     return fig
 
 
+def plot_cluster_grid(
+    emb_df: pd.DataFrame,
+    km_labels: np.ndarray,
+    ag_labels: np.ndarray,
+    db_labels: np.ndarray,
+    method: str,
+    km_k: int,
+    ag_k: int,
+    db_eps: float,
+) -> plt.Figure:
+    """Return a 2x2 grid comparing clustering algorithms."""
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12), dpi=200)
+    axes = axes.ravel()
+
+    # Baseline
+    axes[0].scatter(
+        emb_df.iloc[:, 0],
+        emb_df.iloc[:, 1],
+        s=10,
+        alpha=0.6,
+        color="tab:blue",
+    )
+    axes[0].set_title(f"{method.upper()} \u2013 No Clustering")
+
+    def _plot(ax: plt.Axes, labels: np.ndarray, title: str) -> None:
+        unique = np.unique(labels)
+        try:
+            cmap = matplotlib.colormaps.get_cmap("tab10")
+        except AttributeError:  # pragma: no cover - older Matplotlib
+            cmap = matplotlib.cm.get_cmap("tab10")
+        n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+        for i, lab in enumerate(unique):
+            mask = labels == lab
+            color = "lightgray" if lab == -1 else cmap(i % n_colors)
+            ax.scatter(
+                emb_df.loc[mask, emb_df.columns[0]],
+                emb_df.loc[mask, emb_df.columns[1]],
+                s=10,
+                alpha=0.6,
+                color=color,
+                label=str(lab),
+            )
+        ax.set_xlabel(emb_df.columns[0])
+        ax.set_ylabel(emb_df.columns[1])
+        ax.set_title(title)
+
+    _plot(
+        axes[1],
+        km_labels,
+        f"{method.upper()} \u2013 K-Means (k={km_k})",
+    )
+    _plot(
+        axes[2],
+        ag_labels,
+        f"{method.upper()} \u2013 Agglomerative (n={ag_k})",
+    )
+    _plot(
+        axes[3],
+        db_labels,
+        f"{method.upper()} \u2013 DBSCAN (ε={db_eps:g})",
+    )
+
+    for ax in axes:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    fig.tight_layout()
+    return fig
+
+
 def cluster_segment_table(
     labels: Sequence[int] | pd.Series,
     segments: Sequence[str] | pd.Series,
@@ -2565,15 +2635,15 @@ def generate_figures(
                 f"Répartition des segments – {method.upper()} (K-Means)",
             )
             figures[f"{method}_cluster_dist"] = dist_fig
-            _save(dist_fig, method, f"{method}_cluster_dist_{algo}")
+            _save(dist_fig, method, f"{method}_cluster_dist_kmeans")
             if segments is not None:
                 table = cluster_segment_table(labels, segments.loc[emb.index])
                 heat = plot_cluster_segment_heatmap(
                     table,
-                    f"Segments vs clusters – {method.upper()} ({algo})",
+                    f"Segments vs clusters – {method.upper()} (K-Means)",
                 )
                 figures[f"{method}_cluster_segments"] = heat
-                _save(heat, method, f"{method}_cluster_segments_{algo}")
+                _save(heat, method, f"{method}_cluster_segments_kmeans")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2649,7 +2719,11 @@ def generate_figures(
                 ag_k,
                 db_eps,
             )
-            save_name = f"{method}_clusters_{algo}_k{k_used}"
+            labels = km_labels
+            title = (
+                f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
+            )
+            save_name = f"{method}_clusters_kmeans_k{km_k}"
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[save_name] = cfig
             _save(cfig, method, save_name)
@@ -2657,10 +2731,10 @@ def generate_figures(
                 table = cluster_segment_table(labels, segments.loc[emb.index])
                 heat = plot_cluster_segment_heatmap(
                     table,
-                    f"Segments vs clusters – {method.upper()} ({algo})",
+                    f"Segments vs clusters – {method.upper()} (K-Means)",
                 )
                 figures[f"{method}_cluster_segments"] = heat
-                _save(heat, method, f"{method}_cluster_segments_{algo}")
+                _save(heat, method, f"{method}_cluster_segments_kmeans")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
