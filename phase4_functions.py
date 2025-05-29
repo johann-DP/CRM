@@ -1679,6 +1679,164 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
     return float(min_inter / max_intra)
 
 
+def cluster_evaluation_metrics(
+    X: np.ndarray,
+    method: str,
+    k_range: Iterable[int] = range(2, 16),
+) -> tuple[pd.DataFrame, int]:
+    """Return silhouette and Dunn curves for a clustering method.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+        Data to cluster.
+    method : {"kmeans", "agglomerative", "gmm"}
+        Algorithm to evaluate.
+    k_range : iterable of int, default ``range(2, 16)``
+        Candidate numbers of clusters.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Table with columns ``k``, ``silhouette`` and ``dunn_index``.
+    int
+        ``k`` giving the highest silhouette score.
+    """
+
+    X = np.asarray(X)
+    records: list[dict[str, float]] = []
+    best_k = 2
+    best_score = -np.inf
+
+    for k in k_range:
+        if k >= len(X) or k < 2:
+            continue
+        if method == "kmeans":
+            labels = KMeans(n_clusters=k).fit_predict(X)
+        elif method == "agglomerative":
+            labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
+        elif method == "gmm":
+            labels = GaussianMixture(n_components=k, covariance_type="full").fit_predict(X)
+        else:
+            raise ValueError(f"Unknown method '{method}'")
+
+        if len(np.unique(labels)) < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X, labels))
+            dunn = dunn_index(X, labels)
+        records.append({"k": k, "silhouette": sil, "dunn_index": dunn})
+        if not np.isnan(sil) and sil > best_score:
+            best_score = sil
+            best_k = k
+
+    df = pd.DataFrame.from_records(records)
+    return df, best_k
+
+
+def dbscan_evaluation_metrics(
+    X: np.ndarray,
+    eps_values: Iterable[float],
+    *,
+    min_samples: int = 5,
+) -> tuple[pd.DataFrame, float]:
+    """Return silhouette and Dunn curves for DBSCAN over ``eps_values``."""
+
+    X = np.asarray(X)
+    records: list[dict[str, float]] = []
+    best_eps = None
+    best_score = -np.inf
+
+    for eps in eps_values:
+        labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X, labels))
+            dunn = dunn_index(X, labels)
+        records.append({"eps": eps, "k": n_clusters, "silhouette": sil, "dunn_index": dunn})
+        if not np.isnan(sil) and sil > best_score:
+            best_score = sil
+            best_eps = eps
+
+    df = pd.DataFrame.from_records(records)
+    if best_eps is None:
+        best_eps = next(iter(eps_values), 0.5)
+    return df, float(best_eps)
+
+
+def plot_cluster_evaluation(df: pd.DataFrame, method: str) -> plt.Figure:
+    """Plot silhouette and Dunn index curves for ``method``."""
+
+    fig, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax2 = ax1.twinx()
+    ax1.plot(df["k"], df["silhouette"], marker="o", color="tab:blue", label="Silhouette")
+    ax2.plot(df["k"], df["dunn_index"], marker="s", color="tab:orange", label="Dunn index")
+    ax1.set_xlabel("k")
+    ax1.set_ylabel("Silhouette")
+    ax2.set_ylabel("Dunn index")
+    ax1.set_title(f"Évaluation clustering – {method.upper()}")
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    fig.tight_layout()
+    return fig
+
+
+def plot_combined_silhouette(
+    curves: Mapping[str, pd.DataFrame], optimal_k: Mapping[str, int]
+) -> plt.Figure:
+    """Overlay silhouette curves from several methods on one figure."""
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+    for method, df in curves.items():
+        if df.empty:
+            continue
+        ax.plot(df["k"], df["silhouette"], marker="o", label=method)
+        k_opt = optimal_k.get(method)
+        if k_opt is not None and k_opt in df["k"].values:
+            val = float(df.loc[df["k"] == k_opt, "silhouette"].iloc[0])
+            ax.scatter([k_opt], [val], marker="x", s=60)
+    ax.set_xlabel("k")
+    ax.set_ylabel("Silhouette")
+    ax.set_title("Comparaison des méthodes – silhouette")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_pca_stability_bars(
+    metrics: Mapping[str, Mapping[str, float]]
+) -> Dict[str, plt.Figure]:
+    """Return bar charts summarising PCA cross-validation stability."""
+
+    datasets = list(metrics)
+    axis_corr = [metrics[d].get("pca_axis_corr_mean", float("nan")) for d in datasets]
+    var_first = [metrics[d].get("pca_var_first_axis_mean", float("nan")) for d in datasets]
+
+    fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax1.bar(datasets, axis_corr, color="tab:blue", edgecolor="black")
+    ax1.set_xlabel("Dataset")
+    ax1.set_ylabel("pca_axis_corr_mean")
+    ax1.set_title("Stabilité PCA – corrélation des axes")
+    fig1.tight_layout()
+
+    fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax2.bar(datasets, var_first, color="tab:orange", edgecolor="black")
+    ax2.set_xlabel("Dataset")
+    ax2.set_ylabel("pca_var_first_axis_mean")
+    ax2.set_title("Stabilité PCA – variance axe 1")
+    fig2.tight_layout()
+
+    return {
+        "pca_axis_corr_mean": fig1,
+        "pca_var_first_axis_mean": fig2,
+    }
+
+
 def evaluate_methods(
     results_dict: Dict[str, Dict[str, Any]],
     df_active: pd.DataFrame,
@@ -1936,23 +2094,22 @@ def plot_correlation_circle(
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
     scale = float(norms.max()) if len(norms) else 1.0
 
-    # Only one axis is required as the cos² circle duplicated the
-    # information from the correlation circle. Using a single subplot
-    # simplifies the visualisation.
+    # Use a single reference circle centred at the origin.  The radius is fixed
+    # to 1 so that the correlation circle is not cluttered with additional
+    # cos² circles.
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
-    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
-        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
+        circle = plt.Circle((0, 0), 1.0, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
 
-    offset = 0.05 * scale
     palette = sns.color_palette("husl", len(coords))
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
+        alpha = 0.4 + 0.6 * (norm / scale) if scale else 1.0
         ax.arrow(
             0,
             0,
@@ -1960,18 +2117,10 @@ def plot_correlation_circle(
             y,
             head_width=0.02 * scale,
             length_includes_head=True,
-            width=0.002 * scale,
-            linewidth=0.8,
+            width=0.001 * scale,
+            linewidth=0.5,
             color=color,
             alpha=alpha,
-        )
-        ax.text(
-            x + (offset if x >= 0 else -offset),
-            y + (offset if y >= 0 else -offset),
-            str(var),
-            fontsize=8,
-            ha="left" if x >= 0 else "right",
-            va="bottom" if y >= 0 else "top",
         )
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
@@ -1982,8 +2131,9 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    ax.set_xlim(-scale * 1.1, scale * 1.1)
-    ax.set_ylim(-scale * 1.1, scale * 1.1)
+    limit = max(scale, 1.0) * 1.1
+    ax.set_xlim(-limit, limit)
+    ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
@@ -2051,15 +2201,17 @@ def plot_scatter_2d(
                 color=color,
                 label=str(cat),
             )
-        if str(color_var).lower().startswith("sous-"):
-            ax.legend(
-                title=color_var,
-                bbox_to_anchor=(0.5, -0.15),
-                loc="upper center",
-                ncol=3,
-            )
-        else:
-            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            if str(color_var).lower().startswith("sous-"):
+                ax.legend(
+                    title=color_var,
+                    bbox_to_anchor=(0.5, -0.15),
+                    loc="upper center",
+                    ncol=3,
+                )
+            else:
+                ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2096,15 +2248,17 @@ def plot_scatter_3d(
                 color=color,
                 label=str(cat),
             )
-        if str(color_var).lower().startswith("sous-"):
-            ax.legend(
-                title=color_var,
-                bbox_to_anchor=(0.5, -0.1),
-                loc="upper center",
-                ncol=3,
-            )
-        else:
-            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            if str(color_var).lower().startswith("sous-"):
+                ax.legend(
+                    title=color_var,
+                    bbox_to_anchor=(0.5, -0.1),
+                    loc="upper center",
+                    ncol=3,
+                )
+            else:
+                ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2151,7 +2305,9 @@ def plot_cluster_scatter_3d(
             color="black",
             zorder=3,
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2206,7 +2362,9 @@ def plot_cluster_scatter(
             color="black",
             zorder=3,
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2237,7 +2395,9 @@ def plot_cluster_scatter_3d(
             color=cmap(i % n_colors),
             label=str(lab),
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2332,7 +2492,9 @@ def plot_cluster_grid(
     )
 
     for ax in axes:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
 
     fig.tight_layout()
     return fig
@@ -2462,8 +2624,10 @@ def plot_scree(
     values = np.asarray(explained_variance, dtype=float)
     if values.max() > 1.0:
         ratios = values / values.sum()
+        kaiser = 100.0 / values.sum()
     else:
         ratios = values
+        kaiser = None
 
     axes = np.arange(1, len(ratios) + 1)
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
@@ -2476,8 +2640,8 @@ def plot_scree(
     cum = np.cumsum(ratios)
     ax.plot(axes, cum * 100, "-o", color="#C04000")
 
-    if values.max() > 1.0:
-        ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
+    if kaiser is not None:
+        ax.axhline(kaiser, color="red", ls="--", lw=0.8, label="Kaiser")
 
     # The 80% cumulative inertia marker is shown as a horizontal line at 80 on
     # the percentage scale (or ``0.8`` if the axis uses fractions).  Because the
@@ -2490,7 +2654,9 @@ def plot_scree(
     ax.set_ylabel("% Variance expliquée")
     ax.set_title(f"Éboulis des variances – {method_name}")
     ax.set_xticks(list(axes))
-    ax.legend(loc="upper right")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(loc="upper right")
     fig.tight_layout()
 
     output = Path(output_path)
@@ -2541,7 +2707,9 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_ylabel("% Contribution")
     ax.set_title("Contributions des variables – FAMD (F1 et F2)")
-    ax.legend(title="Axe")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="Axe")
     fig.tight_layout()
     return fig
 
@@ -2584,11 +2752,13 @@ def plot_embedding(
                     color=color,
                     label=str(cat),
                 )
-            ax.legend(
-                title=getattr(labels, "name", ""),
-                bbox_to_anchor=(1.05, 1),
-                loc="upper left",
-            )
+            handles, labs = ax.get_legend_handles_labels()
+            if labs:
+                ax.legend(
+                    title=getattr(labels, "name", ""),
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
+                )
         else:
             sc = ax.scatter(
                 coords_df.iloc[:, 0],
@@ -2820,7 +2990,14 @@ from sklearn.model_selection import KFold
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from scipy.spatial.distance import pdist
 
-__all__ = ["unsupervised_cv_and_temporal_tests"]
+__all__ = [
+    "unsupervised_cv_and_temporal_tests",
+    "cluster_evaluation_metrics",
+    "dbscan_evaluation_metrics",
+    "plot_cluster_evaluation",
+    "plot_combined_silhouette",
+    "plot_pca_stability_bars",
+]
 
 
 def _find_date_column(df: pd.DataFrame) -> Optional[str]:

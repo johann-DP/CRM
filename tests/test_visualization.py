@@ -69,3 +69,26 @@ def test_cluster_segment_table_and_heatmap():
     assert tab.loc[0, "A"] == 1
     fig = pf.plot_cluster_segment_heatmap(tab, "test")
     assert hasattr(fig, "savefig")
+
+
+def test_cluster_evaluation_and_stability_plots():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(20, 2))
+    curves = {}
+    opts = {}
+    for method in ["kmeans", "agglomerative", "gmm"]:
+        df, best = pf.cluster_evaluation_metrics(X, method, range(2, 4))
+        curves[method] = df
+        opts[method] = best
+        fig = pf.plot_cluster_evaluation(df, method)
+        assert hasattr(fig, "savefig")
+    comb = pf.plot_combined_silhouette(curves, opts)
+    assert hasattr(comb, "savefig")
+
+    metrics = {
+        "d1": {"pca_axis_corr_mean": 0.8, "pca_var_first_axis_mean": 0.5},
+        "d2": {"pca_axis_corr_mean": 0.9, "pca_var_first_axis_mean": 0.6},
+    }
+    figs = pf.plot_pca_stability_bars(metrics)
+    for fig in figs.values():
+        assert hasattr(fig, "savefig")
