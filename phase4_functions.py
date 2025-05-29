@@ -1859,19 +1859,36 @@ def plot_cluster_evaluation(
     Parameters
     ----------
     df : pandas.DataFrame
-        Table returned by :func:`cluster_evaluation_metrics`.
+        Table returned by :func:`cluster_evaluation_metrics` or an equivalent
+        function. The table must contain at least the columns ``silhouette``
+        and ``dunn_index`` as well as one column specifying the evaluated
+        parameter (typically ``k`` or ``min_cluster_size``).
     method : str
         Name of the clustering algorithm.
     k_opt : int or None, optional
-        Value of ``k`` considered optimal. When provided, it is highlighted on
-        the silhouette curve.
+        Value of ``k`` considered optimal. When provided and when a ``k``
+        column exists in ``df``, it is highlighted on the silhouette curve.
     """
+
+    # Determine which column to use on the x-axis
+    if "k" in df.columns:
+        xcol = "k"
+        xlabel = "k"
+    elif "min_cluster_size" in df.columns:
+        xcol = "min_cluster_size"
+        xlabel = "min_cluster_size"
+    elif "eps" in df.columns:
+        xcol = "eps"
+        xlabel = "eps"
+    else:  # fallback to the first column
+        xcol = df.columns[0]
+        xlabel = xcol
 
     fig, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
     ax2 = ax1.twinx()
 
     ax1.plot(
-        df["k"],
+        df[xcol],
         df["silhouette"],
         marker="o",
         color="tab:blue",
@@ -1879,24 +1896,24 @@ def plot_cluster_evaluation(
     )
     if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
         ax1.fill_between(
-            df["k"],
+            df[xcol],
             df["silhouette_lower"],
             df["silhouette_upper"],
             color="tab:blue",
             alpha=0.2,
         )
     ax2.bar(
-        df["k"],
+        df[xcol],
         df["dunn_index"],
         color="tab:orange",
         alpha=0.3,
         label="Dunn index",
     )
 
-    if k_opt is not None and k_opt in df["k"].values:
+    if xcol == "k" and k_opt is not None and k_opt in df[xcol].values:
         ax1.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
 
-    ax1.set_xlabel("k")
+    ax1.set_xlabel(xlabel)
     ax1.set_ylabel("Silhouette")
     ax2.set_ylabel("Dunn index")
     ax1.set_title(f"Évaluation clustering – {method.upper()}")
