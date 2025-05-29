@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import phase4_functions as pf
+import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
 
@@ -58,3 +59,22 @@ def test_generate_figures_handles_3d(tmp_path):
         cluster_k=2,
     )
     assert figs
+    assert "pca_cluster_comparison" in figs
+
+
+def test_plot_cluster_grid():
+    emb = pd.DataFrame(np.random.rand(10, 2), columns=["X", "Y"])
+    km_labels, km_k = pf.tune_kmeans_clusters(emb.values, range(2, 3))
+    ag_labels, ag_k = pf.tune_agglomerative_clusters(emb.values, range(2, 3))
+    db_labels, db_eps = pf.tune_dbscan_clusters(emb.values, eps_values=[0.5])
+    fig = pf.plot_cluster_grid(
+        emb,
+        km_labels,
+        ag_labels,
+        db_labels,
+        "test",
+        km_k,
+        ag_k,
+        db_eps,
+    )
+    assert isinstance(fig, plt.Figure)
