@@ -54,6 +54,7 @@ def test_evaluate_and_plot(tmp_path, monkeypatch):
         "trustworthiness",
         "continuity",
         "runtime_seconds",
+        "cluster_algo",
     }
     assert set(metrics.columns) == expected_cols
     assert list(metrics.index) == ["A", "B"]
