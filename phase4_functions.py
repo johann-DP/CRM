@@ -1817,7 +1817,8 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         else:
             df_norm[col] = (df_norm[col] - cmin) / (cmax - cmin)
 
-    annot = df_norm.copy()
+    # keep the original numeric values for annotations before normalization
+    annot = df_metrics[df_norm.columns].copy()
     if "variance_cumulee_%" in annot:
         annot["variance_cumulee_%"] = (
             annot["variance_cumulee_%"].round().astype("Int64")
