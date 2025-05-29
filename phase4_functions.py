@@ -1492,7 +1492,7 @@ import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score
-from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.mixture import GaussianMixture
 
 
@@ -1548,6 +1548,32 @@ def tune_agglomerative_clusters(
         best_labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
         best_k = k
     return best_labels, best_k
+
+
+def tune_dbscan_clusters(
+    X: np.ndarray,
+    eps_values: Iterable[float] = (0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
+    min_samples: int = 5,
+) -> Tuple[np.ndarray, float]:
+    """Return DBSCAN labels using the best silhouette over ``eps_values``."""
+    best_score = -1.0
+    best_labels: Optional[np.ndarray] = None
+    best_eps = 0.5
+    X = np.asarray(X)
+    for eps in eps_values:
+        labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters < 2:
+            score = -1.0
+        else:
+            score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score = score
+            best_labels = labels
+            best_eps = eps
+    if best_labels is None:
+        best_labels = DBSCAN(eps=best_eps, min_samples=min_samples).fit_predict(X)
+    return best_labels, best_eps
 
 
 def tune_gmm_clusters(
@@ -2212,6 +2238,76 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     return fig
 
 
+def plot_cluster_grid(
+    emb_df: pd.DataFrame,
+    km_labels: np.ndarray,
+    ag_labels: np.ndarray,
+    db_labels: np.ndarray,
+    method: str,
+    km_k: int,
+    ag_k: int,
+    db_eps: float,
+) -> plt.Figure:
+    """Return a 2x2 grid comparing clustering algorithms."""
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 12), dpi=200)
+    axes = axes.ravel()
+
+    # Baseline
+    axes[0].scatter(
+        emb_df.iloc[:, 0],
+        emb_df.iloc[:, 1],
+        s=10,
+        alpha=0.6,
+        color="tab:blue",
+    )
+    axes[0].set_title(f"{method.upper()} \u2013 No Clustering")
+
+    def _plot(ax: plt.Axes, labels: np.ndarray, title: str) -> None:
+        unique = np.unique(labels)
+        try:
+            cmap = matplotlib.colormaps.get_cmap("tab10")
+        except AttributeError:  # pragma: no cover - older Matplotlib
+            cmap = matplotlib.cm.get_cmap("tab10")
+        n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+        for i, lab in enumerate(unique):
+            mask = labels == lab
+            color = "lightgray" if lab == -1 else cmap(i % n_colors)
+            ax.scatter(
+                emb_df.loc[mask, emb_df.columns[0]],
+                emb_df.loc[mask, emb_df.columns[1]],
+                s=10,
+                alpha=0.6,
+                color=color,
+                label=str(lab),
+            )
+        ax.set_xlabel(emb_df.columns[0])
+        ax.set_ylabel(emb_df.columns[1])
+        ax.set_title(title)
+
+    _plot(
+        axes[1],
+        km_labels,
+        f"{method.upper()} \u2013 K-Means (k={km_k})",
+    )
+    _plot(
+        axes[2],
+        ag_labels,
+        f"{method.upper()} \u2013 Agglomerative (n={ag_k})",
+    )
+    _plot(
+        axes[3],
+        db_labels,
+        f"{method.upper()} \u2013 DBSCAN (ε={db_eps:g})",
+    )
+
+    for ax in axes:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    fig.tight_layout()
+    return fig
+
+
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]
@@ -2447,32 +2543,31 @@ def generate_figures(
             fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
-            labels = res.get("cluster_labels")
-            algo = res.get("cluster_algo")
-            if labels is None or len(labels) != len(emb):
-                max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-                labels, tuned_k, algo = auto_cluster_labels(
-                    emb.iloc[:, :2].values,
-                    range(2, max_k + 1),
-                )
-                res["cluster_labels"] = labels
-                res["cluster_k"] = tuned_k
-                res["cluster_algo"] = algo
-            k_used = len(np.unique(labels))
-            algo = algo or "kmeans"
-            title = (
-                f"Projection {method.upper()} – coloration par clusters ({algo}, k={k_used})"
+            max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+            km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+            ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+            db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
+
+            grid_fig = plot_cluster_grid(
+                emb.iloc[:, :2],
+                km_labels,
+                ag_labels,
+                db_labels,
+                method,
+                km_k,
+                ag_k,
+                db_eps,
             )
-            save_name = f"{method}_clusters_{algo}_k{k_used}"
-            cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
-            figures[save_name] = cfig
-            _save(cfig, method, save_name)
+            figures[f"{method}_cluster_comparison"] = grid_fig
+            _save(grid_fig, method, f"{method}_cluster_comparison")
+
+            labels = km_labels
             dist_fig = plot_cluster_distribution(
                 labels,
-                f"Répartition des segments – {method.upper()} ({algo})",
+                f"Répartition des segments – {method.upper()} (K-Means)",
             )
             figures[f"{method}_cluster_dist"] = dist_fig
-            _save(dist_fig, method, f"{method}_cluster_dist_{algo}")
+            _save(dist_fig, method, f"{method}_cluster_dist_kmeans")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2484,11 +2579,11 @@ def generate_figures(
                 _save(fig3d, method, f"{method}_scatter_3d")
                 cfig3d = plot_cluster_scatter_3d(
                     emb.iloc[:, :3],
-                    labels,
-                    f"Projection 3D – {method.upper()} ({algo}, k={k_used})",
+                    km_labels,
+                    f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
                 )
                 figures[f"{method}_clusters_3d"] = cfig3d
-                _save(cfig3d, method, f"{method}_clusters_{algo}_k{k_used}_3d")
+                _save(cfig3d, method, f"{method}_clusters_kmeans_k{km_k}_3d")
         coords = res.get("loadings")
         if coords is None:
             coords = res.get("column_coords")
@@ -2533,26 +2628,23 @@ def generate_figures(
             fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
-            labels = res.get("cluster_labels")
-            algo = res.get("cluster_algo")
-            if labels is None or len(labels) != len(emb):
-                max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-                labels, tuned_k, algo = auto_cluster_labels(
-                    emb.iloc[:, :2].values,
-                    range(2, max_k + 1),
-                )
-                res["cluster_labels"] = labels
-                res["cluster_k"] = tuned_k
-                res["cluster_algo"] = algo
-            k_used = len(np.unique(labels))
-            algo = algo or "kmeans"
-            title = (
-                f"Projection {method.upper()} – coloration par clusters ({algo}, k={k_used})"
+            max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+            km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+            ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+            db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
+
+            grid_fig = plot_cluster_grid(
+                emb.iloc[:, :2],
+                km_labels,
+                ag_labels,
+                db_labels,
+                method,
+                km_k,
+                ag_k,
+                db_eps,
             )
-            save_name = f"{method}_clusters_{algo}_k{k_used}"
-            cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
-            figures[save_name] = cfig
-            _save(cfig, method, save_name)
+            figures[f"{method}_cluster_comparison"] = grid_fig
+            _save(grid_fig, method, f"{method}_cluster_comparison")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2564,11 +2656,11 @@ def generate_figures(
                 _save(fig3d, method, f"{method}_scatter_3d")
                 cfig3d = plot_cluster_scatter_3d(
                     emb.iloc[:, :3],
-                    labels,
-                    f"Projection 3D – {method.upper()} ({algo}, k={k_used})",
+                    km_labels,
+                    f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
                 )
                 figures[f"{method}_clusters_3d"] = cfig3d
-                _save(cfig3d, method, f"{method}_clusters_{algo}_k{k_used}_3d")
+                _save(cfig3d, method, f"{method}_clusters_kmeans_k{km_k}_3d")
 
     return figures
 
