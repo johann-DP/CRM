@@ -208,6 +208,7 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         cmap="coolwarm",
         vmin=0,
         vmax=1,
+        cbar=False,
     )
     ax.set_title("Comparaison des méthodes")
     plt.yticks(rotation=0)

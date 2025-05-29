@@ -2126,6 +2126,7 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
         vmin=0,
         vmax=1,
         ax=ax,
+        cbar=False,
     )
     ax.set_title("Comparaison des méthodes")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
