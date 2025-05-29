@@ -132,12 +132,14 @@ def build_pdf_report(
     pdf_path: Path,
     dataset_order: Sequence[str],
     tables: Optional[Mapping[str, pd.DataFrame]] = None,
+    df: Optional[pd.DataFrame] = None,
 ) -> Path:
     """Assemble all PNG figures under ``output_dir`` into ``pdf_path``.
 
     A title page is added followed by sections for each dataset listed in
     ``dataset_order``. Any provided tables are rendered as figures and appended
-    at the end of the document.
+    at the end of the document. When ``df`` is provided, two additional pages
+    summarising business segments are generated from this dataframe.
     """
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -365,6 +367,69 @@ def build_pdf_report(
         seg2 = output_dir / "segment_summary_2.png"
         _add_segment_page(seg1, "Synth\xe8se segmentaire 1")
         _add_segment_page(seg2, "Synth\xe8se segmentaire 2")
+
+        def _segment_analysis_pages(data: Optional[pd.DataFrame]) -> tuple[plt.Figure, plt.Figure]:
+            seg_cols1 = [
+                "Cat\xe9gorie",
+                "Sous-cat\xe9gorie",
+                "Entit\xe9 op\xe9rationnelle",
+                "Statut commercial",
+            ]
+            seg_cols2 = ["Pilier", "Statut production", "Type opportunit\xe9"]
+            all_cols = seg_cols1 + seg_cols2
+
+            def _plot(ax: plt.Axes, series: pd.Series, name: str) -> None:
+                counts = series.astype(str).value_counts(dropna=False)
+                ax.bar(counts.index.astype(str), counts.values, edgecolor="black")
+                ax.set_xlabel(name)
+                ax.set_ylabel("Effectif")
+                for label in ax.get_xticklabels():
+                    label.set_rotation(45)
+                    label.set_ha("right")
+
+            fig1, axes1 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+            for ax, col in zip(axes1.ravel(), seg_cols1):
+                if data is not None and col in data.columns:
+                    _plot(ax, data[col], col)
+                else:
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+            fig1.tight_layout()
+
+            fig2, axes2 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+            for ax, col in zip(axes2.ravel()[:3], seg_cols2):
+                if data is not None and col in data.columns:
+                    _plot(ax, data[col], col)
+                else:
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+
+            ax = axes2.ravel()[3]
+            if data is not None:
+                avail = [c for c in all_cols if c in data.columns]
+                if avail:
+                    pct = data[avail].isna().mean().mul(100)
+                    ax.bar(pct.index.astype(str), pct.values, edgecolor="black")
+                    ax.set_ylabel("% NA")
+                    for label in ax.get_xticklabels():
+                        label.set_rotation(45)
+                        label.set_ha("right")
+                    ax.set_xlabel("Segment")
+                else:
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+            else:
+                ax.axis("off")
+                ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+
+            fig2.tight_layout()
+            return fig1, fig2
+
+        fig_a, fig_b = _segment_analysis_pages(df)
+        pdf.savefig(fig_a)
+        plt.close(fig_a)
+        pdf.savefig(fig_b)
+        plt.close(fig_b)
 
         if tables:
             for tname, df in tables.items():
@@ -838,6 +903,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             Path(config["output_pdf"]),
             dataset_order,
             tables,
+            df_active,
         )
 
     logging.info("Analysis complete")
