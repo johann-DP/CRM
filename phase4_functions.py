@@ -1159,7 +1159,11 @@ def run_mfa(
     n_components = n_components or max_limit
     mfa = prince.MFA(n_components=n_components, n_iter=n_iter)
     mfa = mfa.fit(df_all, groups=groups_dict)
-    mfa.explained_inertia_ = mfa.percentage_of_variance_ / 100
+    inertia_values = np.asarray(mfa.percentage_of_variance_, dtype=float) / 100
+    inertia_values = (
+        inertia_values / inertia_values.sum() if inertia_values.sum() > 0 else inertia_values
+    )
+    mfa.explained_inertia_ = inertia_values
     embeddings = mfa.row_coordinates(df_all)
     embeddings.index = df_active.index
 
@@ -2275,11 +2279,12 @@ def plot_scree(
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
 
-    # The 80% cumulative inertia marker is shown as a horizontal line at
-    # ``y = 0.8`` (i.e. 80% when the axis is expressed as a proportion).
-    # For MFA this replaces a former vertical line placed at the component
-    # index where cumulative inertia reached 80%.
-    ax.axhline(0.8, color="green", ls="--", lw=0.8, label="80% cumul")
+    # The 80% cumulative inertia marker is shown as a horizontal line at 80 on
+    # the percentage scale (or ``0.8`` if the axis uses fractions).  Because the
+    # y-axis here is expressed in percent, the line is drawn at ``y=80``.  For
+    # MFA this replaces a former vertical marker placed at the component index
+    # where cumulative inertia reached 80%.
+    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
