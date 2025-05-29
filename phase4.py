@@ -26,6 +26,8 @@ import datetime
 import json
 import logging
 import os
+# limite OpenBLAS à 24 threads (ou moins)
+os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 import tempfile

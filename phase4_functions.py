@@ -16,6 +16,10 @@ The API is kept identical for backward compatibility.
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
+import os
+# limite OpenBLAS à 24 threads (ou moins)
+os.environ["OPENBLAS_NUM_THREADS"] = "24"
+
 import pandas as pd
 
 import warnings
