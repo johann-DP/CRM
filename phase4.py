@@ -665,9 +665,15 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         tasks.append(("pacmap", run_pacmap, (df_active,), params))
         nonlin_names.append("pacmap")
 
-    results = Parallel(n_jobs=n_jobs or len(tasks), prefer="threads")(
-        delayed(_run_method)(name, func, args, kwargs) for name, func, args, kwargs in tasks
-    )
+    backend = config.get("joblib_backend", "loky")
+    if len(tasks) <= 1 or (n_jobs is not None and n_jobs == 1):
+        results = [
+            _run_method(name, func, args, kwargs) for name, func, args, kwargs in tasks
+        ]
+    else:
+        results = Parallel(n_jobs=n_jobs or len(tasks), backend=backend)(
+            delayed(_run_method)(name, func, args, kwargs) for name, func, args, kwargs in tasks
+        )
 
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
@@ -710,6 +716,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         output_dir=output_dir,
         segment_col=config.get("segment_col"),
         n_jobs=n_jobs,
+        backend=backend,
     )
 
     comparison_metrics = None
