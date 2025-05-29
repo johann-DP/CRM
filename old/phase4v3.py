@@ -1319,7 +1319,7 @@ def export_report_to_pdf(
     out.parent.mkdir(parents=True, exist_ok=True)
     logging.info("Exporting PDF report to %s", out)
     with PdfPages(out) as pdf:
-        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         ax.text(0.5, 0.6, "Rapport des analyses – Phase 4", fontsize=20, ha="center", va="center")
         ax.text(0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center")

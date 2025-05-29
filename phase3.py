@@ -1467,8 +1467,8 @@ def generer_figures_synthese_phase3(out_dir,
     for i, png in enumerate(final_list, start=1):
         index_lines.append(f"Figure {i:02d} – {png.name}")
 
-    # Créer la figure d'index (A4 portrait)
-    fig, ax = _plt.subplots(figsize=(8.27, 11.69), dpi=200)
+    # Créer la figure d'index (A4 paysage)
+    fig, ax = _plt.subplots(figsize=(11.69, 8.27), dpi=200)
     ax.axis('off')
     ax.text(
         0.01, 0.99,

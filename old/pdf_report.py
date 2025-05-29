@@ -91,7 +91,7 @@ def export_report_to_pdf(
     try:
         from fpdf import FPDF  # type: ignore
 
-        pdf = FPDF(format="A4", unit="mm")
+        pdf = FPDF(orientation="L", format="A4", unit="mm")
         pdf.set_auto_page_break(auto=True, margin=10)
 
         def _add_title(text: str, size: int = 14) -> None:
@@ -114,8 +114,7 @@ def export_report_to_pdf(
                     continue
             if not isinstance(table, pd.DataFrame):
                 continue
-            orientation = "L" if len(table.columns) > 6 else "P"
-            pdf.add_page(orientation=orientation)
+            pdf.add_page()
             _add_title(name)
             pdf.set_font("Courier", size=8)
             table_str = table.to_string()
@@ -151,7 +150,7 @@ def export_report_to_pdf(
         logger.info("FPDF not available, falling back to PdfPages")
 
         with PdfPages(out) as pdf_backend:
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             ax.text(0.5, 0.6, "Rapport des analyses – Phase 4", fontsize=20, ha="center", va="center")
             ax.text(0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center")

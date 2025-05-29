@@ -165,7 +165,7 @@ def build_pdf_report(
 
     def _add_image(pdf: PdfPages, img_path: Path, dataset: str) -> None:
         img = plt.imread(img_path)
-        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
         ax.imshow(img)
         ax.axis("off")
         ax.text(
@@ -183,7 +183,8 @@ def build_pdf_report(
 
     def _table_to_fig(df: pd.DataFrame, title: str) -> plt.Figure:
         height = 0.4 * len(df) + 1.5
-        fig, ax = plt.subplots(figsize=(8.0, height), dpi=200)
+        fig_height = min(height, 8.27)
+        fig, ax = plt.subplots(figsize=(11.69, fig_height), dpi=200)
         ax.axis("off")
         ax.set_title(title)
         table = ax.table(
@@ -200,7 +201,7 @@ def build_pdf_report(
 
     with PdfPages(pdf_path) as pdf:
         # Title page
-        fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+        fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
         ax.axis("off")
         ax.text(
             0.5,
@@ -262,7 +263,7 @@ def build_pdf_report(
 
         for name in dataset_order:
             # Section page
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
             ax.axis("off")
             ax.text(0.5, 0.9, name, ha="center", va="top", fontsize=14, weight="bold")
             pdf.savefig(fig)
@@ -302,7 +303,7 @@ def build_pdf_report(
                 plt.close(fig)
 
         if segments_dir.exists():
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
             ax.axis("off")
             ax.text(
                 0.5,
@@ -472,7 +473,7 @@ def _images_to_pdf(
     try:
         from fpdf import FPDF  # type: ignore
 
-        pdf = FPDF(format="A4", unit="mm")
+        pdf = FPDF(orientation="L", format="A4", unit="mm")
         pdf.set_auto_page_break(auto=False)
         if title:
             pdf.add_page()
@@ -494,7 +495,7 @@ def _images_to_pdf(
     except Exception:
         with PdfPages(pdf_path) as pdf:
             if title:
-                fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+                fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
                 ax.axis("off")
                 ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
                 pdf.savefig(fig)
@@ -504,7 +505,7 @@ def _images_to_pdf(
                     continue
                 page_title, caption = _derive_seg_titles(img.name)
                 data = plt.imread(img)
-                fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+                fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
                 ax.imshow(data)
                 ax.axis("off")
                 ax.set_title(page_title)

@@ -3371,7 +3371,8 @@ def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
     """
     # height grows with number of rows
     fig_height = 0.4 * len(df) + 1.5
-    fig, ax = plt.subplots(figsize=(8.0, fig_height), dpi=200)
+    fig_height = min(fig_height, 8.27)
+    fig, ax = plt.subplots(figsize=(11.69, fig_height), dpi=200)
     ax.axis("off")
     ax.set_title(title)
 
@@ -3457,7 +3458,7 @@ def export_report_to_pdf(
     try:
         from fpdf import FPDF  # type: ignore
 
-        pdf = FPDF(format="A4", unit="mm")
+        pdf = FPDF(orientation="L", format="A4", unit="mm")
         pdf.set_auto_page_break(auto=True, margin=10)
 
         def _add_title(text: str, size: int = 14) -> None:
@@ -3480,8 +3481,7 @@ def export_report_to_pdf(
                     continue
             if not isinstance(table, pd.DataFrame):
                 continue
-            orientation = "L" if len(table.columns) > 6 else "P"
-            pdf.add_page(orientation=orientation)
+            pdf.add_page()
             _add_title(name)
             pdf.set_font("Courier", size=8)
             table_str = table.to_string()
@@ -3517,7 +3517,7 @@ def export_report_to_pdf(
         logger.info("FPDF not available, falling back to PdfPages")
 
         with PdfPages(out) as pdf_backend:
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             ax.text(
                 0.5,
