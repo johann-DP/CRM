@@ -28,6 +28,10 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+import tempfile
+from contextlib import suppress
+
+from PyPDF2 import PdfMerger
 from joblib import Parallel, delayed
 
 import matplotlib.pyplot as plt
@@ -220,6 +224,8 @@ def build_pdf_report(
         pdf.savefig(fig)
         plt.close(fig)
 
+        segments_dir = output_dir / "old" / "segments"
+
         for name in dataset_order:
             # Section page
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
@@ -237,6 +243,8 @@ def build_pdf_report(
             for img in sorted(base_dir.rglob("*.png")):
                 if img.name == "methods_heatmap.png":
                     continue
+                if segments_dir.exists() and img.is_relative_to(segments_dir):
+                    continue
                 _add_image(pdf, img, name)
 
         heatmap_path = output_dir / "methods_heatmap.png"
@@ -249,7 +257,82 @@ def build_pdf_report(
                 pdf.savefig(fig)
                 plt.close(fig)
 
+        if segments_dir.exists():
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(
+                0.5,
+                0.9,
+                "Annexe – Comptage des segments",
+                ha="center",
+                va="top",
+                fontsize=14,
+                weight="bold",
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            for img in sorted(segments_dir.glob("*.png")):
+                _add_image(pdf, img, "Annexe")
+
     return pdf_path
+
+
+# ---------------------------------------------------------------------------
+# PDF concatenation helpers
+# ---------------------------------------------------------------------------
+
+def _images_to_pdf(images: Sequence[Path], pdf_path: Path) -> Path:
+    """Save all ``images`` into a simple PDF file."""
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with PdfPages(pdf_path) as pdf:
+        for img in images:
+            if not img.exists():
+                continue
+            data = plt.imread(img)
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.imshow(data)
+            ax.axis("off")
+            pdf.savefig(fig)
+            plt.close(fig)
+    return pdf_path
+
+
+def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
+    """Concat predefined reports and append a segments annex."""
+
+    pdf_order = [
+        output_dir / "phase4_report_raw.pdf",
+        output_dir / "phase4_report_cleaned_1.pdf",
+        output_dir / "phase4_report_cleaned_3_univ.pdf",
+        output_dir / "phase4_report_cleaned_3_multi.pdf",
+    ]
+
+    merger = PdfMerger()
+    for path in pdf_order:
+        if path.exists():
+            merger.append(str(path))
+
+    segments_dir = output_dir / "old" / "segments"
+    tmp_pdf = None
+    if segments_dir.exists():
+        images = sorted(segments_dir.glob("*.png"))
+        if images:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp_pdf = Path(tmp.name)
+            _images_to_pdf(images, tmp_pdf)
+            merger.append(str(tmp_pdf))
+
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_pdf, "wb") as fh:
+        merger.write(fh)
+    merger.close()
+
+    if tmp_pdf is not None:
+        with suppress(OSError):
+            os.remove(tmp_pdf)
+
+    return output_pdf
 
 
 # ---------------------------------------------------------------------------
