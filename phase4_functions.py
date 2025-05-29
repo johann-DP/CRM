@@ -1679,6 +1679,164 @@ def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
     return float(min_inter / max_intra)
 
 
+def cluster_evaluation_metrics(
+    X: np.ndarray,
+    method: str,
+    k_range: Iterable[int] = range(2, 16),
+) -> tuple[pd.DataFrame, int]:
+    """Return silhouette and Dunn curves for a clustering method.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+        Data to cluster.
+    method : {"kmeans", "agglomerative", "gmm"}
+        Algorithm to evaluate.
+    k_range : iterable of int, default ``range(2, 16)``
+        Candidate numbers of clusters.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Table with columns ``k``, ``silhouette`` and ``dunn_index``.
+    int
+        ``k`` giving the highest silhouette score.
+    """
+
+    X = np.asarray(X)
+    records: list[dict[str, float]] = []
+    best_k = 2
+    best_score = -np.inf
+
+    for k in k_range:
+        if k >= len(X) or k < 2:
+            continue
+        if method == "kmeans":
+            labels = KMeans(n_clusters=k).fit_predict(X)
+        elif method == "agglomerative":
+            labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
+        elif method == "gmm":
+            labels = GaussianMixture(n_components=k, covariance_type="full").fit_predict(X)
+        else:
+            raise ValueError(f"Unknown method '{method}'")
+
+        if len(np.unique(labels)) < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X, labels))
+            dunn = dunn_index(X, labels)
+        records.append({"k": k, "silhouette": sil, "dunn_index": dunn})
+        if not np.isnan(sil) and sil > best_score:
+            best_score = sil
+            best_k = k
+
+    df = pd.DataFrame.from_records(records)
+    return df, best_k
+
+
+def dbscan_evaluation_metrics(
+    X: np.ndarray,
+    eps_values: Iterable[float],
+    *,
+    min_samples: int = 5,
+) -> tuple[pd.DataFrame, float]:
+    """Return silhouette and Dunn curves for DBSCAN over ``eps_values``."""
+
+    X = np.asarray(X)
+    records: list[dict[str, float]] = []
+    best_eps = None
+    best_score = -np.inf
+
+    for eps in eps_values:
+        labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters < 2:
+            sil = float("nan")
+            dunn = float("nan")
+        else:
+            sil = float(silhouette_score(X, labels))
+            dunn = dunn_index(X, labels)
+        records.append({"eps": eps, "k": n_clusters, "silhouette": sil, "dunn_index": dunn})
+        if not np.isnan(sil) and sil > best_score:
+            best_score = sil
+            best_eps = eps
+
+    df = pd.DataFrame.from_records(records)
+    if best_eps is None:
+        best_eps = next(iter(eps_values), 0.5)
+    return df, float(best_eps)
+
+
+def plot_cluster_evaluation(df: pd.DataFrame, method: str) -> plt.Figure:
+    """Plot silhouette and Dunn index curves for ``method``."""
+
+    fig, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax2 = ax1.twinx()
+    ax1.plot(df["k"], df["silhouette"], marker="o", color="tab:blue", label="Silhouette")
+    ax2.plot(df["k"], df["dunn_index"], marker="s", color="tab:orange", label="Dunn index")
+    ax1.set_xlabel("k")
+    ax1.set_ylabel("Silhouette")
+    ax2.set_ylabel("Dunn index")
+    ax1.set_title(f"Évaluation clustering – {method.upper()}")
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    fig.tight_layout()
+    return fig
+
+
+def plot_combined_silhouette(
+    curves: Mapping[str, pd.DataFrame], optimal_k: Mapping[str, int]
+) -> plt.Figure:
+    """Overlay silhouette curves from several methods on one figure."""
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+    for method, df in curves.items():
+        if df.empty:
+            continue
+        ax.plot(df["k"], df["silhouette"], marker="o", label=method)
+        k_opt = optimal_k.get(method)
+        if k_opt is not None and k_opt in df["k"].values:
+            val = float(df.loc[df["k"] == k_opt, "silhouette"].iloc[0])
+            ax.scatter([k_opt], [val], marker="x", s=60)
+    ax.set_xlabel("k")
+    ax.set_ylabel("Silhouette")
+    ax.set_title("Comparaison des méthodes – silhouette")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_pca_stability_bars(
+    metrics: Mapping[str, Mapping[str, float]]
+) -> Dict[str, plt.Figure]:
+    """Return bar charts summarising PCA cross-validation stability."""
+
+    datasets = list(metrics)
+    axis_corr = [metrics[d].get("pca_axis_corr_mean", float("nan")) for d in datasets]
+    var_first = [metrics[d].get("pca_var_first_axis_mean", float("nan")) for d in datasets]
+
+    fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax1.bar(datasets, axis_corr, color="tab:blue", edgecolor="black")
+    ax1.set_xlabel("Dataset")
+    ax1.set_ylabel("pca_axis_corr_mean")
+    ax1.set_title("Stabilité PCA – corrélation des axes")
+    fig1.tight_layout()
+
+    fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=200)
+    ax2.bar(datasets, var_first, color="tab:orange", edgecolor="black")
+    ax2.set_xlabel("Dataset")
+    ax2.set_ylabel("pca_var_first_axis_mean")
+    ax2.set_title("Stabilité PCA – variance axe 1")
+    fig2.tight_layout()
+
+    return {
+        "pca_axis_corr_mean": fig1,
+        "pca_var_first_axis_mean": fig2,
+    }
+
+
 def evaluate_methods(
     results_dict: Dict[str, Dict[str, Any]],
     df_active: pd.DataFrame,
@@ -2790,7 +2948,14 @@ from sklearn.model_selection import KFold
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from scipy.spatial.distance import pdist
 
-__all__ = ["unsupervised_cv_and_temporal_tests"]
+__all__ = [
+    "unsupervised_cv_and_temporal_tests",
+    "cluster_evaluation_metrics",
+    "dbscan_evaluation_metrics",
+    "plot_cluster_evaluation",
+    "plot_combined_silhouette",
+    "plot_pca_stability_bars",
+]
 
 
 def _find_date_column(df: pd.DataFrame) -> Optional[str]:
