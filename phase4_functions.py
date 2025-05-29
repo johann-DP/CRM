@@ -2827,6 +2827,193 @@ def plot_embedding(
     return output
 
 
+def _factor_method_figures(
+    method: str,
+    res: Dict[str, Any],
+    df_active: pd.DataFrame,
+    quant_vars: List[str],
+    qual_vars: List[str],
+    out: Optional[Path],
+    cluster_k: int | None,
+    segments: Optional[pd.Series],
+    color_var: Optional[str],
+) -> Dict[str, plt.Figure]:
+    figures: Dict[str, plt.Figure] = {}
+
+    def _save(fig: plt.Figure, name: str) -> None:
+        if out is None:
+            return
+        sub = out / method.lower()
+        sub.mkdir(parents=True, exist_ok=True)
+        fig.savefig(sub / f"{name}.png", dpi=300)
+        plt.close(fig)
+
+    emb = res.get("embeddings")
+    if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
+        title = f"Projection des affaires – {method.upper()}"
+        fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
+        figures[f"{method}_scatter_2d"] = fig
+        _save(fig, f"{method}_scatter_2d")
+        max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+        km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
+
+        grid_fig = plot_cluster_grid(
+            emb.iloc[:, :2],
+            km_labels,
+            ag_labels,
+            db_labels,
+            method,
+            km_k,
+            ag_k,
+            db_eps,
+        )
+        figures[f"{method}_cluster_comparison"] = grid_fig
+        _save(grid_fig, f"{method}_cluster_comparison")
+
+        labels = km_labels
+        dist_fig = plot_cluster_distribution(
+            labels,
+            f"Répartition des segments – {method.upper()} (K-Means)",
+        )
+        figures[f"{method}_cluster_dist"] = dist_fig
+        _save(dist_fig, f"{method}_cluster_dist_kmeans")
+        if segments is not None:
+            table = cluster_segment_table(labels, segments.loc[emb.index])
+            heat = plot_cluster_segment_heatmap(
+                table,
+                f"Segments vs clusters – {method.upper()} (K-Means)",
+            )
+            figures[f"{method}_cluster_segments"] = heat
+            _save(heat, f"{method}_cluster_segments_kmeans")
+        if emb.shape[1] >= 3:
+            fig3d = plot_scatter_3d(
+                emb.iloc[:, :3],
+                df_active,
+                color_var,
+                f"Projection 3D – {method.upper()}",
+            )
+            figures[f"{method}_scatter_3d"] = fig3d
+            _save(fig3d, f"{method}_scatter_3d")
+            cfig3d = plot_cluster_scatter_3d(
+                emb.iloc[:, :3],
+                km_labels,
+                f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
+            )
+            figures[f"{method}_clusters_3d"] = cfig3d
+            _save(cfig3d, f"{method}_clusters_kmeans_k{km_k}_3d")
+
+    coords = res.get("loadings")
+    if coords is None:
+        coords = res.get("column_coords")
+    if isinstance(coords, pd.DataFrame):
+        qcoords = _extract_quant_coords(coords, quant_vars)
+        if qcoords.empty and isinstance(emb, pd.DataFrame):
+            qcoords = _corr_from_embeddings(emb, df_active, quant_vars)
+    elif isinstance(emb, pd.DataFrame):
+        qcoords = _corr_from_embeddings(emb, df_active, quant_vars)
+    else:
+        qcoords = pd.DataFrame()
+    if not qcoords.empty and "model" in res:
+        dest = (
+            out / method.lower() / f"{method}_correlation.png" if out else Path(f"{method}_correlation.png")
+        )
+        path = plot_correlation_circle(
+            res["model"], quant_vars, dest, coords=qcoords
+        )
+        figures[f"{method}_correlation"] = path
+    inertia = res.get("inertia")
+    if isinstance(inertia, pd.Series) and not inertia.empty:
+        dest = (
+            out / method.lower() / f"{method}_scree.png" if out else Path(f"{method}_scree.png")
+        )
+        path = plot_scree(inertia, method.upper(), dest)
+        figures[f"{method}_scree"] = path
+    if method == "famd":
+        contrib = res.get("contributions")
+        if isinstance(contrib, pd.DataFrame) and not contrib.empty:
+            fig_contrib = plot_famd_contributions(contrib)
+            figures[f"{method}_contributions"] = fig_contrib
+            _save(fig_contrib, f"{method}_contributions")
+
+    return figures
+
+
+def _nonlin_method_figures(
+    method: str,
+    res: Dict[str, Any],
+    df_active: pd.DataFrame,
+    out: Optional[Path],
+    cluster_k: int | None,
+    segments: Optional[pd.Series],
+    color_var: Optional[str],
+) -> Dict[str, plt.Figure]:
+    figures: Dict[str, plt.Figure] = {}
+
+    def _save(fig: plt.Figure, name: str) -> None:
+        if out is None:
+            return
+        sub = out / method.lower()
+        sub.mkdir(parents=True, exist_ok=True)
+        fig.savefig(sub / f"{name}.png", dpi=300)
+        plt.close(fig)
+
+    emb = res.get("embeddings")
+    if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
+        title = f"Projection des affaires – {method.upper()}"
+        fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
+        figures[f"{method}_scatter_2d"] = fig
+        _save(fig, f"{method}_scatter_2d")
+        max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+        km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
+        db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
+
+        grid_fig = plot_cluster_grid(
+            emb.iloc[:, :2],
+            km_labels,
+            ag_labels,
+            db_labels,
+            method,
+            km_k,
+            ag_k,
+            db_eps,
+        )
+        labels = km_labels
+        title = f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
+        save_name = f"{method}_clusters_kmeans_k{km_k}"
+        cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
+        figures[save_name] = cfig
+        _save(cfig, save_name)
+        if segments is not None:
+            table = cluster_segment_table(labels, segments.loc[emb.index])
+            heat = plot_cluster_segment_heatmap(
+                table,
+                f"Segments vs clusters – {method.upper()} (K-Means)",
+            )
+            figures[f"{method}_cluster_segments"] = heat
+            _save(heat, f"{method}_cluster_segments_kmeans")
+        if emb.shape[1] >= 3:
+            fig3d = plot_scatter_3d(
+                emb.iloc[:, :3],
+                df_active,
+                color_var,
+                f"Projection 3D – {method.upper()}",
+            )
+            figures[f"{method}_scatter_3d"] = fig3d
+            _save(fig3d, f"{method}_scatter_3d")
+            cfig3d = plot_cluster_scatter_3d(
+                emb.iloc[:, :3],
+                km_labels,
+                f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
+            )
+            figures[f"{method}_clusters_3d"] = cfig3d
+            _save(cfig3d, f"{method}_clusters_kmeans_k{km_k}_3d")
+
+    return figures
+
+
 def generate_figures(
     factor_results: Dict[str, Dict[str, Any]],
     nonlin_results: Dict[str, Dict[str, Any]],
@@ -2837,6 +3024,7 @@ def generate_figures(
     *,
     cluster_k: int | None = None,
     segment_col: str | None = None,
+    n_jobs: Optional[int] = None,
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -2852,6 +3040,8 @@ def generate_figures(
         Name of the column in ``df_active`` containing business segments.
         When provided, a heatmap comparing clusters to segments is generated for
         each method.
+    n_jobs : int or None, optional
+        Number of parallel workers to use. Defaults to the number of methods.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
@@ -2862,161 +3052,38 @@ def generate_figures(
         else None
     )
 
-    def _save(fig: plt.Figure, method: str, name: str) -> None:
-        if out is None:
-            return
-        sub = out / method.lower()
-        sub.mkdir(parents=True, exist_ok=True)
-        fig.savefig(sub / f"{name}.png", dpi=300)
-        plt.close(fig)
-
+    tasks = []
     for method, res in factor_results.items():
-        emb = res.get("embeddings")
-        if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            title = f"Projection des affaires – {method.upper()}"
-            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
-            figures[f"{method}_scatter_2d"] = fig
-            _save(fig, method, f"{method}_scatter_2d")
-            max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-            km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-            ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-            db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
-
-            grid_fig = plot_cluster_grid(
-                emb.iloc[:, :2],
-                km_labels,
-                ag_labels,
-                db_labels,
+        tasks.append(
+            delayed(_factor_method_figures)(
                 method,
-                km_k,
-                ag_k,
-                db_eps,
+                res,
+                df_active,
+                quant_vars,
+                qual_vars,
+                out,
+                cluster_k,
+                segments,
+                color_var,
             )
-            figures[f"{method}_cluster_comparison"] = grid_fig
-            _save(grid_fig, method, f"{method}_cluster_comparison")
-
-            labels = km_labels
-            dist_fig = plot_cluster_distribution(
-                labels,
-                f"Répartition des segments – {method.upper()} (K-Means)",
-            )
-            figures[f"{method}_cluster_dist"] = dist_fig
-            _save(dist_fig, method, f"{method}_cluster_dist_kmeans")
-            if segments is not None:
-                table = cluster_segment_table(labels, segments.loc[emb.index])
-                heat = plot_cluster_segment_heatmap(
-                    table,
-                    f"Segments vs clusters – {method.upper()} (K-Means)",
-                )
-                figures[f"{method}_cluster_segments"] = heat
-                _save(heat, method, f"{method}_cluster_segments_kmeans")
-            if emb.shape[1] >= 3:
-                fig3d = plot_scatter_3d(
-                    emb.iloc[:, :3],
-                    df_active,
-                    color_var,
-                    f"Projection 3D – {method.upper()}",
-                )
-                figures[f"{method}_scatter_3d"] = fig3d
-                _save(fig3d, method, f"{method}_scatter_3d")
-                cfig3d = plot_cluster_scatter_3d(
-                    emb.iloc[:, :3],
-                    km_labels,
-                    f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
-                )
-                figures[f"{method}_clusters_3d"] = cfig3d
-                _save(cfig3d, method, f"{method}_clusters_kmeans_k{km_k}_3d")
-        coords = res.get("loadings")
-        if coords is None:
-            coords = res.get("column_coords")
-        if isinstance(coords, pd.DataFrame):
-            qcoords = _extract_quant_coords(coords, quant_vars)
-            if qcoords.empty and isinstance(emb, pd.DataFrame):
-                qcoords = _corr_from_embeddings(emb, df_active, quant_vars)
-        elif isinstance(emb, pd.DataFrame):
-            qcoords = _corr_from_embeddings(emb, df_active, quant_vars)
-        else:
-            qcoords = pd.DataFrame()
-        if not qcoords.empty and "model" in res:
-            dest = (
-                Path(output_dir) / method.lower() / f"{method}_correlation.png"
-                if output_dir
-                else Path(f"{method}_correlation.png")
-            )
-            path = plot_correlation_circle(
-                res["model"], quant_vars, dest, coords=qcoords
-            )
-            figures[f"{method}_correlation"] = path
-        inertia = res.get("inertia")
-        if isinstance(inertia, pd.Series) and not inertia.empty:
-            dest = (
-                Path(output_dir) / method.lower() / f"{method}_scree.png"
-                if output_dir
-                else Path(f"{method}_scree.png")
-            )
-            path = plot_scree(inertia, method.upper(), dest)
-            figures[f"{method}_scree"] = path
-        if method == "famd":
-            contrib = res.get("contributions")
-            if isinstance(contrib, pd.DataFrame) and not contrib.empty:
-                fig_contrib = plot_famd_contributions(contrib)
-                figures[f"{method}_contributions"] = fig_contrib
-                _save(fig_contrib, method, f"{method}_contributions")
+        )
 
     for method, res in nonlin_results.items():
-        emb = res.get("embeddings")
-        if isinstance(emb, pd.DataFrame) and emb.shape[1] >= 2:
-            title = f"Projection des affaires – {method.upper()}"
-            fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
-            figures[f"{method}_scatter_2d"] = fig
-            _save(fig, method, f"{method}_scatter_2d")
-            max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-            km_labels, km_k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-            ag_labels, ag_k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, max_k + 1))
-            db_labels, db_eps = tune_dbscan_clusters(emb.iloc[:, :2].values)
-
-            grid_fig = plot_cluster_grid(
-                emb.iloc[:, :2],
-                km_labels,
-                ag_labels,
-                db_labels,
+        tasks.append(
+            delayed(_nonlin_method_figures)(
                 method,
-                km_k,
-                ag_k,
-                db_eps,
+                res,
+                df_active,
+                out,
+                cluster_k,
+                segments,
+                color_var,
             )
-            labels = km_labels
-            title = (
-                f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
-            )
-            save_name = f"{method}_clusters_kmeans_k{km_k}"
-            cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
-            figures[save_name] = cfig
-            _save(cfig, method, save_name)
-            if segments is not None:
-                table = cluster_segment_table(labels, segments.loc[emb.index])
-                heat = plot_cluster_segment_heatmap(
-                    table,
-                    f"Segments vs clusters – {method.upper()} (K-Means)",
-                )
-                figures[f"{method}_cluster_segments"] = heat
-                _save(heat, method, f"{method}_cluster_segments_kmeans")
-            if emb.shape[1] >= 3:
-                fig3d = plot_scatter_3d(
-                    emb.iloc[:, :3],
-                    df_active,
-                    color_var,
-                    f"Projection 3D – {method.upper()}",
-                )
-                figures[f"{method}_scatter_3d"] = fig3d
-                _save(fig3d, method, f"{method}_scatter_3d")
-                cfig3d = plot_cluster_scatter_3d(
-                    emb.iloc[:, :3],
-                    km_labels,
-                    f"Projection 3D – {method.upper()} (K-Means, k={km_k})",
-                )
-                figures[f"{method}_clusters_3d"] = cfig3d
-                _save(cfig3d, method, f"{method}_clusters_kmeans_k{km_k}_3d")
+        )
+
+    n_jobs = n_jobs or len(tasks) or 1
+    for res_dict in Parallel(n_jobs=n_jobs, prefer="threads")(tasks):
+        figures.update(res_dict)
 
     return figures
 
