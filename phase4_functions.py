@@ -2365,6 +2365,57 @@ def plot_cluster_segment_heatmap(
     return fig
 
 
+def segment_profile_table(
+    df: pd.DataFrame,
+    segment_col: str,
+    variables: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Return a table of mean values per segment for ``variables``."""
+    if segment_col not in df.columns:
+        raise KeyError(segment_col)
+    if variables is None:
+        variables = [c for c in df.select_dtypes(include="number").columns if c != segment_col]
+    if not variables:
+        return pd.DataFrame(index=df[segment_col].unique())
+    table = df.groupby(segment_col)[list(variables)].mean()
+    return table
+
+
+def plot_segment_profile_bars(profile: pd.DataFrame, title: str) -> plt.Figure:
+    """Return a grouped bar chart from ``profile`` table."""
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    profile.T.plot(kind="bar", ax=ax)
+    ax.set_xlabel("Variable")
+    ax.set_ylabel("Mean value")
+    ax.set_title(title)
+    ax.legend(title="Segment")
+    fig.tight_layout()
+    return fig
+
+
+def segment_image_figures(
+    image_dir: Path, segments: Sequence[str]
+) -> Dict[str, plt.Figure]:
+    """Return a figure per segment image with counts in the title."""
+    counts = pd.Series(segments).value_counts()
+    total = len(segments)
+    figures: Dict[str, plt.Figure] = {}
+    for path in sorted(Path(image_dir).glob("*.png")):
+        if not path.is_file():
+            continue
+        seg_name = path.stem.replace("_", " ")
+        n = int(counts.get(seg_name, 0))
+        pct = (n / total * 100) if total else 0.0
+        img = plt.imread(path)
+        fig, ax = plt.subplots(dpi=200)
+        ax.imshow(img)
+        ax.axis("off")
+        ax.set_title(f"{seg_name}: {n} obs ({pct:.0f}%)")
+        fig.tight_layout()
+        figures[seg_name] = fig
+    return figures
+
+
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]

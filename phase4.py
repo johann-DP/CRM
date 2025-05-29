@@ -600,6 +600,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
                 exclude_lost=bool(config.get("exclude_lost", True)),
                 min_modalite_freq=int(config.get("min_modalite_freq", 5)),
                 output_dir=output_dir / "comparisons",
+                segment_col=config.get("segment_col"),
             )
             comparison_metrics = comp["metrics"]
             comparison_figures = {
