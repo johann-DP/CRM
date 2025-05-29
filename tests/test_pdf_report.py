@@ -63,4 +63,4 @@ def test_concat_pdf_reports(tmp_path):
 
     assert final_pdf.exists() and final_pdf.stat().st_size > 0
     reader = PdfReader(str(final_pdf))
-    assert len(reader.pages) == len(names) + 1
+    assert len(reader.pages) == len(names) + 2

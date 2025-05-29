@@ -34,6 +34,7 @@ def test_run_famd_basic():
     res = pf.run_famd(df, ["num1", "num2"], ["cat1", "cat2"], optimize=True)
     assert res["embeddings"].shape[0] == len(df)
     assert len(res["inertia"]) == res["embeddings"].shape[1]
+    assert np.isclose(res["inertia"].sum(), 1.0)
 
 
 def test_run_mfa_basic():
@@ -42,6 +43,7 @@ def test_run_mfa_basic():
     res = pf.run_mfa(df, groups, optimize=True)
     assert res["embeddings"].shape[0] == len(df)
     assert len(res["inertia"]) == res["embeddings"].shape[1]
+    assert np.isclose(res["inertia"].sum(), 1.0)
 
 
 def test_run_mfa_with_weights():

@@ -125,64 +125,6 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     return n_jobs
 
 
-def _images_to_pdf(images: Sequence[Path], pdf_path: Path, title: str | None = None) -> Path:
-    """Convert a series of images into a simple PDF."""
-    pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    with PdfPages(pdf_path) as pdf:
-        if title:
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
-            ax.axis("off")
-            ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
-            pdf.savefig(fig)
-            plt.close(fig)
-        for img in images:
-            if not img.exists():
-                continue
-            data = plt.imread(img)
-            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
-            ax.imshow(data)
-            ax.axis("off")
-            pdf.savefig(fig)
-            plt.close(fig)
-    return pdf_path
-
-
-def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
-    """Concatenate per-dataset reports and append segment count figures."""
-
-    order = [
-        output_dir / "phase4_report_raw.pdf",
-        output_dir / "phase4_report_cleaned_1.pdf",
-        output_dir / "phase4_report_cleaned_3_univ.pdf",
-        output_dir / "phase4_report_cleaned_3_multi.pdf",
-    ]
-
-    merger = PdfMerger()
-    for pdf in order:
-        if pdf.exists():
-            merger.append(str(pdf))
-
-    segments_dir = output_dir / "old" / "segments"
-    temp_seg_pdf = None
-    if segments_dir.exists():
-        images = sorted(segments_dir.glob("*.png"))
-        if images:
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
-                temp_seg_pdf = Path(fh.name)
-            _images_to_pdf(images, temp_seg_pdf, "Annexe – Comptage des segments")
-            merger.append(str(temp_seg_pdf))
-
-    output_pdf.parent.mkdir(parents=True, exist_ok=True)
-    merger.write(str(output_pdf))
-    merger.close()
-
-    if temp_seg_pdf:
-        try:
-            os.remove(temp_seg_pdf)
-        except OSError:
-            pass
-
-    return output_pdf
 
 
 def build_pdf_report(
@@ -290,6 +232,34 @@ def build_pdf_report(
 
         segments_dir = output_dir / "old" / "segments"
 
+        def _add_cluster_grid(method_dir: Path, dataset: str) -> None:
+            patterns = [
+                ("scatter_2d", "Sans clustering"),
+                ("clusters_kmeans", "K-means"),
+                ("clusters_agglomerative", "Agglomerative"),
+                ("clusters_dbscan", "DBSCAN"),
+            ]
+            paths = []
+            for pat, _ in patterns:
+                candidates = sorted(method_dir.glob(f"*{pat}*.png"))
+                paths.append(candidates[0] if candidates else None)
+            if not any(p is not None for p in paths):
+                return
+
+            fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
+            for ax, (path, (_, title)) in zip(axes.flat, zip(paths, patterns)):
+                if path is not None and path.exists():
+                    img = plt.imread(path)
+                    ax.imshow(img)
+                    ax.axis("off")
+                    ax.set_title(title, fontsize=9)
+                else:
+                    ax.axis("off")
+            fig.suptitle(f"Dataset: {dataset} – {method_dir.name.upper()}", fontsize=12)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            pdf.savefig(fig)
+            plt.close(fig)
+
         for name in dataset_order:
             # Section page
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
@@ -304,7 +274,17 @@ def build_pdf_report(
                 base_dir = output_dir / "comparisons" / name
             if not base_dir.exists():
                 continue
-            for img in sorted(base_dir.rglob("*.png")):
+
+            method_dirs = sorted(p for p in base_dir.iterdir() if p.is_dir())
+            for method_dir in method_dirs:
+                _add_cluster_grid(method_dir, name)
+                for img in sorted(method_dir.glob("*.png")):
+                    if any(x in img.name for x in ["scatter_2d", "clusters_kmeans", "clusters_agglomerative", "clusters_dbscan"]):
+                        # already included in grid
+                        continue
+                    _add_image(pdf, img, name)
+
+            for img in sorted(base_dir.glob("*.png")):
                 if img.name == "methods_heatmap.png":
                     continue
                 if segments_dir.exists() and img.is_relative_to(segments_dir):
@@ -360,8 +340,10 @@ def _derive_seg_titles(filename: str) -> tuple[str, str]:
     return title, caption
 
 
-def _images_to_pdf(images: Sequence[Path], pdf_path: Path) -> Path:
-    """Save ``images`` into ``pdf_path`` with titles and captions."""
+def _images_to_pdf(
+    images: Sequence[Path], pdf_path: Path, title: str | None = None
+) -> Path:
+    """Save ``images`` into ``pdf_path`` with optional title page."""
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -369,13 +351,17 @@ def _images_to_pdf(images: Sequence[Path], pdf_path: Path) -> Path:
 
         pdf = FPDF(format="A4", unit="mm")
         pdf.set_auto_page_break(auto=False)
+        if title:
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 10, txt=title, ln=1, align="C")
         for img in images:
             if not img.exists():
                 continue
-            title, caption = _derive_seg_titles(img.name)
+            page_title, caption = _derive_seg_titles(img.name)
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, txt=title, ln=1, align="C")
+            pdf.cell(0, 10, txt=page_title, ln=1, align="C")
             pdf.image(str(img), x=15, w=180)
             pdf.set_y(-20)
             pdf.set_font("Helvetica", size=10)
@@ -384,15 +370,21 @@ def _images_to_pdf(images: Sequence[Path], pdf_path: Path) -> Path:
 
     except Exception:
         with PdfPages(pdf_path) as pdf:
+            if title:
+                fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+                ax.axis("off")
+                ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
+                pdf.savefig(fig)
+                plt.close(fig)
             for img in images:
                 if not img.exists():
                     continue
-                title, caption = _derive_seg_titles(img.name)
+                page_title, caption = _derive_seg_titles(img.name)
                 data = plt.imread(img)
                 fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
                 ax.imshow(data)
                 ax.axis("off")
-                ax.set_title(title)
+                ax.set_title(page_title)
                 ax.text(
                     0.5,
                     -0.05,
@@ -431,7 +423,7 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
         if images:
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp_pdf = Path(tmp.name)
-            _images_to_pdf(images, tmp_pdf)
+            _images_to_pdf(images, tmp_pdf, "Appendix – Business Segment Visualizations")
             merger.append(str(tmp_pdf))
 
     output_pdf.parent.mkdir(parents=True, exist_ok=True)

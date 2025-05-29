@@ -31,6 +31,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.lines import Line2D
 from matplotlib.backends.backend_pdf import PdfPages
 
 from sklearn.cluster import KMeans
@@ -772,16 +773,43 @@ def run_pacmap(
 
 def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
-    ax.add_patch(circle)
+
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
+        circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
+        ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
-    for var in coords.index:
+
+    norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
+    palette = sns.color_palette("husl", len(coords))
+    handles: list[Line2D] = []
+    offset = 0.05
+    for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        ax.arrow(0, 0, x, y, head_width=0.02, length_includes_head=True, color="black")
-        offset_x = x * 1.15 + 0.03 * np.sign(x)
-        offset_y = y * 1.15 + 0.03 * np.sign(y)
-        ax.text(offset_x, offset_y, str(var), fontsize=8, ha="center", va="center")
+        alpha = 0.3 + 0.7 * norm
+        ax.arrow(
+            0,
+            0,
+            x,
+            y,
+            head_width=0.02,
+            length_includes_head=True,
+            width=0.002,
+            linewidth=0.8,
+            color=color,
+            alpha=alpha,
+        )
+        ax.text(
+            x + (offset if x >= 0 else -offset),
+            y + (offset if y >= 0 else -offset),
+            str(var),
+            fontsize=8,
+            ha="left" if x >= 0 else "right",
+            va="bottom" if y >= 0 else "top",
+        )
+        handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
+
+    ax.legend(handles=handles, loc="upper right", bbox_to_anchor=(1.3, 1.0), frameon=False, fontsize="small")
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
     ax.set_xlabel("F1")
