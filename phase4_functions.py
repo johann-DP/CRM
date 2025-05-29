@@ -34,7 +34,12 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings(
     "ignore",
-    message=".*Tight layout not applied.*",
+    message="Workbook contains no default style",
+    module="openpyxl",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied",
     module="matplotlib",
 )
 

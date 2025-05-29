@@ -54,8 +54,13 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings(
     "ignore",
-    message="Workbook contains no default style, apply openpyxl's default",
+    message="Workbook contains no default style",
     module="openpyxl",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied",
+    module="matplotlib",
 )
 
 # Import helper modules -------------------------------------------------------
@@ -146,9 +151,6 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     ]:
         os.environ[var] = str(n_jobs)
     os.environ["OPENBLAS_NUM_THREADS"] = str(openblas_threads)
-    if threadpool_limits is not None:
-        # Also limit threads at runtime for loaded libraries
-        threadpool_limits(openblas_threads)
     return n_jobs
 
 
