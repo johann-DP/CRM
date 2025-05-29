@@ -1975,13 +1975,14 @@ def plot_correlation_circle(
         )
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
-    ax.legend(
-        handles=handles,
-        loc="upper right",
-        bbox_to_anchor=(1.3, 1.0),
-        frameon=False,
-        fontsize="small",
-    )
+    if handles:
+        ax.legend(
+            handles=handles,
+            loc="upper right",
+            bbox_to_anchor=(1.3, 1.0),
+            frameon=False,
+            fontsize="small",
+        )
     ax.set_xlim(-scale * 1.1, scale * 1.1)
     ax.set_ylim(-scale * 1.1, scale * 1.1)
     ax.set_xlabel("F1")
@@ -2051,15 +2052,17 @@ def plot_scatter_2d(
                 color=color,
                 label=str(cat),
             )
-        if str(color_var).lower().startswith("sous-"):
-            ax.legend(
-                title=color_var,
-                bbox_to_anchor=(0.5, -0.15),
-                loc="upper center",
-                ncol=3,
-            )
-        else:
-            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            if str(color_var).lower().startswith("sous-"):
+                ax.legend(
+                    title=color_var,
+                    bbox_to_anchor=(0.5, -0.15),
+                    loc="upper center",
+                    ncol=3,
+                )
+            else:
+                ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2096,15 +2099,17 @@ def plot_scatter_3d(
                 color=color,
                 label=str(cat),
             )
-        if str(color_var).lower().startswith("sous-"):
-            ax.legend(
-                title=color_var,
-                bbox_to_anchor=(0.5, -0.1),
-                loc="upper center",
-                ncol=3,
-            )
-        else:
-            ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            if str(color_var).lower().startswith("sous-"):
+                ax.legend(
+                    title=color_var,
+                    bbox_to_anchor=(0.5, -0.1),
+                    loc="upper center",
+                    ncol=3,
+                )
+            else:
+                ax.legend(title=color_var, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2151,7 +2156,9 @@ def plot_cluster_scatter_3d(
             color="black",
             zorder=3,
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2206,7 +2213,9 @@ def plot_cluster_scatter(
             color="black",
             zorder=3,
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2237,7 +2246,9 @@ def plot_cluster_scatter_3d(
             color=cmap(i % n_colors),
             label=str(lab),
         )
-    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2332,7 +2343,9 @@ def plot_cluster_grid(
     )
 
     for ax in axes:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
 
     fig.tight_layout()
     return fig
@@ -2411,8 +2424,10 @@ def plot_scree(
     values = np.asarray(explained_variance, dtype=float)
     if values.max() > 1.0:
         ratios = values / values.sum()
+        kaiser = 100.0 / values.sum()
     else:
         ratios = values
+        kaiser = None
 
     axes = np.arange(1, len(ratios) + 1)
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
@@ -2425,8 +2440,8 @@ def plot_scree(
     cum = np.cumsum(ratios)
     ax.plot(axes, cum * 100, "-o", color="#C04000")
 
-    if values.max() > 1.0:
-        ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
+    if kaiser is not None:
+        ax.axhline(kaiser, color="red", ls="--", lw=0.8, label="Kaiser")
 
     # The 80% cumulative inertia marker is shown as a horizontal line at 80 on
     # the percentage scale (or ``0.8`` if the axis uses fractions).  Because the
@@ -2439,7 +2454,9 @@ def plot_scree(
     ax.set_ylabel("% Variance expliquée")
     ax.set_title(f"Éboulis des variances – {method_name}")
     ax.set_xticks(list(axes))
-    ax.legend(loc="upper right")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(loc="upper right")
     fig.tight_layout()
 
     output = Path(output_path)
@@ -2490,7 +2507,9 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_ylabel("% Contribution")
     ax.set_title("Contributions des variables – FAMD (F1 et F2)")
-    ax.legend(title="Axe")
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        ax.legend(title="Axe")
     fig.tight_layout()
     return fig
 
@@ -2533,11 +2552,13 @@ def plot_embedding(
                     color=color,
                     label=str(cat),
                 )
-            ax.legend(
-                title=getattr(labels, "name", ""),
-                bbox_to_anchor=(1.05, 1),
-                loc="upper left",
-            )
+            handles, labs = ax.get_legend_handles_labels()
+            if labs:
+                ax.legend(
+                    title=getattr(labels, "name", ""),
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
+                )
         else:
             sc = ax.scatter(
                 coords_df.iloc[:, 0],
