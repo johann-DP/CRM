@@ -1936,23 +1936,22 @@ def plot_correlation_circle(
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
     scale = float(norms.max()) if len(norms) else 1.0
 
-    # Only one axis is required as the cos² circle duplicated the
-    # information from the correlation circle. Using a single subplot
-    # simplifies the visualisation.
+    # Use a single reference circle centred at the origin.  The radius is fixed
+    # to 1 so that the correlation circle is not cluttered with additional
+    # cos² circles.
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
-    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
-        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
+        circle = plt.Circle((0, 0), 1.0, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
 
-    offset = 0.05 * scale
     palette = sns.color_palette("husl", len(coords))
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
+        alpha = 0.4 + 0.6 * (norm / scale) if scale else 1.0
         ax.arrow(
             0,
             0,
@@ -1960,18 +1959,10 @@ def plot_correlation_circle(
             y,
             head_width=0.02 * scale,
             length_includes_head=True,
-            width=0.002 * scale,
-            linewidth=0.8,
+            width=0.001 * scale,
+            linewidth=0.5,
             color=color,
             alpha=alpha,
-        )
-        ax.text(
-            x + (offset if x >= 0 else -offset),
-            y + (offset if y >= 0 else -offset),
-            str(var),
-            fontsize=8,
-            ha="left" if x >= 0 else "right",
-            va="bottom" if y >= 0 else "top",
         )
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
@@ -1982,8 +1973,9 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    ax.set_xlim(-scale * 1.1, scale * 1.1)
-    ax.set_ylim(-scale * 1.1, scale * 1.1)
+    limit = max(scale, 1.0) * 1.1
+    ax.set_xlim(-limit, limit)
+    ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
