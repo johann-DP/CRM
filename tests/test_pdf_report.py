@@ -41,7 +41,7 @@ def test_build_pdf_report(tmp_path):
 
     assert pdf_path.exists() and pdf_path.stat().st_size > 0
     reader = PdfReader(str(pdf_path))
-    assert len(reader.pages) == 11
+    assert len(reader.pages) == 13
 
 
 def _make_simple_pdf(path: Path, text: str) -> None:
