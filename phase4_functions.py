@@ -1917,7 +1917,10 @@ def plot_correlation_circle(
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
     scale = float(norms.max()) if len(norms) else 1.0
 
-    fig, (ax, axc) = plt.subplots(ncols=2, figsize=(12, 6), dpi=200)
+    # Only one axis is required as the cos² circle duplicated the
+    # information from the correlation circle. Using a single subplot
+    # simplifies the visualisation.
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
     circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
     ax.add_patch(circle)
@@ -1940,41 +1943,6 @@ def plot_correlation_circle(
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
-    # cos^2 diagram ---------------------------------------------------------
-    axc_circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
-    axc.add_patch(axc_circle)
-    axc.axhline(0, color="grey", lw=0.5)
-    axc.axvline(0, color="grey", lw=0.5)
-    cos2_scale = float((coords["F1"] ** 2 + coords["F2"] ** 2).max()) or 1.0
-    for var in coords.index:
-        x, y = coords.loc[var, ["F1", "F2"]]
-        cos2 = (x ** 2 + y ** 2) / (scale ** 2)
-        angle = np.arctan2(y, x)
-        arrow_len = cos2 * scale
-        arrow_x = np.cos(angle) * arrow_len
-        arrow_y = np.sin(angle) * arrow_len
-        axc.arrow(
-            0,
-            0,
-            arrow_x,
-            arrow_y,
-            head_width=0.02 * scale,
-            length_includes_head=True,
-            color="black",
-        )
-        axc.text(
-            arrow_x + (offset if arrow_x >= 0 else -offset),
-            arrow_y + (offset if arrow_y >= 0 else -offset),
-            str(var),
-            fontsize=8,
-            ha="left" if arrow_x >= 0 else "right",
-            va="bottom" if arrow_y >= 0 else "top",
-        )
-    axc.set_xlim(-scale * 1.1, scale * 1.1)
-    axc.set_ylim(-scale * 1.1, scale * 1.1)
-    axc.set_xlabel("cos²")
-    axc.set_ylabel("")
-    axc.set_aspect("equal")
 
     method_name = factor_model.__class__.__name__.upper()
     if hasattr(factor_model, "explained_variance_ratio_"):
@@ -1988,7 +1956,6 @@ def plot_correlation_circle(
         f"Cercle des corrélations – {method_name} (F1+F2 = {var2:.1f} % de variance)"
     )
     ax.set_aspect("equal")
-    axc.set_title("Qualité de représentation (cos²)")
     fig.tight_layout()
 
     output = Path(output_path)
