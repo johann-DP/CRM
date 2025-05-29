@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import phase4_functions as pf
-import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
 
@@ -80,7 +79,7 @@ def test_cluster_evaluation_and_stability_plots():
         df, best = pf.cluster_evaluation_metrics(X, method, range(2, 4))
         curves[method] = df
         opts[method] = best
-        fig = pf.plot_cluster_evaluation(df, method)
+        fig = pf.plot_cluster_evaluation(df, method, best)
         assert hasattr(fig, "savefig")
     comb = pf.plot_combined_silhouette(curves, opts)
     assert hasattr(comb, "savefig")

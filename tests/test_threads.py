@@ -13,4 +13,3 @@ def test_set_blas_threads_sets_env(monkeypatch):
     assert os.environ['OPENBLAS_NUM_THREADS'] == '3'
     assert os.environ['MKL_NUM_THREADS'] == '3'
     assert os.environ['OMP_NUM_THREADS'] == '3'
-
