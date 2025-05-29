@@ -177,6 +177,7 @@ def compare_datasets_versions(
                 quant_vars,
                 qual_vars,
                 output_dir=fig_dir,
+                segment_col=None,
             )
         except Exception as exc:  # pragma: no cover - visualization failure
             logger.warning("Figure generation failed: %s", exc)

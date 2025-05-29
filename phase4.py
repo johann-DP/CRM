@@ -592,6 +592,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         quant_vars,
         qual_vars,
         output_dir=output_dir,
+        segment_col=config.get("segment_col"),
     )
 
     comparison_metrics = None

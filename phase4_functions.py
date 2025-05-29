@@ -2212,6 +2212,33 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     return fig
 
 
+def cluster_segment_table(
+    labels: Sequence[int] | pd.Series,
+    segments: Sequence[str] | pd.Series,
+) -> pd.DataFrame:
+    """Return a cross-tabulation of segments per cluster."""
+    if len(labels) != len(segments):
+        raise ValueError("labels and segments must have same length")
+    ser_labels = pd.Series(labels, name="cluster")
+    ser_segments = pd.Series(segments, name="segment")
+    return pd.crosstab(ser_labels, ser_segments)
+
+
+def plot_cluster_segment_heatmap(
+    table: pd.DataFrame, title: str
+) -> plt.Figure:
+    """Return a heatmap visualising ``table`` counts."""
+    import seaborn as sns
+
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    sns.heatmap(table, annot=True, fmt="d", cmap="Blues", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Segment")
+    ax.set_ylabel("Cluster")
+    fig.tight_layout()
+    return fig
+
+
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]
@@ -2416,6 +2443,7 @@ def generate_figures(
     output_dir: Optional[Path] = None,
     *,
     cluster_k: int | None = None,
+    segment_col: str | None = None,
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -2427,10 +2455,19 @@ def generate_figures(
         If ``None``, the number of clusters is tuned automatically up to a
         maximum of 10. Otherwise ``cluster_k`` is treated as the upper bound for
         the search range.
+    segment_col : str or None, optional
+        Name of the column in ``df_active`` containing business segments.
+        When provided, a heatmap comparing clusters to segments is generated for
+        each method.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
     out = Path(output_dir) if output_dir is not None else None
+    segments = (
+        df_active[segment_col]
+        if segment_col is not None and segment_col in df_active.columns
+        else None
+    )
 
     def _save(fig: plt.Figure, method: str, name: str) -> None:
         if out is None:
@@ -2473,6 +2510,14 @@ def generate_figures(
             )
             figures[f"{method}_cluster_dist"] = dist_fig
             _save(dist_fig, method, f"{method}_cluster_dist_{algo}")
+            if segments is not None:
+                table = cluster_segment_table(labels, segments.loc[emb.index])
+                heat = plot_cluster_segment_heatmap(
+                    table,
+                    f"Segments vs clusters – {method.upper()} ({algo})",
+                )
+                figures[f"{method}_cluster_segments"] = heat
+                _save(heat, method, f"{method}_cluster_segments_{algo}")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2553,6 +2598,14 @@ def generate_figures(
             cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
             figures[save_name] = cfig
             _save(cfig, method, save_name)
+            if segments is not None:
+                table = cluster_segment_table(labels, segments.loc[emb.index])
+                heat = plot_cluster_segment_heatmap(
+                    table,
+                    f"Segments vs clusters – {method.upper()} ({algo})",
+                )
+                figures[f"{method}_cluster_segments"] = heat
+                _save(heat, method, f"{method}_cluster_segments_{algo}")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],

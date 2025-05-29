@@ -56,5 +56,15 @@ def test_generate_figures_handles_3d(tmp_path):
         ["cat"],
         output_dir=None,
         cluster_k=2,
+        segment_col="cat",
     )
     assert figs
+
+
+def test_cluster_segment_table_and_heatmap():
+    labels = np.array([0, 0, 1, 1, 0])
+    segs = pd.Series(["A", "B", "A", "A", "B"])
+    tab = pf.cluster_segment_table(labels, segs)
+    assert tab.loc[0, "A"] == 1
+    fig = pf.plot_cluster_segment_heatmap(tab, "test")
+    assert hasattr(fig, "savefig")
