@@ -2268,72 +2268,29 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     return fig
 
 
-def plot_cluster_grid(
-    emb_df: pd.DataFrame,
-    km_labels: np.ndarray,
-    ag_labels: np.ndarray,
-    db_labels: np.ndarray,
-    method: str,
-    km_k: int,
-    ag_k: int,
-    db_eps: float,
+def cluster_segment_table(
+    labels: Sequence[int] | pd.Series,
+    segments: Sequence[str] | pd.Series,
+) -> pd.DataFrame:
+    """Return a cross-tabulation of segments per cluster."""
+    if len(labels) != len(segments):
+        raise ValueError("labels and segments must have same length")
+    ser_labels = pd.Series(labels, name="cluster")
+    ser_segments = pd.Series(segments, name="segment")
+    return pd.crosstab(ser_labels, ser_segments)
+
+
+def plot_cluster_segment_heatmap(
+    table: pd.DataFrame, title: str
 ) -> plt.Figure:
-    """Return a 2x2 grid comparing clustering algorithms."""
+    """Return a heatmap visualising ``table`` counts."""
+    import seaborn as sns
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12), dpi=200)
-    axes = axes.ravel()
-
-    # Baseline
-    axes[0].scatter(
-        emb_df.iloc[:, 0],
-        emb_df.iloc[:, 1],
-        s=10,
-        alpha=0.6,
-        color="tab:blue",
-    )
-    axes[0].set_title(f"{method.upper()} \u2013 No Clustering")
-
-    def _plot(ax: plt.Axes, labels: np.ndarray, title: str) -> None:
-        unique = np.unique(labels)
-        try:
-            cmap = matplotlib.colormaps.get_cmap("tab10")
-        except AttributeError:  # pragma: no cover - older Matplotlib
-            cmap = matplotlib.cm.get_cmap("tab10")
-        n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
-        for i, lab in enumerate(unique):
-            mask = labels == lab
-            color = "lightgray" if lab == -1 else cmap(i % n_colors)
-            ax.scatter(
-                emb_df.loc[mask, emb_df.columns[0]],
-                emb_df.loc[mask, emb_df.columns[1]],
-                s=10,
-                alpha=0.6,
-                color=color,
-                label=str(lab),
-            )
-        ax.set_xlabel(emb_df.columns[0])
-        ax.set_ylabel(emb_df.columns[1])
-        ax.set_title(title)
-
-    _plot(
-        axes[1],
-        km_labels,
-        f"{method.upper()} \u2013 K-Means (k={km_k})",
-    )
-    _plot(
-        axes[2],
-        ag_labels,
-        f"{method.upper()} \u2013 Agglomerative (n={ag_k})",
-    )
-    _plot(
-        axes[3],
-        db_labels,
-        f"{method.upper()} \u2013 DBSCAN (ε={db_eps:g})",
-    )
-
-    for ax in axes:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
-
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=200)
+    sns.heatmap(table, annot=True, fmt="d", cmap="Blues", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Segment")
+    ax.set_ylabel("Cluster")
     fig.tight_layout()
     return fig
 
@@ -2543,6 +2500,7 @@ def generate_figures(
     output_dir: Optional[Path] = None,
     *,
     cluster_k: int | None = None,
+    segment_col: str | None = None,
 ) -> Dict[str, plt.Figure]:
     """Generate and optionally save comparative visualization figures.
 
@@ -2554,10 +2512,19 @@ def generate_figures(
         If ``None``, the number of clusters is tuned automatically up to a
         maximum of 10. Otherwise ``cluster_k`` is treated as the upper bound for
         the search range.
+    segment_col : str or None, optional
+        Name of the column in ``df_active`` containing business segments.
+        When provided, a heatmap comparing clusters to segments is generated for
+        each method.
     """
     color_var = None
     figures: Dict[str, plt.Figure] = {}
     out = Path(output_dir) if output_dir is not None else None
+    segments = (
+        df_active[segment_col]
+        if segment_col is not None and segment_col in df_active.columns
+        else None
+    )
 
     def _save(fig: plt.Figure, method: str, name: str) -> None:
         if out is None:
@@ -2598,7 +2565,15 @@ def generate_figures(
                 f"Répartition des segments – {method.upper()} (K-Means)",
             )
             figures[f"{method}_cluster_dist"] = dist_fig
-            _save(dist_fig, method, f"{method}_cluster_dist_kmeans")
+            _save(dist_fig, method, f"{method}_cluster_dist_{algo}")
+            if segments is not None:
+                table = cluster_segment_table(labels, segments.loc[emb.index])
+                heat = plot_cluster_segment_heatmap(
+                    table,
+                    f"Segments vs clusters – {method.upper()} ({algo})",
+                )
+                figures[f"{method}_cluster_segments"] = heat
+                _save(heat, method, f"{method}_cluster_segments_{algo}")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
@@ -2674,8 +2649,18 @@ def generate_figures(
                 ag_k,
                 db_eps,
             )
-            figures[f"{method}_cluster_comparison"] = grid_fig
-            _save(grid_fig, method, f"{method}_cluster_comparison")
+            save_name = f"{method}_clusters_{algo}_k{k_used}"
+            cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
+            figures[save_name] = cfig
+            _save(cfig, method, save_name)
+            if segments is not None:
+                table = cluster_segment_table(labels, segments.loc[emb.index])
+                heat = plot_cluster_segment_heatmap(
+                    table,
+                    f"Segments vs clusters – {method.upper()} ({algo})",
+                )
+                figures[f"{method}_cluster_segments"] = heat
+                _save(heat, method, f"{method}_cluster_segments_{algo}")
             if emb.shape[1] >= 3:
                 fig3d = plot_scatter_3d(
                     emb.iloc[:, :3],
