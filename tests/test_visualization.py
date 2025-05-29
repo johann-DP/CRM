@@ -85,6 +85,11 @@ def test_cluster_evaluation_and_stability_plots():
     comb = pf.plot_combined_silhouette(curves, opts)
     assert hasattr(comb, "savefig")
 
+    for method in ["kmeans", "agglomerative", "gmm"]:
+        labels, best_k, table = pf.optimize_clusters(method, X, range(2, 4))
+        assert len(labels) == X.shape[0]
+        assert best_k in table["k"].values
+
     metrics = {
         "d1": {"pca_axis_corr_mean": 0.8, "pca_var_first_axis_mean": 0.5},
         "d2": {"pca_axis_corr_mean": 0.9, "pca_var_first_axis_mean": 0.6},
