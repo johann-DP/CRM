@@ -1687,7 +1687,7 @@ def evaluate_methods(
 
     logger = logging.getLogger(__name__)
 
-    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, Dict[str, Any]]:
+    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, str, Dict[str, Any]]:
         method, info = item
 
         inertias = info.get("inertia")
@@ -1768,11 +1768,11 @@ def evaluate_methods(
             "cluster_k": best_k,
             "cluster_algo": algo,
         }
-        return method, labels, row
+        return method, labels, cmethod, row
 
     parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
     rows = []
-    for method, labels, row in parallel_res:
+    for method, labels, cmethod, row in parallel_res:
         results_dict[method]["cluster_labels"] = labels
         results_dict[method]["cluster_k"] = row["cluster_k"]
         results_dict[method]["cluster_algo"] = row["cluster_algo"]
@@ -1938,6 +1938,7 @@ def plot_correlation_circle(
     axc.add_patch(axc_circle)
     axc.axhline(0, color="grey", lw=0.5)
     axc.axvline(0, color="grey", lw=0.5)
+    cos2_scale = float((coords["F1"] ** 2 + coords["F2"] ** 2).max()) or 1.0
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
         cos2 = x ** 2 + y ** 2
@@ -2194,6 +2195,39 @@ def plot_cluster_scatter(
     return fig
 
 
+def plot_cluster_scatter_3d(
+    emb_df: pd.DataFrame, labels: np.ndarray, title: str
+) -> plt.Figure:
+    """Return a 3D scatter plot coloured by cluster labels."""
+    fig = plt.figure(figsize=(12, 6), dpi=200)
+    ax = fig.add_subplot(111, projection="3d")
+    unique = np.unique(labels)
+    try:
+        cmap = matplotlib.colormaps.get_cmap("tab10")
+    except AttributeError:  # pragma: no cover - older Matplotlib
+        cmap = matplotlib.cm.get_cmap("tab10")
+    n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+    for i, lab in enumerate(unique):
+        mask = labels == lab
+        ax.scatter(
+            emb_df.loc[mask, emb_df.columns[0]],
+            emb_df.loc[mask, emb_df.columns[1]],
+            emb_df.loc[mask, emb_df.columns[2]],
+            s=10,
+            alpha=0.7,
+            color=cmap(i % n_colors),
+            label=str(lab),
+        )
+    ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax.set_xlabel(emb_df.columns[0])
+    ax.set_ylabel(emb_df.columns[1])
+    ax.set_zlabel(emb_df.columns[2])
+    ax.set_title(title)
+    ax.view_init(elev=20, azim=60)
+    fig.tight_layout()
+    return fig
+
+
 def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     """Return a bar chart showing the count of points per cluster."""
     unique, counts = np.unique(labels, return_counts=True)
@@ -2204,7 +2238,10 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
         cmap = matplotlib.cm.get_cmap("tab10")
     n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
     colors = [cmap(i % n_colors) for i in range(len(unique))]
-    ax.bar([str(u) for u in unique], counts, color=colors, edgecolor="black")
+    positions = range(len(unique))
+    ax.bar(positions, counts, color=colors, edgecolor="black")
+    ax.set_xticks(list(positions))
+    ax.set_xticklabels([str(u) for u in unique])
     ax.set_xlabel("Cluster")
     ax.set_ylabel("Effectif")
     ax.set_title(title)
@@ -2274,7 +2311,11 @@ def plot_scree(
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+    if method_name.upper() == "MFA":
+        n80 = int(np.searchsorted(cum, 0.8) + 1)
+        ax.axvline(n80, color="green", ls="--", lw=0.8, label="80% cumul")
+    else:
+        ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
@@ -2443,6 +2484,7 @@ def generate_figures(
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
+            cmethod = res.get("cluster_method")
             if labels is None or len(labels) != len(emb):
                 max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
                 labels, tuned_k, alg = auto_cluster_labels(
@@ -2526,6 +2568,7 @@ def generate_figures(
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
+            cmethod = res.get("cluster_method")
             if labels is None or len(labels) != len(emb):
                 max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
                 labels, tuned_k, alg = auto_cluster_labels(
