@@ -220,6 +220,8 @@ def build_pdf_report(
         pdf.savefig(fig)
         plt.close(fig)
 
+        segments_dir = output_dir / "old" / "segments"
+
         for name in dataset_order:
             # Section page
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
@@ -237,6 +239,8 @@ def build_pdf_report(
             for img in sorted(base_dir.rglob("*.png")):
                 if img.name == "methods_heatmap.png":
                     continue
+                if segments_dir.exists() and img.is_relative_to(segments_dir):
+                    continue
                 _add_image(pdf, img, name)
 
         heatmap_path = output_dir / "methods_heatmap.png"
@@ -248,6 +252,24 @@ def build_pdf_report(
                 fig = _table_to_fig(df, tname)
                 pdf.savefig(fig)
                 plt.close(fig)
+
+        if segments_dir.exists():
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(
+                0.5,
+                0.9,
+                "Annexe – Comptage des segments",
+                ha="center",
+                va="top",
+                fontsize=14,
+                weight="bold",
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            for img in sorted(segments_dir.glob("*.png")):
+                _add_image(pdf, img, "Annexe")
 
     return pdf_path
 
