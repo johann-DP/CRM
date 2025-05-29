@@ -2182,7 +2182,10 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
         cmap = matplotlib.cm.get_cmap("tab10")
     n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
     colors = [cmap(i % n_colors) for i in range(len(unique))]
-    ax.bar([str(u) for u in unique], counts, color=colors, edgecolor="black")
+    positions = range(len(unique))
+    ax.bar(positions, counts, color=colors, edgecolor="black")
+    ax.set_xticks(list(positions))
+    ax.set_xticklabels([str(u) for u in unique])
     ax.set_xlabel("Cluster")
     ax.set_ylabel("Effectif")
     ax.set_title(title)
@@ -2252,7 +2255,11 @@ def plot_scree(
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+    if method_name.upper() == "MFA":
+        n80 = int(np.searchsorted(cum, 0.8) + 1)
+        ax.axvline(n80, color="green", ls="--", lw=0.8, label="80% cumul")
+    else:
+        ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")

@@ -220,6 +220,8 @@ def build_pdf_report(
         pdf.savefig(fig)
         plt.close(fig)
 
+        segments_dir = output_dir / "old" / "segments"
+
         for name in dataset_order:
             # Section page
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
@@ -237,6 +239,8 @@ def build_pdf_report(
             for img in sorted(base_dir.rglob("*.png")):
                 if img.name == "methods_heatmap.png":
                     continue
+                if segments_dir.exists() and img.is_relative_to(segments_dir):
+                    continue
                 _add_image(pdf, img, name)
 
         heatmap_path = output_dir / "methods_heatmap.png"
@@ -248,6 +252,24 @@ def build_pdf_report(
                 fig = _table_to_fig(df, tname)
                 pdf.savefig(fig)
                 plt.close(fig)
+
+        if segments_dir.exists():
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(
+                0.5,
+                0.9,
+                "Annexe – Comptage des segments",
+                ha="center",
+                va="top",
+                fontsize=14,
+                weight="bold",
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            for img in sorted(segments_dir.glob("*.png")):
+                _add_image(pdf, img, "Annexe")
 
     return pdf_path
 
@@ -294,46 +316,38 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
     ]
 
-    factor_results: Dict[str, Any] = {}
+    def _run_method(name: str, func, args: tuple, kwargs: dict) -> tuple[str, Any]:
+        logging.info("Running %s...", name.upper())
+        try:
+            return name, func(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - runtime failure
+            logging.warning("%s failed: %s", name.upper(), exc)
+            return name, {}
+
+    tasks: list[tuple[str, Any, tuple, dict]] = []
+    factor_names: list[str] = []
+    nonlin_names: list[str] = []
+
     if "pca" in methods and quant_vars:
-        logging.info("Running PCA...")
         params = _method_params("pca", config)
         if optimize:
             params.pop("n_components", None)
-        factor_results["pca"] = run_pca(
-            df_active,
-            quant_vars,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("pca", run_pca, (df_active, quant_vars), dict(optimize=optimize, **params)))
+        factor_names.append("pca")
 
     if "mca" in methods and qual_vars:
-        logging.info("Running MCA...")
         params = _method_params("mca", config)
         if optimize:
             params.pop("n_components", None)
-        factor_results["mca"] = run_mca(
-            df_active,
-            qual_vars,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("mca", run_mca, (df_active, qual_vars), dict(optimize=optimize, **params)))
+        factor_names.append("mca")
 
     if "famd" in methods and quant_vars and qual_vars:
-        logging.info("Running FAMD...")
         params = _method_params("famd", config)
         if optimize:
             params.pop("n_components", None)
-        try:
-            factor_results["famd"] = run_famd(
-                df_active,
-                quant_vars,
-                qual_vars,
-                optimize=optimize,
-                **params,
-            )
-        except ValueError as exc:
-            logging.warning("FAMD skipped: %s", exc)
+        tasks.append(("famd", run_famd, (df_active, quant_vars, qual_vars), dict(optimize=optimize, **params)))
+        factor_names.append("famd")
 
     groups = []
     if quant_vars:
@@ -341,35 +355,39 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     if qual_vars:
         groups.append(qual_vars)
     if "mfa" in methods and len(groups) > 1:
-        logging.info("Running MFA...")
         params = _method_params("mfa", config)
         if optimize:
             params.pop("n_components", None)
         cfg_groups = params.pop("groups", None)
-        # ``mfa: {groups: [[...], [...]]}`` in the config overrides the default
-        # automatic grouping of quantitative and qualitative variables.
         if cfg_groups:
             groups = cfg_groups
-        factor_results["mfa"] = run_mfa(
-            df_active,
-            groups,
-            optimize=optimize,
-            **params,
-        )
+        tasks.append(("mfa", run_mfa, (df_active, groups), dict(optimize=optimize, **params)))
+        factor_names.append("mfa")
 
-    nonlin_results: Dict[str, Any] = {}
     if "umap" in methods:
-        logging.info("Running UMAP...")
         params = _method_params("umap", config)
-        nonlin_results["umap"] = run_umap(df_active, **params)
+        tasks.append(("umap", run_umap, (df_active,), params))
+        nonlin_names.append("umap")
     if "phate" in methods:
-        logging.info("Running PHATE...")
         params = _method_params("phate", config)
-        nonlin_results["phate"] = run_phate(df_active, **params)
+        tasks.append(("phate", run_phate, (df_active,), params))
+        nonlin_names.append("phate")
     if "pacmap" in methods:
-        logging.info("Running PaCMAP...")
         params = _method_params("pacmap", config)
-        nonlin_results["pacmap"] = run_pacmap(df_active, **params)
+        tasks.append(("pacmap", run_pacmap, (df_active,), params))
+        nonlin_names.append("pacmap")
+
+    results = Parallel(n_jobs=n_jobs or len(tasks), prefer="threads")(
+        delayed(_run_method)(name, func, args, kwargs) for name, func, args, kwargs in tasks
+    )
+
+    factor_results: Dict[str, Any] = {}
+    nonlin_results: Dict[str, Any] = {}
+    for name, res in results:
+        if name in factor_names:
+            factor_results[name] = res
+        elif name in nonlin_names:
+            nonlin_results[name] = res
 
     valid_nonlin = {
         k: v
