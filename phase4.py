@@ -47,6 +47,16 @@ import warnings
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings(
+    "ignore",
+    message="Workbook contains no default style",
+    module="openpyxl",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied",
+    module="matplotlib",
+)
 
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
@@ -115,15 +125,20 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     """Set thread count for common BLAS libraries."""
     if n_jobs is None or n_jobs < 1:
         n_jobs = os.cpu_count() or 1
+    # OPENBLAS triggers a warning if the requested thread count exceeds the
+    # value it was compiled with.  The bundled build in this repository uses a
+    # limit of 24 threads.  Cap the environment variable accordingly while
+    # leaving the others untouched.
+    openblas_threads = min(n_jobs, 24)
     for var in [
         "OMP_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS",
         "MKL_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
         "BLIS_NUM_THREADS",
     ]:
         os.environ[var] = str(n_jobs)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(openblas_threads)
     return n_jobs
 
 
