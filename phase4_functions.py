@@ -2107,7 +2107,10 @@ def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
         cmap = matplotlib.cm.get_cmap("tab10")
     n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
     colors = [cmap(i % n_colors) for i in range(len(unique))]
-    ax.bar([str(u) for u in unique], counts, color=colors, edgecolor="black")
+    positions = range(len(unique))
+    ax.bar(positions, counts, color=colors, edgecolor="black")
+    ax.set_xticks(list(positions))
+    ax.set_xticklabels([str(u) for u in unique])
     ax.set_xlabel("Cluster")
     ax.set_ylabel("Effectif")
     ax.set_title(title)
