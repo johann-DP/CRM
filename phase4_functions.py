@@ -2578,6 +2578,51 @@ def segment_image_figures(
     return figures
 
 
+def generate_scatter_plots(
+    emb: pd.DataFrame, dataset: str, method: str, out_dir: Path
+) -> Dict[str, Path]:
+    """Generate baseline and clustered scatter plots for ``emb``.
+
+    The function saves four PNG files in ``out_dir`` named ``no_cluster_2d``,
+    ``kmeans_2d``, ``agglomerative_2d`` and ``gmm_2d``.  It returns a mapping
+    from those keys to the created file paths.
+    """
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result: Dict[str, Path] = {}
+
+    title = f"{dataset} – {method.upper()}"
+    fig = plot_scatter_2d(emb.iloc[:, :2], emb, None, title)
+    path = out_dir / "no_cluster_2d.png"
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    result["no_cluster_2d"] = path
+
+    labels, k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, min(15, len(emb))))
+    fig = plot_cluster_scatter(emb.iloc[:, :2], labels, f"{title} – KMeans (k={k})")
+    path = out_dir / "kmeans_2d.png"
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    result["kmeans_2d"] = path
+
+    labels, k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, min(15, len(emb))))
+    fig = plot_cluster_scatter(emb.iloc[:, :2], labels, f"{title} – Agglomerative (k={k})")
+    path = out_dir / "agglomerative_2d.png"
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    result["agglomerative_2d"] = path
+
+    labels, k = tune_gmm_clusters(emb.iloc[:, :2].values, range(2, min(15, len(emb))))
+    fig = plot_cluster_scatter(emb.iloc[:, :2], labels, f"{title} – GMM (k={k})")
+    path = out_dir / "gmm_2d.png"
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+    result["gmm_2d"] = path
+
+    return result
+
+
 def _extract_quant_coords(coords: pd.DataFrame, quant_vars: List[str]) -> pd.DataFrame:
     """Extract F1/F2 coordinates for quantitative variables if available."""
     cols = [c for c in ["F1", "F2"] if c in coords.columns]
