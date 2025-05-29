@@ -1768,11 +1768,11 @@ def evaluate_methods(
             "cluster_k": best_k,
             "cluster_algo": algo,
         }
-        return method, labels, cmethod, row
+        return method, labels, row
 
     parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
     rows = []
-    for method, labels, cmethod, row in parallel_res:
+    for method, labels, row in parallel_res:
         results_dict[method]["cluster_labels"] = labels
         results_dict[method]["cluster_k"] = row["cluster_k"]
         results_dict[method]["cluster_algo"] = row["cluster_algo"]
@@ -2484,7 +2484,6 @@ def generate_figures(
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
-            cmethod = res.get("cluster_method")
             if labels is None or len(labels) != len(emb):
                 max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
                 labels, tuned_k, alg = auto_cluster_labels(
@@ -2568,7 +2567,6 @@ def generate_figures(
             figures[f"{method}_scatter_2d"] = fig
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
-            cmethod = res.get("cluster_method")
             if labels is None or len(labels) != len(emb):
                 max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
                 labels, tuned_k, alg = auto_cluster_labels(
