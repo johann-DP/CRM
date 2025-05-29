@@ -56,6 +56,11 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         def __init__(self, n_jobs=None, backend=None):
             calls["n_jobs"] = n_jobs
             calls["backend"] = backend
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
 
         def __call__(self, tasks):
             return [task() for task in tasks]
@@ -97,6 +102,12 @@ def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
 
     class FakeParallel:
         def __init__(self, n_jobs=None, backend=None):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
             pass
 
         def __call__(self, tasks):
