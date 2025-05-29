@@ -290,6 +290,34 @@ def build_pdf_report(
 
         segments_dir = output_dir / "old" / "segments"
 
+        def _add_cluster_grid(method_dir: Path, dataset: str) -> None:
+            patterns = [
+                ("scatter_2d", "Sans clustering"),
+                ("clusters_kmeans", "K-means"),
+                ("clusters_agglomerative", "Agglomerative"),
+                ("clusters_dbscan", "DBSCAN"),
+            ]
+            paths = []
+            for pat, _ in patterns:
+                candidates = sorted(method_dir.glob(f"*{pat}*.png"))
+                paths.append(candidates[0] if candidates else None)
+            if not any(p is not None for p in paths):
+                return
+
+            fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
+            for ax, (path, (_, title)) in zip(axes.flat, zip(paths, patterns)):
+                if path is not None and path.exists():
+                    img = plt.imread(path)
+                    ax.imshow(img)
+                    ax.axis("off")
+                    ax.set_title(title, fontsize=9)
+                else:
+                    ax.axis("off")
+            fig.suptitle(f"Dataset: {dataset} – {method_dir.name.upper()}", fontsize=12)
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            pdf.savefig(fig)
+            plt.close(fig)
+
         for name in dataset_order:
             # Section page
             fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
@@ -304,7 +332,17 @@ def build_pdf_report(
                 base_dir = output_dir / "comparisons" / name
             if not base_dir.exists():
                 continue
-            for img in sorted(base_dir.rglob("*.png")):
+
+            method_dirs = sorted(p for p in base_dir.iterdir() if p.is_dir())
+            for method_dir in method_dirs:
+                _add_cluster_grid(method_dir, name)
+                for img in sorted(method_dir.glob("*.png")):
+                    if any(x in img.name for x in ["scatter_2d", "clusters_kmeans", "clusters_agglomerative", "clusters_dbscan"]):
+                        # already included in grid
+                        continue
+                    _add_image(pdf, img, name)
+
+            for img in sorted(base_dir.glob("*.png")):
                 if img.name == "methods_heatmap.png":
                     continue
                 if segments_dir.exists() and img.is_relative_to(segments_dir):
