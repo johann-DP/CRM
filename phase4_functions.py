@@ -637,7 +637,7 @@ def compare_datasets_versions(
             and not v["embeddings"].empty
         }
         all_results = {**factor_results, **cleaned_nonlin}
-        k_max = min(10, max(2, len(df_active) - 1))
+        k_max = min(15, max(2, len(df_active) - 1))
         metrics = evaluate_methods(
             all_results,
             df_active,
@@ -1491,11 +1491,11 @@ import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AgglomerativeClustering
 
 
 def tune_kmeans_clusters(
-    X: np.ndarray, k_range: Iterable[int] = range(2, 7)
+    X: np.ndarray, k_range: Iterable[int] = range(2, 16)
 ) -> Tuple[np.ndarray, int]:
     """Return K-Means labels using the best silhouette over ``k_range``."""
     best_score = -1.0
@@ -1519,6 +1519,52 @@ def tune_kmeans_clusters(
         best_labels = KMeans(n_clusters=k).fit_predict(X)
         best_k = k
     return best_labels, best_k
+
+
+def tune_agglomerative_clusters(
+    X: np.ndarray, k_range: Iterable[int] = range(2, 16)
+) -> Tuple[np.ndarray, int]:
+    """Return Agglomerative clustering labels using the best silhouette."""
+    best_score = -1.0
+    best_labels: Optional[np.ndarray] = None
+    best_k = 2
+    X = np.asarray(X)
+    for k in k_range:
+        if k >= len(X) or k < 2:
+            continue
+        labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
+        if len(np.unique(labels)) < 2:
+            score = -1.0
+        else:
+            score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score = score
+            best_labels = labels
+            best_k = k
+    if best_labels is None:
+        k = max(2, min(len(X), 2))
+        best_labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
+        best_k = k
+    return best_labels, best_k
+
+
+def auto_cluster_labels(
+    X: np.ndarray, k_range: Iterable[int] = range(2, 16)
+) -> Tuple[np.ndarray, int]:
+    """Select the best clustering between K-Means and Agglomerative."""
+    km_labels, km_k = tune_kmeans_clusters(X, k_range)
+    km_score = (
+        silhouette_score(X, km_labels) if len(np.unique(km_labels)) > 1 else -1.0
+    )
+
+    ag_labels, ag_k = tune_agglomerative_clusters(X, k_range)
+    ag_score = (
+        silhouette_score(X, ag_labels) if len(np.unique(ag_labels)) > 1 else -1.0
+    )
+
+    if ag_score > km_score:
+        return ag_labels, ag_k
+    return km_labels, km_k
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -1573,7 +1619,7 @@ def evaluate_methods(
     quant_vars: Sequence[str],
     qual_vars: Sequence[str],
     *,
-    k_range: Iterable[int] = range(2, 7),
+    k_range: Iterable[int] = range(2, 16),
 ) -> pd.DataFrame:
     """Compute comparison metrics for each dimensionality reduction method.
 
@@ -1635,7 +1681,7 @@ def evaluate_methods(
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
         X_low = info["embeddings"].values
-        labels, best_k = tune_kmeans_clusters(X_low, k_range)
+        labels, best_k = auto_cluster_labels(X_low, k_range)
         info["cluster_labels"] = labels
         info["cluster_k"] = best_k
         if len(labels) <= best_k or len(set(labels)) < 2:
@@ -1820,17 +1866,25 @@ def plot_correlation_circle(
     ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
+    offset = 0.05 * scale
     for var in coords.index:
         x, y = coords.loc[var, ["F1", "F2"]]
         ax.arrow(0, 0, x, y, head_width=0.02 * scale, length_includes_head=True, color="black")
-        ax.text(x * 1.1, y * 1.1, str(var), fontsize=8, ha="center", va="center")
+        ax.text(
+            x + (offset if x >= 0 else -offset),
+            y + (offset if y >= 0 else -offset),
+            str(var),
+            fontsize=8,
+            ha="left" if x >= 0 else "right",
+            va="bottom" if y >= 0 else "top",
+        )
     ax.set_xlim(-scale * 1.1, scale * 1.1)
     ax.set_ylim(-scale * 1.1, scale * 1.1)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
     # cos^2 diagram ---------------------------------------------------------
-    axc_circle = plt.Circle((0, 0), 1, color="grey", fill=False, linestyle="dashed")
+    axc_circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
     axc.add_patch(axc_circle)
     axc.axhline(0, color="grey", lw=0.5)
     axc.axvline(0, color="grey", lw=0.5)
@@ -1838,25 +1892,27 @@ def plot_correlation_circle(
         x, y = coords.loc[var, ["F1", "F2"]]
         cos2 = x ** 2 + y ** 2
         angle = np.arctan2(y, x)
+        arrow_x = np.cos(angle) * cos2 * scale
+        arrow_y = np.sin(angle) * cos2 * scale
         axc.arrow(
             0,
             0,
-            np.cos(angle) * cos2,
-            np.sin(angle) * cos2,
-            head_width=0.02,
+            arrow_x,
+            arrow_y,
+            head_width=0.02 * scale,
             length_includes_head=True,
             color="black",
         )
         axc.text(
-            np.cos(angle) * cos2 * 1.1,
-            np.sin(angle) * cos2 * 1.1,
+            arrow_x + (offset if arrow_x >= 0 else -offset),
+            arrow_y + (offset if arrow_y >= 0 else -offset),
             str(var),
             fontsize=8,
-            ha="center",
-            va="center",
+            ha="left" if arrow_x >= 0 else "right",
+            va="bottom" if arrow_y >= 0 else "top",
         )
-    axc.set_xlim(-1.1, 1.1)
-    axc.set_ylim(-1.1, 1.1)
+    axc.set_xlim(-scale * 1.1, scale * 1.1)
+    axc.set_ylim(-scale * 1.1, scale * 1.1)
     axc.set_xlabel("cos²")
     axc.set_ylabel("")
     axc.set_aspect("equal")
@@ -2116,11 +2172,16 @@ def plot_scree(
         color=sns.color_palette("deep")[0],
         edgecolor="black",
     )
-    ax.plot(axes, np.cumsum(ratios) * 100, "-o", color="#C04000")
+    cum = np.cumsum(ratios)
+    ax.plot(axes, cum * 100, "-o", color="#C04000")
 
     if values.max() > 1.0:
         ax.axhline(1, color="red", ls="--", lw=0.8, label="Kaiser")
-    ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
+    if method_name.upper() == "MFA":
+        n80 = int(np.searchsorted(cum, 0.8) + 1)
+        ax.axvline(n80, color="green", ls="--", lw=0.8, label="80% cumul")
+    else:
+        ax.axhline(80, color="green", ls="--", lw=0.8, label="80% cumul")
 
     ax.set_xlabel("Composante")
     ax.set_ylabel("% Variance expliquée")
@@ -2292,8 +2353,8 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
-                labels, tuned_k = tune_kmeans_clusters(
+                max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+                labels, tuned_k = auto_cluster_labels(
                     emb.iloc[:, :2].values,
                     range(2, max_k + 1),
                 )
@@ -2372,8 +2433,8 @@ def generate_figures(
             _save(fig, method, f"{method}_scatter_2d")
             labels = res.get("cluster_labels")
             if labels is None or len(labels) != len(emb):
-                max_k = cluster_k if cluster_k is not None else min(10, len(emb) - 1)
-                labels, tuned_k = tune_kmeans_clusters(
+                max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
+                labels, tuned_k = auto_cluster_labels(
                     emb.iloc[:, :2].values,
                     range(2, max_k + 1),
                 )
