@@ -2900,18 +2900,25 @@ def format_metrics_table(df: pd.DataFrame) -> pd.DataFrame:
     """Return ``df`` with values formatted as strings for display."""
     formatted = df.copy()
     for col in formatted.columns:
+        series = formatted[col]
         if col == "variance_cumulee_%":
-            formatted[col] = formatted[col].map(
+            formatted[col] = series.map(
                 lambda x: f"{int(round(x))}" if pd.notna(x) else ""
             )
         elif col == "nb_axes_kaiser":
-            formatted[col] = formatted[col].map(
+            formatted[col] = series.map(
                 lambda x: f"{int(x)}" if pd.notna(x) else ""
             )
-        else:
-            formatted[col] = formatted[col].map(
+        elif pd.api.types.is_integer_dtype(series):
+            formatted[col] = series.map(
+                lambda x: f"{int(x)}" if pd.notna(x) else ""
+            )
+        elif pd.api.types.is_float_dtype(series):
+            formatted[col] = series.map(
                 lambda x: f"{x:.2f}" if pd.notna(x) else ""
             )
+        else:
+            formatted[col] = series.astype(str).replace("nan", "")
     return formatted
 
 
