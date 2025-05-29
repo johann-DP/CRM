@@ -28,12 +28,14 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
+import tempfile
 from joblib import Parallel, delayed
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
+from PyPDF2 import PdfMerger
 
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -115,6 +117,66 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     ]:
         os.environ[var] = str(n_jobs)
     return n_jobs
+
+
+def _images_to_pdf(images: Sequence[Path], pdf_path: Path, title: str | None = None) -> Path:
+    """Convert a series of images into a simple PDF."""
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    with PdfPages(pdf_path) as pdf:
+        if title:
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.axis("off")
+            ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
+            pdf.savefig(fig)
+            plt.close(fig)
+        for img in images:
+            if not img.exists():
+                continue
+            data = plt.imread(img)
+            fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=200)
+            ax.imshow(data)
+            ax.axis("off")
+            pdf.savefig(fig)
+            plt.close(fig)
+    return pdf_path
+
+
+def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
+    """Concatenate per-dataset reports and append segment count figures."""
+
+    order = [
+        output_dir / "phase4_report_raw.pdf",
+        output_dir / "phase4_report_cleaned_1.pdf",
+        output_dir / "phase4_report_cleaned_3_univ.pdf",
+        output_dir / "phase4_report_cleaned_3_multi.pdf",
+    ]
+
+    merger = PdfMerger()
+    for pdf in order:
+        if pdf.exists():
+            merger.append(str(pdf))
+
+    segments_dir = output_dir / "old" / "segments"
+    temp_seg_pdf = None
+    if segments_dir.exists():
+        images = sorted(segments_dir.glob("*.png"))
+        if images:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+                temp_seg_pdf = Path(fh.name)
+            _images_to_pdf(images, temp_seg_pdf, "Annexe – Comptage des segments")
+            merger.append(str(temp_seg_pdf))
+
+    output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    merger.write(str(output_pdf))
+    merger.close()
+
+    if temp_seg_pdf:
+        try:
+            os.remove(temp_seg_pdf)
+        except OSError:
+            pass
+
+    return output_pdf
 
 
 def build_pdf_report(
