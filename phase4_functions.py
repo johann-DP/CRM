@@ -1500,7 +1500,7 @@ from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, silhouette_samples
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.mixture import GaussianMixture
 
@@ -1709,13 +1709,11 @@ def cluster_evaluation_metrics(
     """
 
     X = np.asarray(X)
-    records: list[dict[str, float]] = []
-    best_k = 2
-    best_score = -np.inf
+    n_samples = len(X)
 
-    for k in k_range:
-        if k >= len(X) or k < 2:
-            continue
+    def _eval(k: int) -> tuple[int, float, float, float, float]:
+        if k >= n_samples or k < 2:
+            return k, float("nan"), float("nan"), float("nan"), float("nan")
         if method == "kmeans":
             labels = KMeans(n_clusters=k).fit_predict(X)
         elif method == "agglomerative":
@@ -1726,18 +1724,40 @@ def cluster_evaluation_metrics(
             raise ValueError(f"Unknown method '{method}'")
 
         if len(np.unique(labels)) < 2:
-            sil = float("nan")
-            dunn = float("nan")
-        else:
-            sil = float(silhouette_score(X, labels))
-            dunn = dunn_index(X, labels)
-        records.append({"k": k, "silhouette": sil, "dunn_index": dunn})
-        if not np.isnan(sil) and sil > best_score:
-            best_score = sil
+            return k, float("nan"), float("nan"), float("nan"), float("nan")
+
+        samples = silhouette_samples(X, labels)
+        sil_mean = float(samples.mean())
+        sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
+        dunn = dunn_index(X, labels)
+        return k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
+
+    results = Parallel(n_jobs=-1)(delayed(_eval)(k) for k in k_range)
+
+    records: list[dict[str, float]] = []
+    best_k = None
+    highest_upper = -np.inf
+
+    for k, mean, lower, upper, dunn in results:
+        records.append(
+            {
+                "k": k,
+                "silhouette": mean,
+                "silhouette_lower": lower,
+                "silhouette_upper": upper,
+                "dunn_index": dunn,
+            }
+        )
+        if np.isnan(mean):
+            continue
+        if best_k is None and mean > highest_upper:
             best_k = k
+        highest_upper = max(highest_upper, upper)
 
     df = pd.DataFrame.from_records(records)
-    return df, best_k
+    if best_k is None:
+        best_k = int(df.loc[df["silhouette"].idxmax(), "k"])
+    return df.sort_values("k"), best_k
 
 
 def optimize_clusters(
@@ -1789,28 +1809,46 @@ def dbscan_evaluation_metrics(
     """Return silhouette and Dunn curves for DBSCAN over ``eps_values``."""
 
     X = np.asarray(X)
-    records: list[dict[str, float]] = []
-    best_eps = None
-    best_score = -np.inf
+    n_samples = len(X)
 
-    for eps in eps_values:
+    def _eval(eps: float) -> tuple[float, float, float, float, float, int]:
         labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         if n_clusters < 2:
-            sil = float("nan")
-            dunn = float("nan")
-        else:
-            sil = float(silhouette_score(X, labels))
-            dunn = dunn_index(X, labels)
-        records.append({"eps": eps, "k": n_clusters, "silhouette": sil, "dunn_index": dunn})
-        if not np.isnan(sil) and sil > best_score:
-            best_score = sil
+            return eps, float("nan"), float("nan"), float("nan"), float("nan"), n_clusters
+        samples = silhouette_samples(X, labels)
+        sil_mean = float(samples.mean())
+        sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
+        dunn = dunn_index(X, labels)
+        return eps, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn, n_clusters
+
+    results = Parallel(n_jobs=-1)(delayed(_eval)(e) for e in eps_values)
+
+    records: list[dict[str, float]] = []
+    best_eps = None
+    highest_upper = -np.inf
+
+    for eps, mean, lower, upper, dunn, n_clusters in results:
+        records.append(
+            {
+                "eps": eps,
+                "k": n_clusters,
+                "silhouette": mean,
+                "silhouette_lower": lower,
+                "silhouette_upper": upper,
+                "dunn_index": dunn,
+            }
+        )
+        if np.isnan(mean):
+            continue
+        if best_eps is None and mean > highest_upper:
             best_eps = eps
+        highest_upper = max(highest_upper, upper)
 
     df = pd.DataFrame.from_records(records)
     if best_eps is None:
-        best_eps = next(iter(eps_values), 0.5)
-    return df, float(best_eps)
+        best_eps = float(df.loc[df["silhouette"].idxmax(), "eps"]) if not df.empty else next(iter(eps_values), 0.5)
+    return df.sort_values("eps"), float(best_eps)
 
 
 def plot_cluster_evaluation(
@@ -1839,6 +1877,14 @@ def plot_cluster_evaluation(
         color="tab:blue",
         label="Silhouette",
     )
+    if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
+        ax1.fill_between(
+            df["k"],
+            df["silhouette_lower"],
+            df["silhouette_upper"],
+            color="tab:blue",
+            alpha=0.2,
+        )
     ax2.bar(
         df["k"],
         df["dunn_index"],
@@ -1871,7 +1917,15 @@ def plot_combined_silhouette(
     for method, df in curves.items():
         if df.empty:
             continue
+        df = df.sort_values("k")
         ax.plot(df["k"], df["silhouette"], marker="o", label=method)
+        if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
+            ax.fill_between(
+                df["k"],
+                df["silhouette_lower"],
+                df["silhouette_upper"],
+                alpha=0.2,
+            )
         k_opt = optimal_k.get(method)
         if k_opt is not None and k_opt in df["k"].values:
             val = float(df.loc[df["k"] == k_opt, "silhouette"].iloc[0])
@@ -2230,8 +2284,8 @@ def plot_correlation_circle(
             y,
             head_width=0.02,
             length_includes_head=True,
-            width=0.002,
-            linewidth=0.8,
+            width=0.004,
+            linewidth=1.2,
             color=color,
             alpha=alpha,
         )
@@ -3220,7 +3274,7 @@ def generate_figures(
         When provided, a heatmap comparing clusters to segments is generated for
         each method.
     n_jobs : int or None, optional
-        Number of parallel workers to use. Defaults to the number of methods.
+        Number of parallel workers to use. Defaults to all available cores.
     backend : str, optional
         Joblib backend used for parallelisation. Defaults to ``"loky"`` which
         launches separate processes.
@@ -3263,7 +3317,7 @@ def generate_figures(
             )
         )
 
-    n_jobs = n_jobs or len(tasks) or 1
+    n_jobs = n_jobs if n_jobs is not None else -1
     for res_dict in Parallel(n_jobs=n_jobs, backend=backend)(tasks):
         figures.update(res_dict)
 
