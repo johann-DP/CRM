@@ -2694,7 +2694,6 @@ def plot_cluster_grid(
         gmm_labels,
         f"{method.upper()} \u2013 Gaussian Mixture (k={gmm_k})",
     )
-    axes[3].axis("off")
 
     fig.tight_layout()
     return fig
