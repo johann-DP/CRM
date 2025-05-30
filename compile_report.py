@@ -1,7 +1,7 @@
 # compile_report.py
 import yaml
 import pandas as pd
-from pathlib import Path
+from pathlib import Path  # noqa: F401
 import phase4
 import phase4_functions as pf
 
