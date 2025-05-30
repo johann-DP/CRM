@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 import phase4_functions as pf
+from phase4 import build_pdf_report
 
 
 def main():
@@ -8,7 +9,7 @@ def main():
         config = yaml.safe_load(fh)
     datasets = pf.load_datasets(config, ignore_schema=True)
     result = pf.compare_datasets_versions(datasets, output_dir=Path("rapport_output"))
-    pf.build_pdf_report(Path("rapport_output"), Path("RapportAnalyse.pdf"), list(datasets))
+    build_pdf_report(Path("rapport_output"), Path("RapportAnalyse.pdf"), list(datasets))
 
 
 if __name__ == "__main__":
