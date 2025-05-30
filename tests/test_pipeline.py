@@ -127,15 +127,15 @@ def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
             return lambda: func(*args, **kwargs)
         return wrapper
 
-    def fake_build(out_dir, pdf_path, datasets):
-        build_calls["args"] = (out_dir, pdf_path, datasets)
-        pdf_path.parent.mkdir(parents=True, exist_ok=True)
-        pdf_path.write_text("final")
-        return pdf_path
+    def fake_export(figs, tables, pdf_path):
+        build_calls["args"] = (figs, tables, pdf_path)
+        Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(pdf_path).write_text("final")
+        return Path(pdf_path)
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
     monkeypatch.setattr(phase4, "plot_general_heatmap", lambda *a, **k: None)
-    monkeypatch.setattr(phase4, "build_type_report", fake_build)
+    monkeypatch.setattr(phase4, "export_report_to_pdf", fake_export)
     monkeypatch.setattr(phase4, "Parallel", FakeParallel)
     monkeypatch.setattr(phase4, "delayed", fake_delayed)
 
@@ -148,9 +148,7 @@ def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
 
     phase4.run_pipeline_parallel(cfg, datasets)
 
-    assert build_calls["args"] == (
-        Path(cfg["output_dir"]),
-        Path(cfg["output_pdf"]),
-        datasets,
-    )
+    figs, tables, pdf_path = build_calls.get("args")
+    assert isinstance(figs, dict)
+    assert Path(pdf_path) == Path(cfg["output_pdf"])
     
