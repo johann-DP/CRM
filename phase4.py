@@ -187,8 +187,6 @@ def build_pdf_report(
             desc = f"Segmentation K-means sur projection {method}"
         elif "clusters_agglomerative" in suffix:
             desc = f"Segmentation agglomerative sur projection {method}"
-        elif "clusters_spectral" in suffix:
-            desc = f"Segmentation Spectral sur projection {method}"
         elif "clusters_gmm" in suffix:
             desc = f"Segmentation Gaussian mixture sur projection {method}"
         elif "cluster_grid" in suffix or "cluster_comparison" in suffix:
@@ -309,18 +307,19 @@ def build_pdf_report(
                 pats = [
                     "*clusters_kmeans*.png",
                     "*clusters_agglomerative*.png",
-                    "*clusters_spectral*.png",
                     "*clusters_gmm*.png",
                 ]
                 imgs = [_first_image(method_dir, pat) for pat in pats]
                 if not any(imgs):
                     return
                 fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
-                titles = ["K-means", "Agglomerative", "Spectral", "Gaussian Mixture"]
+                titles = ["K-means", "Agglomerative", "Gaussian Mixture"]
                 for ax, img, title in zip(axes.ravel(), imgs, titles):
                     if img is not None and Path(img).exists():
                         ax.imshow(plt.imread(img))
                         ax.set_title(title, fontsize=9)
+                    ax.axis("off")
+                for ax in axes.ravel()[len(titles):]:
                     ax.axis("off")
                 fig.suptitle(
                     f"{dataset} – {method_dir.name.upper()} – Nuages clusterisés",
