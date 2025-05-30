@@ -627,7 +627,16 @@ def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -
                     continue
                 _grid_page(pdf, imgs, f"{title} – {ds}")
 
-        if any(v for v in annex_images.values()):
+        extra_imgs = []
+        gen_heatmap = base_dir / "general_heatmap.png"
+        if gen_heatmap.exists():
+            extra_imgs.append((gen_heatmap, "Synthèse générale"))
+
+        miss_fig = base_dir / datasets[0] / "segment_summary_2.png"
+        if miss_fig.exists():
+            extra_imgs.append((miss_fig, "% NA par segment"))
+
+        if any(v for v in annex_images.values()) or extra_imgs:
             fig, ax = plt.subplots(figsize=page_size, dpi=200)
             ax.axis("off")
             ax.text(
@@ -635,6 +644,9 @@ def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -
             )
             pdf.savefig(fig)
             plt.close(fig)
+
+            for img, title in extra_imgs:
+                _grid_page(pdf, [img], title)
 
             if annex_images["segments"]:
                 _grid_page(pdf, annex_images["segments"], "Segments")
@@ -778,6 +790,69 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
             os.remove(tmp_gen)
 
     return output_pdf
+
+
+def save_segment_analysis_figures(df: pd.DataFrame, output_dir: Path) -> None:
+    """Generate and save segment summary figures used in the final report."""
+
+    seg_cols1 = [
+        "Catégorie",
+        "Sous-catégorie",
+        "Entité opérationnelle",
+        "Statut commercial",
+    ]
+    seg_cols2 = ["Pilier", "Statut production", "Type opportunité"]
+    all_cols = seg_cols1 + seg_cols2
+
+    def _plot(ax: plt.Axes, series: pd.Series, name: str) -> None:
+        counts = series.astype(str).value_counts(dropna=False)
+        ax.bar(counts.index.astype(str), counts.values, edgecolor="black")
+        ax.set_xlabel(name)
+        ax.set_ylabel("Effectif")
+        for label in ax.get_xticklabels():
+            label.set_rotation(45)
+            label.set_ha("right")
+
+    fig1, axes1 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+    for ax, col in zip(axes1.ravel(), seg_cols1):
+        if col in df.columns:
+            _plot(ax, df[col], col)
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+    fig1.tight_layout()
+    path1 = output_dir / "segment_summary_1.png"
+    fig1.savefig(path1)
+    plt.close(fig1)
+
+    fig2, axes2 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+    for ax, col in zip(axes2.ravel()[:3], seg_cols2):
+        if col in df.columns:
+            _plot(ax, df[col], col)
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+
+    ax = axes2.ravel()[3]
+    avail = [c for c in all_cols if c in df.columns]
+    if avail:
+        pct = df[avail].isna().mean().mul(100)
+        ax.bar(pct.index.astype(str), pct.values, edgecolor="black")
+        ax.set_ylabel("% NA")
+        for label in ax.get_xticklabels():
+            label.set_rotation(45)
+            label.set_ha("right")
+        ax.set_xlabel("Segment")
+    else:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+
+    fig2.tight_layout()
+    path2 = output_dir / "segment_summary_2.png"
+    fig2.savefig(path2)
+    plt.close(fig2)
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -990,21 +1065,8 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
         pd.DataFrame(robustness_df).to_csv(output_dir / "robustness.csv")
 
-    if config.get("output_pdf"):
-        logging.info("Building PDF report...")
-        tables: Dict[str, pd.DataFrame] = {}
-        if comparison_metrics is not None:
-            tables["comparison_metrics"] = format_metrics_table(comparison_metrics)
-        if robustness_df is not None:
-            tables["robustness"] = pd.DataFrame(robustness_df)
-        dataset_order = [data_key] + comparison_names
-        build_pdf_report(
-            output_dir,
-            Path(config["output_pdf"]),
-            dataset_order,
-            tables,
-            df_active,
-        )
+    # Save segment summary figures for later report assembly
+    save_segment_analysis_figures(df_active, output_dir)
 
     logging.info("Analysis complete")
     logging.shutdown()
@@ -1066,8 +1128,7 @@ def run_pipeline_parallel(
     if "output_pdf" in config:
         base_dir = Path(config.get("output_dir", "phase4_output"))
         pdf = Path(config["output_pdf"])
-        combined = pdf.with_name(f"{pdf.stem}_combined{pdf.suffix}")
-        concat_pdf_reports(base_dir, combined)
+        build_type_report(base_dir, pdf, datasets)
 
     logging.shutdown()
     return results
