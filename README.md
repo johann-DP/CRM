@@ -1,6 +1,9 @@
 # CRM Project
 
-This repository contains scripts for various phases of data analysis.
+This repository contains scripts for the four successive phases of the
+Digora CRM analysis.  Phase 1 was a manual audit and data preparation
+step documented in the project report, while phases 2 to 4 are
+implemented as Python scripts in this repository.
 
 ## Preparing the environment
 
@@ -15,6 +18,56 @@ Otherwise install the pinned dependencies from ``requirements.txt``::
 
 Using a clean environment avoids binary incompatibilities between NumPy,
 pandas and the plotting libraries.
+
+## Phase 1 – Audit initial et préparation des données
+
+The first phase focused on exploring the raw export of the Digora CRM.
+The corresponding script is no longer in the repository, but the report
+provides the following outline:
+
+1. **Structure du jeu de données et couverture temporelle** – inventory
+   of available fields and time span.
+2. **Nettoyage et uniformisation des données**
+   - standardisation of text fields;
+   - conversion of numeric values and dates;
+   - removal of empty or redundant columns;
+   - consistent categories and values;
+   - creation of derived variables.
+3. **Qualité des données** – analysis of missing values, duplicates and
+   logical inconsistencies (chronology, status vs. amounts, outliers,
+   irregular updates and seasonality).
+4. **Synthèse et recommandations métier** – enforce data entry controls,
+   standardise field usage and train CRM users.
+
+## Phase 2 – Analyse exploratoire globale
+
+`phase2.py` loads the cleaned export from phase 1 and produces a series
+of high-level indicators and figures:
+
+- bucketing of rare categories and export of missing values for key
+  fields;
+- generation of a data dictionary and business variables (margins,
+  budget variance, project delays);
+- computation of global KPIs (opportunity counts, conversion rate,
+  revenue, average deal size and project duration);
+- quarterly trends with breakdowns by status, entity and opportunity
+  type;
+- pipeline visualisations, top clients and revenue per sales person;
+- correlation matrix of numeric variables and conversion rate per
+  opportunity type;
+- automatic export of all charts and a consolidated PDF.
+
+## Phase 3 – Analyse détaillée et détection d'anomalies
+
+`phase3.py` performs a deeper inspection of the raw CRM extract:
+
+- categorical overviews with detection of rare modalities and unusual
+  combinations;
+- date range checks and export of records outside the 1990–2050 window;
+- descriptive statistics with skewness and kurtosis for numeric fields;
+- univariate outlier detection (IQR method) and multivariate approaches
+  (Isolation Forest and Local Outlier Factor) illustrated with PCA;
+- summary of all anomalies and export of cleaned datasets.
 
 ## Running `phase4.py`
 
@@ -33,6 +86,9 @@ of ``output_dir``.
 ```bash
 python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
+
+When `output_pdf` is specified in the configuration, this command also
+produces a consolidated PDF report following the [report page order](#report-page-order).
 
 The optional ``--dataset-jobs`` flag controls how many worker processes run
 those datasets in parallel. ``--dataset-backend`` selects the joblib backend
@@ -140,7 +196,7 @@ producing a simpler layout.
 
 For each dataset and factor method, the combined PDF includes exactly three pages:
 1. **Raw scatter plots** – the 2D (and 3D when available) projections without clustering.
-2. **Clustered scatter grid** – a 2×2 grid comparing K-means, Agglomerative, HDBSCAN and Gaussian Mixture partitions.
+2. **Clustered scatter grid** – a 2×2 grid comparing K-means, Agglomerative, Spectral Clustering and Gaussian Mixture partitions.
 3. **Analysis summary** – a 2×2 figure gathering variable contributions, correlation circle, scree plot and silhouette curves.
 
 Additional pages such as heatmaps or segment summaries are appended after the per-method sections.

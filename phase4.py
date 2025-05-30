@@ -80,6 +80,7 @@ from phase4_functions import (
     plot_methods_heatmap,
     plot_general_heatmap,
     generate_figures,
+    export_report_to_pdf,
     select_variables,
     unsupervised_cv_and_temporal_tests,
     format_metrics_table,
@@ -188,8 +189,6 @@ def build_pdf_report(
             desc = f"Segmentation K-means sur projection {method}"
         elif "clusters_agglomerative" in suffix:
             desc = f"Segmentation agglomerative sur projection {method}"
-        elif "clusters_hdbscan" in suffix:
-            desc = f"Segmentation HDBSCAN sur projection {method}"
         elif "clusters_gmm" in suffix:
             desc = f"Segmentation Gaussian mixture sur projection {method}"
         elif "cluster_grid" in suffix or "cluster_comparison" in suffix:
@@ -310,18 +309,19 @@ def build_pdf_report(
                 pats = [
                     "*clusters_kmeans*.png",
                     "*clusters_agglomerative*.png",
-                    "*clusters_hdbscan*.png",
                     "*clusters_gmm*.png",
                 ]
                 imgs = [_first_image(method_dir, pat) for pat in pats]
                 if not any(imgs):
                     return
                 fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
-                titles = ["K-means", "Agglomerative", "HDBSCAN", "Gaussian Mixture"]
+                titles = ["K-means", "Agglomerative", "Gaussian Mixture"]
                 for ax, img, title in zip(axes.ravel(), imgs, titles):
                     if img is not None and Path(img).exists():
                         ax.imshow(plt.imread(img))
                         ax.set_title(title, fontsize=9)
+                    ax.axis("off")
+                for ax in axes.ravel()[len(titles):]:
                     ax.axis("off")
                 fig.suptitle(
                     f"{dataset} – {method_dir.name.upper()} – Nuages clusterisés",
@@ -558,7 +558,7 @@ def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -
             for ax in axes.ravel()[len(images[i : i + 4]) :]:
                 ax.axis("off")
             fig.suptitle(title, fontsize=12)
-            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            fig.tight_layout(rect=(0, 0.03, 1, 0.95))
             pdf.savefig(fig)
             plt.close(fig)
 
@@ -1088,7 +1088,10 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _run_pipeline_single(
-    config: Dict[str, Any], name: str
+    config: Dict[str, Any],
+    name: str,
+    *,
+    keep_figures: bool = False,
 ) -> tuple[str, Dict[str, Any]]:
     """Helper for :func:`run_pipeline_parallel` executing a single dataset."""
 
@@ -1112,12 +1115,12 @@ def run_pipeline_parallel(
     backend: str = "multiprocessing",
 ) -> Dict[str, Dict[str, Any]]:
     """Run :func:`run_pipeline` on several datasets in parallel."""
-    from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
     with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         results = parallel(
-            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+            delayed(_run_pipeline_single)(config, ds, keep_figures=True)
+            for ds in datasets
         )
     results = dict(results)
 
@@ -1133,6 +1136,7 @@ def run_pipeline_parallel(
         for fname, fig in figs.items():
             figures[f"{name}_{fname}"] = fig
 
+    all_metrics = None
     if metrics_frames:
         all_metrics = pd.concat(metrics_frames, ignore_index=True)
         plot_general_heatmap(
@@ -1140,6 +1144,13 @@ def run_pipeline_parallel(
         )
     else:
         all_metrics = pd.DataFrame()
+
+    all_figs: dict[str, Any] = {}
+    for name, res in results.items():
+        figs = res.get("figures")
+        if isinstance(figs, Mapping):
+            for key, fig in figs.items():
+                all_figs[f"{name}_{key}"] = fig
 
     if "output_pdf" in config:
         pdf = Path(config["output_pdf"])
