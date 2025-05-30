@@ -27,6 +27,11 @@ import json
 import logging
 import os
 
+try:
+    from threadpoolctl import threadpool_limits
+except Exception:  # pragma: no cover - optional dependency
+    threadpool_limits = None
+
 # limite OpenBLAS à 24 threads (ou moins)
 os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
@@ -44,8 +49,18 @@ from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger
 
 import warnings
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied.*",
+    module="matplotlib",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Workbook contains no default style",
+)
 
 # Import helper modules -------------------------------------------------------
 from phase4_functions import (
@@ -80,6 +95,13 @@ def _setup_logging(output_dir: Path, level: str = "INFO") -> logging.Logger:
     output_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(level)
+    # Remove existing handlers to avoid duplicate log lines when running the
+    # pipeline multiple times within the same process.
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        with suppress(Exception):
+            h.close()
+
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     file_handler = logging.FileHandler(output_dir / "phase4.log", encoding="utf-8")
     file_handler.setFormatter(fmt)
@@ -114,18 +136,21 @@ def set_blas_threads(n_jobs: int = -1) -> int:
     """Set thread count for common BLAS libraries."""
     if n_jobs is None or n_jobs < 1:
         n_jobs = os.cpu_count() or 1
+    # OPENBLAS triggers a warning if the requested thread count exceeds the
+    # value it was compiled with.  The bundled build in this repository uses a
+    # limit of 24 threads.  Cap the environment variable accordingly while
+    # leaving the others untouched.
+    openblas_threads = min(n_jobs, 24)
     for var in [
         "OMP_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS",
         "MKL_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
         "VECLIB_MAXIMUM_THREADS",
         "BLIS_NUM_THREADS",
     ]:
         os.environ[var] = str(n_jobs)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(openblas_threads)
     return n_jobs
-
-
 
 
 def build_pdf_report(
@@ -279,10 +304,7 @@ def build_pdf_report(
                     "*clusters_dbscan*.png",
                     "*clusters_gmm*.png",
                 ]
-                imgs = [
-                    _first_image(method_dir, pat)
-                    for pat in pats
-                ]
+                imgs = [_first_image(method_dir, pat) for pat in pats]
                 if not any(imgs):
                     return
                 fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
@@ -345,7 +367,6 @@ def build_pdf_report(
                 _add_cluster_page(method_dir, name)
                 _add_analysis_page(method_dir, name)
 
-
         heatmap_path = output_dir / "methods_heatmap.png"
         if heatmap_path.exists():
             _add_image(pdf, heatmap_path, dataset_order[0])
@@ -366,7 +387,14 @@ def build_pdf_report(
             else:
                 fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
                 ax.axis("off")
-                ax.text(0.5, 0.5, f"{title} (donn\xe9es manquantes)", ha="center", va="center", fontsize=12)
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"{title} (donn\xe9es manquantes)",
+                    ha="center",
+                    va="center",
+                    fontsize=12,
+                )
             pdf.savefig(fig)
             plt.close(fig)
 
@@ -375,7 +403,9 @@ def build_pdf_report(
         _add_segment_page(seg1, "Synth\xe8se segmentaire 1")
         _add_segment_page(seg2, "Synth\xe8se segmentaire 2")
 
-        def _segment_analysis_pages(data: Optional[pd.DataFrame]) -> tuple[plt.Figure, plt.Figure]:
+        def _segment_analysis_pages(
+            data: Optional[pd.DataFrame],
+        ) -> tuple[plt.Figure, plt.Figure]:
             seg_cols1 = [
                 "Cat\xe9gorie",
                 "Sous-cat\xe9gorie",
@@ -400,7 +430,14 @@ def build_pdf_report(
                     _plot(ax, data[col], col)
                 else:
                     ax.axis("off")
-                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "Donn\xe9es manquantes",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                    )
             fig1.tight_layout()
 
             fig2, axes2 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
@@ -409,7 +446,14 @@ def build_pdf_report(
                     _plot(ax, data[col], col)
                 else:
                     ax.axis("off")
-                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "Donn\xe9es manquantes",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                    )
 
             ax = axes2.ravel()[3]
             if data is not None:
@@ -424,10 +468,24 @@ def build_pdf_report(
                     ax.set_xlabel("Segment")
                 else:
                     ax.axis("off")
-                    ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+                    ax.text(
+                        0.5,
+                        0.5,
+                        "Donn\xe9es manquantes",
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                    )
             else:
                 ax.axis("off")
-                ax.text(0.5, 0.5, "Donn\xe9es manquantes", ha="center", va="center", fontsize=8)
+                ax.text(
+                    0.5,
+                    0.5,
+                    "Donn\xe9es manquantes",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
 
             fig2.tight_layout()
             return fig1, fig2
@@ -465,9 +523,7 @@ def build_pdf_report(
     return pdf_path
 
 
-def build_type_report(
-    base_dir: Path, pdf_path: Path, datasets: Sequence[str]
-) -> Path:
+def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -> Path:
     """Assemble figures by type in landscape orientation.
 
     Figures are grouped in the following order: scatter plots, correlation
@@ -571,19 +627,35 @@ def build_type_report(
                     continue
                 _grid_page(pdf, imgs, f"{title} – {ds}")
 
-        if any(v for v in annex_images.values()):
+        extra_imgs = []
+        gen_heatmap = base_dir / "general_heatmap.png"
+        if gen_heatmap.exists():
+            extra_imgs.append((gen_heatmap, "Synthèse générale"))
+
+        miss_fig = base_dir / datasets[0] / "segment_summary_2.png"
+        if miss_fig.exists():
+            extra_imgs.append((miss_fig, "% NA par segment"))
+
+        if any(v for v in annex_images.values()) or extra_imgs:
             fig, ax = plt.subplots(figsize=page_size, dpi=200)
             ax.axis("off")
-            ax.text(0.5, 0.9, "Annexe", ha="center", va="top", fontsize=14, weight="bold")
+            ax.text(
+                0.5, 0.9, "Annexe", ha="center", va="top", fontsize=14, weight="bold"
+            )
             pdf.savefig(fig)
             plt.close(fig)
+
+            for img, title in extra_imgs:
+                _grid_page(pdf, [img], title)
 
             if annex_images["segments"]:
                 _grid_page(pdf, annex_images["segments"], "Segments")
             if annex_images["heatmaps"]:
                 _grid_page(pdf, annex_images["heatmaps"], "Clusters vs Segments")
             if annex_images["cluster_validation"]:
-                _grid_page(pdf, annex_images["cluster_validation"], "Validation clustering")
+                _grid_page(
+                    pdf, annex_images["cluster_validation"], "Validation clustering"
+                )
 
     return pdf_path
 
@@ -591,6 +663,7 @@ def build_type_report(
 # ---------------------------------------------------------------------------
 # PDF concatenation helpers
 # ---------------------------------------------------------------------------
+
 
 def _derive_seg_titles(filename: str) -> tuple[str, str]:
     """Return a title and caption for a segment figure filename."""
@@ -639,7 +712,9 @@ def _images_to_pdf(
             if title:
                 fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
                 ax.axis("off")
-                ax.text(0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold")
+                ax.text(
+                    0.5, 0.9, title, ha="center", va="top", fontsize=14, weight="bold"
+                )
                 pdf.savefig(fig)
                 plt.close(fig)
             for img in images:
@@ -697,7 +772,9 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
         if images:
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp_pdf = Path(tmp.name)
-            _images_to_pdf(images, tmp_pdf, "Appendix – Business Segment Visualizations")
+            _images_to_pdf(
+                images, tmp_pdf, "Appendix – Business Segment Visualizations"
+            )
             merger.append(str(tmp_pdf))
 
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
@@ -715,6 +792,69 @@ def concat_pdf_reports(output_dir: Path, output_pdf: Path) -> Path:
     return output_pdf
 
 
+def save_segment_analysis_figures(df: pd.DataFrame, output_dir: Path) -> None:
+    """Generate and save segment summary figures used in the final report."""
+
+    seg_cols1 = [
+        "Catégorie",
+        "Sous-catégorie",
+        "Entité opérationnelle",
+        "Statut commercial",
+    ]
+    seg_cols2 = ["Pilier", "Statut production", "Type opportunité"]
+    all_cols = seg_cols1 + seg_cols2
+
+    def _plot(ax: plt.Axes, series: pd.Series, name: str) -> None:
+        counts = series.astype(str).value_counts(dropna=False)
+        ax.bar(counts.index.astype(str), counts.values, edgecolor="black")
+        ax.set_xlabel(name)
+        ax.set_ylabel("Effectif")
+        for label in ax.get_xticklabels():
+            label.set_rotation(45)
+            label.set_ha("right")
+
+    fig1, axes1 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+    for ax, col in zip(axes1.ravel(), seg_cols1):
+        if col in df.columns:
+            _plot(ax, df[col], col)
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+    fig1.tight_layout()
+    path1 = output_dir / "segment_summary_1.png"
+    fig1.savefig(path1)
+    plt.close(fig1)
+
+    fig2, axes2 = plt.subplots(2, 2, figsize=(11.69, 8.27), dpi=200)
+    for ax, col in zip(axes2.ravel()[:3], seg_cols2):
+        if col in df.columns:
+            _plot(ax, df[col], col)
+        else:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+
+    ax = axes2.ravel()[3]
+    avail = [c for c in all_cols if c in df.columns]
+    if avail:
+        pct = df[avail].isna().mean().mul(100)
+        ax.bar(pct.index.astype(str), pct.values, edgecolor="black")
+        ax.set_ylabel("% NA")
+        for label in ax.get_xticklabels():
+            label.set_rotation(45)
+            label.set_ha("right")
+        ax.set_xlabel("Segment")
+    else:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "Données manquantes", ha="center", va="center", fontsize=8)
+
+    fig2.tight_layout()
+    path2 = output_dir / "segment_summary_2.png"
+    fig2.savefig(path2)
+    plt.close(fig2)
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
@@ -728,7 +868,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     optimize = bool(config.get("optimize_params", False))
 
     logging.info("Loading datasets...")
-    datasets = load_datasets(config, ignore_schema=bool(config.get("ignore_schema", False)))
+    datasets = load_datasets(
+        config, ignore_schema=bool(config.get("ignore_schema", False))
+    )
     data_key = config.get("dataset", config.get("main_dataset", "raw"))
     if data_key not in datasets:
         raise KeyError(f"dataset '{data_key}' not found")
@@ -773,21 +915,32 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         params = _method_params("pca", config)
         if optimize:
             params.pop("n_components", None)
-        tasks.append(("pca", run_pca, (df_active, quant_vars), dict(optimize=optimize, **params)))
+        tasks.append(
+            ("pca", run_pca, (df_active, quant_vars), dict(optimize=optimize, **params))
+        )
         factor_names.append("pca")
 
     if "mca" in methods and qual_vars:
         params = _method_params("mca", config)
         if optimize:
             params.pop("n_components", None)
-        tasks.append(("mca", run_mca, (df_active, qual_vars), dict(optimize=optimize, **params)))
+        tasks.append(
+            ("mca", run_mca, (df_active, qual_vars), dict(optimize=optimize, **params))
+        )
         factor_names.append("mca")
 
     if "famd" in methods and quant_vars and qual_vars:
         params = _method_params("famd", config)
         if optimize:
             params.pop("n_components", None)
-        tasks.append(("famd", run_famd, (df_active, quant_vars, qual_vars), dict(optimize=optimize, **params)))
+        tasks.append(
+            (
+                "famd",
+                run_famd,
+                (df_active, quant_vars, qual_vars),
+                dict(optimize=optimize, **params),
+            )
+        )
         factor_names.append("famd")
 
     groups = []
@@ -802,7 +955,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         cfg_groups = params.pop("groups", None)
         if cfg_groups:
             groups = cfg_groups
-        tasks.append(("mfa", run_mfa, (df_active, groups), dict(optimize=optimize, **params)))
+        tasks.append(
+            ("mfa", run_mfa, (df_active, groups), dict(optimize=optimize, **params))
+        )
         factor_names.append("mfa")
 
     if "umap" in methods:
@@ -824,9 +979,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             _run_method(name, func, args, kwargs) for name, func, args, kwargs in tasks
         ]
     else:
-        results = Parallel(n_jobs=n_jobs or len(tasks), backend=backend)(
-            delayed(_run_method)(name, func, args, kwargs) for name, func, args, kwargs in tasks
-        )
+        with Parallel(n_jobs=n_jobs or len(tasks), backend=backend) as parallel:
+            results = parallel(
+                delayed(_run_method)(name, func, args, kwargs)
+                for name, func, args, kwargs in tasks
+            )
 
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
@@ -908,23 +1065,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
         pd.DataFrame(robustness_df).to_csv(output_dir / "robustness.csv")
 
-    if config.get("output_pdf"):
-        logging.info("Building PDF report...")
-        tables: Dict[str, pd.DataFrame] = {"metrics": format_metrics_table(metrics)}
-        if comparison_metrics is not None:
-            tables["comparison_metrics"] = format_metrics_table(comparison_metrics)
-        if robustness_df is not None:
-            tables["robustness"] = pd.DataFrame(robustness_df)
-        dataset_order = [data_key] + comparison_names
-        build_pdf_report(
-            output_dir,
-            Path(config["output_pdf"]),
-            dataset_order,
-            tables,
-            df_active,
-        )
+    # Save segment summary figures for later report assembly
+    save_segment_analysis_figures(df_active, output_dir)
 
     logging.info("Analysis complete")
+    logging.shutdown()
     return {
         "metrics": metrics,
         "figures": figures,
@@ -933,7 +1078,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _run_pipeline_single(config: Dict[str, Any], name: str) -> tuple[str, Dict[str, Any]]:
+def _run_pipeline_single(
+    config: Dict[str, Any], name: str
+) -> tuple[str, Dict[str, Any]]:
     """Helper for :func:`run_pipeline_parallel` executing a single dataset."""
 
     cfg = dict(config)
@@ -958,9 +1105,10 @@ def run_pipeline_parallel(
     from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
-    results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_run_pipeline_single)(config, ds) for ds in datasets
-    )
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        results = parallel(
+            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+        )
     results = dict(results)
 
     metrics_frames = []
@@ -973,14 +1121,16 @@ def run_pipeline_parallel(
 
     if metrics_frames:
         all_metrics = pd.concat(metrics_frames, ignore_index=True)
-        plot_general_heatmap(all_metrics, Path(config.get("output_dir", "phase4_output")))
+        plot_general_heatmap(
+            all_metrics, Path(config.get("output_dir", "phase4_output"))
+        )
 
     if "output_pdf" in config:
         base_dir = Path(config.get("output_dir", "phase4_output"))
         pdf = Path(config["output_pdf"])
-        combined = pdf.with_name(f"{pdf.stem}_combined{pdf.suffix}")
-        concat_pdf_reports(base_dir, combined)
+        build_type_report(base_dir, pdf, datasets)
 
+    logging.shutdown()
     return results
 
 

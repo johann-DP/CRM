@@ -17,18 +17,29 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 import os
+
 # limite OpenBLAS à 24 threads (ou moins)
 os.environ["OPENBLAS_NUM_THREADS"] = "24"
 
 import pandas as pd
 
 import warnings
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings(
     "ignore",
     message="No handles with labels found to put in legend",
     module="matplotlib",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied.*",
+    module="matplotlib",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Workbook contains no default style",
 )
 
 
@@ -967,7 +978,11 @@ def run_famd(
     if zero_std:
         logger.warning("Variables constantes exclues du scaling : %s", zero_std)
         quant_vars = [c for c in quant_vars if c not in zero_std]
-    X_quanti = scaler.fit_transform(df_active[quant_vars]) if quant_vars else np.empty((len(df_active), 0))
+    X_quanti = (
+        scaler.fit_transform(df_active[quant_vars])
+        if quant_vars
+        else np.empty((len(df_active), 0))
+    )
     df_quanti = pd.DataFrame(X_quanti, index=df_active.index, columns=quant_vars)
     df_mix = pd.concat([df_quanti, df_active[qual_vars].astype("category")], axis=1)
 
@@ -1166,7 +1181,9 @@ def run_mfa(
     mfa = mfa.fit(df_all, groups=groups_dict)
     inertia_values = np.asarray(mfa.percentage_of_variance_, dtype=float) / 100
     inertia_values = (
-        inertia_values / inertia_values.sum() if inertia_values.sum() > 0 else inertia_values
+        inertia_values / inertia_values.sum()
+        if inertia_values.sum() > 0
+        else inertia_values
     )
     mfa.explained_inertia_ = inertia_values
     embeddings = mfa.row_coordinates(df_all)
@@ -1717,7 +1734,9 @@ def cluster_evaluation_metrics(
         elif method == "agglomerative":
             labels = AgglomerativeClustering(n_clusters=k).fit_predict(X)
         elif method == "gmm":
-            labels = GaussianMixture(n_components=k, covariance_type="full").fit_predict(X)
+            labels = GaussianMixture(
+                n_components=k, covariance_type="full"
+            ).fit_predict(X)
         else:
             raise ValueError(f"Unknown method '{method}'")
 
@@ -1730,11 +1749,11 @@ def cluster_evaluation_metrics(
         dunn = dunn_index(X, labels)
         return k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
 
-    results = Parallel(n_jobs=-1)(delayed(_eval)(k) for k in k_range)
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(delayed(_eval)(k) for k in k_range)
 
     records: list[dict[str, float]] = []
     best_k = None
-    highest_upper = -np.inf
 
     for k, mean, lower, upper, dunn in results:
         records.append(
@@ -1748,13 +1767,12 @@ def cluster_evaluation_metrics(
         )
         if np.isnan(mean):
             continue
-        if best_k is None and mean > highest_upper:
-            best_k = k
-        highest_upper = max(highest_upper, upper)
 
     df = pd.DataFrame.from_records(records)
-    if best_k is None:
+    if df["silhouette"].notna().any():
         best_k = int(df.loc[df["silhouette"].idxmax(), "k"])
+    else:
+        best_k = int(df["k"].iloc[0])
     return df.sort_values("k"), best_k
 
 
@@ -1791,7 +1809,9 @@ def optimize_clusters(
     elif method == "agglomerative":
         labels = AgglomerativeClustering(n_clusters=best_k).fit_predict(X)
     elif method == "gmm":
-        labels = GaussianMixture(n_components=best_k, covariance_type="full").fit_predict(X)
+        labels = GaussianMixture(
+            n_components=best_k, covariance_type="full"
+        ).fit_predict(X)
     else:  # pragma: no cover - defensive
         raise ValueError(f"Unknown method '{method}'")
 
@@ -1813,14 +1833,22 @@ def dbscan_evaluation_metrics(
         labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         if n_clusters < 2:
-            return eps, float("nan"), float("nan"), float("nan"), float("nan"), n_clusters
+            return (
+                eps,
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                n_clusters,
+            )
         samples = silhouette_samples(X, labels)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
         dunn = dunn_index(X, labels)
         return eps, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn, n_clusters
 
-    results = Parallel(n_jobs=-1)(delayed(_eval)(e) for e in eps_values)
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(delayed(_eval)(e) for e in eps_values)
 
     records: list[dict[str, float]] = []
     best_eps = None
@@ -1845,7 +1873,11 @@ def dbscan_evaluation_metrics(
 
     df = pd.DataFrame.from_records(records)
     if best_eps is None:
-        best_eps = float(df.loc[df["silhouette"].idxmax(), "eps"]) if not df.empty else next(iter(eps_values), 0.5)
+        best_eps = (
+            float(df.loc[df["silhouette"].idxmax(), "eps"])
+            if not df.empty
+            else next(iter(eps_values), 0.5)
+        )
     return df.sort_values("eps"), float(best_eps)
 
 
@@ -1892,14 +1924,6 @@ def plot_cluster_evaluation(
         color="tab:blue",
         label="Silhouette",
     )
-    if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
-        ax1.fill_between(
-            df[xcol],
-            df["silhouette_lower"],
-            df["silhouette_upper"],
-            color="tab:blue",
-            alpha=0.2,
-        )
     ax2.bar(
         df[xcol],
         df["dunn_index"],
@@ -1929,7 +1953,11 @@ def hdbscan_evaluation_metrics(
     *,
     min_samples_values: Iterable[int] = (5, 10),
 ) -> tuple[pd.DataFrame, tuple[int, int]]:
-    """Return silhouette and Dunn curves for HDBSCAN."""
+    """Return silhouette and Dunn curves for HDBSCAN.
+
+    Only configurations producing between 2 and 15 clusters are considered
+    when determining the best parameters.
+    """
     try:  # optional dependency
         import hdbscan
     except Exception as exc:  # pragma: no cover - missing library
@@ -1941,7 +1969,7 @@ def hdbscan_evaluation_metrics(
         clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms)
         labels = clusterer.fit_predict(X)
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        if n_clusters < 2:
+        if n_clusters < 2 or n_clusters > 15:
             return mcs, ms, float("nan"), float("nan"), float("nan"), n_clusters
         samples = silhouette_samples(X, labels)
         sil_mean = float(samples.mean())
@@ -1949,11 +1977,12 @@ def hdbscan_evaluation_metrics(
         dunn = dunn_index(X, labels)
         return mcs, ms, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
 
-    results = Parallel(n_jobs=-1)(
-        delayed(_eval)(mcs, ms)
-        for mcs in mcs_values
-        for ms in min_samples_values
-    )
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(
+            delayed(_eval)(mcs, ms)
+            for mcs in mcs_values
+            for ms in min_samples_values
+        )
 
     records: list[dict[str, float]] = []
     best: tuple[int, int] | None = None
@@ -1983,19 +2012,21 @@ def hdbscan_evaluation_metrics(
             int(df.loc[df["silhouette"].idxmax(), "min_samples"]),
         )
     elif best is None:
-        best = (next(iter(mcs_values), 5), next(iter(min_samples_values), 5))
+        best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5))
     return df.sort_values(["min_cluster_size", "min_samples"]), best
 
 
 def optimize_hdbscan_clusters(
     X: np.ndarray,
-    mcs_values: Iterable[int] = range(5, 51, 5),
+    mcs_values: Iterable[int] = range(2, 16),
     min_samples_values: Iterable[int] = (5, 10),
 ) -> tuple[np.ndarray, tuple[int, int], pd.DataFrame]:
     """Return labels and evaluation curves for HDBSCAN.
 
-    If the ``hdbscan`` package is unavailable the function falls back to
-    :func:`tune_dbscan_clusters` for compatibility with the test suite.
+    The search for ``min_cluster_size`` is limited to the range ``2..15`` so
+    that the resulting number of clusters remains comparable to the other
+    algorithms.  If the ``hdbscan`` package is unavailable the function falls
+    back to :func:`tune_dbscan_clusters` for compatibility with the test suite.
     """
     try:
         curves, best = hdbscan_evaluation_metrics(
@@ -2003,9 +2034,7 @@ def optimize_hdbscan_clusters(
         )
         import hdbscan  # type: ignore
 
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=best[0], min_samples=best[1]
-        )
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=best[0], min_samples=best[1])
         labels = clusterer.fit_predict(X)
         return labels, best, curves
     except Exception:
@@ -2023,10 +2052,10 @@ def optimize_hdbscan_clusters(
 def plot_cluster_metrics_grid(
     curves: Mapping[str, pd.DataFrame], optimal: Mapping[str, int]
 ) -> plt.Figure:
-    """Return a figure with silhouette/Dunn curves stacked vertically."""
-    fig, axes = plt.subplots(4, 1, figsize=(6, 12), dpi=200)
+    """Return a figure with silhouette/Dunn curves."""
+    fig, axes = plt.subplots(2, 2, figsize=(12, 6), dpi=200)
     methods = ["kmeans", "agglomerative", "gmm", "hdbscan"]
-    for ax, method in zip(axes, methods):
+    for ax, method in zip(axes.ravel(), methods):
         df = curves.get(method)
         if df is None or df.empty:
             ax.axis("off")
@@ -2034,14 +2063,7 @@ def plot_cluster_metrics_grid(
         ax2 = ax.twinx()
         xcol = "k" if "k" in df.columns else "min_cluster_size"
         ax.plot(df[xcol], df["silhouette"], marker="o", color="tab:blue")
-        if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
-            ax.fill_between(
-                df[xcol],
-                df["silhouette_lower"],
-                df["silhouette_upper"],
-                color="tab:blue",
-                alpha=0.2,
-            )
+        # Removed confidence interval shading for clarity
         ax2.bar(df[xcol], df["dunn_index"], color="tab:orange", alpha=0.3)
         k_opt = optimal.get(method)
         if k_opt is not None and k_opt in df[xcol].values:
@@ -2066,13 +2088,7 @@ def plot_combined_silhouette(
             continue
         df = df.sort_values("k")
         ax.plot(df["k"], df["silhouette"], marker="o", label=method)
-        if {"silhouette_lower", "silhouette_upper"}.issubset(df.columns):
-            ax.fill_between(
-                df["k"],
-                df["silhouette_lower"],
-                df["silhouette_upper"],
-                alpha=0.2,
-            )
+        # interval shading removed
         k_opt = optimal_k.get(method)
         if k_opt is not None and k_opt in df["k"].values:
             val = float(df.loc[df["k"] == k_opt, "silhouette"].iloc[0])
@@ -2122,13 +2138,15 @@ def plot_analysis_summary(
 
 
 def plot_pca_stability_bars(
-    metrics: Mapping[str, Mapping[str, float]]
+    metrics: Mapping[str, Mapping[str, float]],
 ) -> Dict[str, plt.Figure]:
     """Return bar charts summarising PCA cross-validation stability."""
 
     datasets = list(metrics)
     axis_corr = [metrics[d].get("pca_axis_corr_mean", float("nan")) for d in datasets]
-    var_first = [metrics[d].get("pca_var_first_axis_mean", float("nan")) for d in datasets]
+    var_first = [
+        metrics[d].get("pca_var_first_axis_mean", float("nan")) for d in datasets
+    ]
 
     fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
     ax1.bar(datasets, axis_corr, color="tab:blue", edgecolor="black")
@@ -2185,7 +2203,9 @@ def evaluate_methods(
 
     logger = logging.getLogger(__name__)
 
-    def _process(item: tuple[str, Dict[str, Any]]) -> tuple[str, np.ndarray, str, Dict[str, Any]]:
+    def _process(
+        item: tuple[str, Dict[str, Any]],
+    ) -> tuple[str, np.ndarray, str, Dict[str, Any]]:
         method, info = item
 
         inertias = info.get("inertia")
@@ -2268,7 +2288,9 @@ def evaluate_methods(
         }
         return method, labels, row
 
-    parallel_res = Parallel(n_jobs=-1)(delayed(_process)(it) for it in results_dict.items())
+    with Parallel(n_jobs=-1) as parallel:
+        parallel_res = parallel(delayed(_process)(it) for it in results_dict.items())
+
     rows = []
     for method, labels, row in parallel_res:
         results_dict[method]["cluster_labels"] = labels
@@ -2315,7 +2337,10 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
     if "nb_axes_kaiser" in annot:
         annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
     for col in annot.columns:
-        if col not in {"variance_cumulee_%", "nb_axes_kaiser"} and pd.api.types.is_numeric_dtype(annot[col]):
+        if col not in {
+            "variance_cumulee_%",
+            "nb_axes_kaiser",
+        } and pd.api.types.is_numeric_dtype(annot[col]):
             annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
@@ -2363,7 +2388,9 @@ def plot_general_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
 
     annot = df_numeric.copy()
     if "variance_cumulee_%" in annot:
-        annot["variance_cumulee_%"] = annot["variance_cumulee_%"].round().astype("Int64")
+        annot["variance_cumulee_%"] = (
+            annot["variance_cumulee_%"].round().astype("Int64")
+        )
     if "nb_axes_kaiser" in annot:
         annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
     for col in annot.columns:
@@ -2371,7 +2398,9 @@ def plot_general_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
             annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
 
     fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
-    sns.heatmap(norm, annot=annot, fmt="", cmap="coolwarm", vmin=0, vmax=1, ax=ax, cbar=False)
+    sns.heatmap(
+        norm, annot=annot, fmt="", cmap="coolwarm", vmin=0, vmax=1, ax=ax, cbar=False
+    )
     ax.set_title("Synthèse globale des métriques")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
     ax.set_ylabel("Dataset – Méthode")
@@ -2482,6 +2511,14 @@ def plot_correlation_circle(
             color=color,
             alpha=alpha,
         )
+        ax.text(
+            x + (offset if x >= 0 else -offset),
+            y + (offset if y >= 0 else -offset),
+            str(var),
+            fontsize=8,
+            ha="left" if x >= 0 else "right",
+            va="bottom" if y >= 0 else "top",
+        )
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
     ax.legend(
@@ -2496,7 +2533,6 @@ def plot_correlation_circle(
     ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
-
 
     method_name = factor_model.__class__.__name__.upper()
     if hasattr(factor_model, "explained_variance_ratio_"):
@@ -2732,8 +2768,6 @@ def plot_cluster_scatter(
     return fig
 
 
-
-
 def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
     """Return a bar chart showing the count of points per cluster."""
     unique, counts = np.unique(labels, return_counts=True)
@@ -2836,9 +2870,7 @@ def cluster_segment_table(
     return pd.crosstab(ser_labels, ser_segments)
 
 
-def plot_cluster_segment_heatmap(
-    table: pd.DataFrame, title: str
-) -> plt.Figure:
+def plot_cluster_segment_heatmap(table: pd.DataFrame, title: str) -> plt.Figure:
     """Return a heatmap visualising ``table`` counts."""
     import seaborn as sns
 
@@ -2860,7 +2892,9 @@ def segment_profile_table(
     if segment_col not in df.columns:
         raise KeyError(segment_col)
     if variables is None:
-        variables = [c for c in df.select_dtypes(include="number").columns if c != segment_col]
+        variables = [
+            c for c in df.select_dtypes(include="number").columns if c != segment_col
+        ]
     if not variables:
         return pd.DataFrame(index=df[segment_col].unique())
     table = df.groupby(segment_col)[list(variables)].mean()
@@ -2923,15 +2957,21 @@ def generate_scatter_plots(
     plt.close(fig)
     result["no_cluster_2d"] = path
 
-    labels, k = tune_kmeans_clusters(emb.iloc[:, :2].values, range(2, min(15, len(emb))))
+    labels, k = tune_kmeans_clusters(
+        emb.iloc[:, :2].values, range(2, min(15, len(emb)))
+    )
     fig = plot_cluster_scatter(emb.iloc[:, :2], labels, f"{title} – KMeans (k={k})")
     path = out_dir / "kmeans_2d.png"
     fig.savefig(path, dpi=300)
     plt.close(fig)
     result["kmeans_2d"] = path
 
-    labels, k = tune_agglomerative_clusters(emb.iloc[:, :2].values, range(2, min(15, len(emb))))
-    fig = plot_cluster_scatter(emb.iloc[:, :2], labels, f"{title} – Agglomerative (k={k})")
+    labels, k = tune_agglomerative_clusters(
+        emb.iloc[:, :2].values, range(2, min(15, len(emb)))
+    )
+    fig = plot_cluster_scatter(
+        emb.iloc[:, :2], labels, f"{title} – Agglomerative (k={k})"
+    )
     path = out_dir / "agglomerative_2d.png"
     fig.savefig(path, dpi=300)
     plt.close(fig)
@@ -3062,9 +3102,7 @@ def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     for idx in contrib.index:
         var = idx.split("__", 1)[0]
         grouped.setdefault(var, pd.Series(dtype=float))
-        grouped[var] = grouped[var].add(
-            contrib.loc[idx, ["F1", "F2"]], fill_value=0
-        )
+        grouped[var] = grouped[var].add(contrib.loc[idx, ["F1", "F2"]], fill_value=0)
     df = pd.DataFrame(grouped).T.fillna(0)
 
     # Order by total contribution and keep top ``n`` ---------------------
@@ -3285,7 +3323,9 @@ def _factor_method_figures(
         qcoords = pd.DataFrame()
     if not qcoords.empty and "model" in res:
         dest = (
-            out / method.lower() / f"{method}_correlation.png" if out else Path(f"{method}_correlation.png")
+            out / method.lower() / f"{method}_correlation.png"
+            if out
+            else Path(f"{method}_correlation.png")
         )
         corr_path = plot_correlation_circle(
             res["model"], quant_vars, dest, coords=qcoords
@@ -3294,7 +3334,9 @@ def _factor_method_figures(
     inertia = res.get("inertia")
     if isinstance(inertia, pd.Series) and not inertia.empty:
         dest = (
-            out / method.lower() / f"{method}_scree.png" if out else Path(f"{method}_scree.png")
+            out / method.lower() / f"{method}_scree.png"
+            if out
+            else Path(f"{method}_scree.png")
         )
         scree_path = plot_scree(inertia, method.upper(), dest)
         figures[f"{method}_scree"] = scree_path
@@ -3307,8 +3349,8 @@ def _factor_method_figures(
 
     # Combined analysis summary page ------------------------------------
     summary_fig = plot_analysis_summary(
-        corr_path if 'corr_path' in locals() else None,
-        scree_path if 'scree_path' in locals() else None,
+        corr_path if "corr_path" in locals() else None,
+        scree_path if "scree_path" in locals() else None,
         km_eval,
         contrib_fig,
     )
@@ -3381,7 +3423,9 @@ def _nonlin_method_figures(
         figures[f"{method}_cluster_grid"] = grid_fig
         _save(grid_fig, f"{method}_cluster_grid")
         labels = km_labels
-        title = f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
+        title = (
+            f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
+        )
         save_name = f"{method}_clusters_kmeans_k{km_k}"
         cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
         figures[save_name] = cfig
@@ -3518,8 +3562,9 @@ def generate_figures(
         )
 
     n_jobs = n_jobs if n_jobs is not None else -1
-    for res_dict in Parallel(n_jobs=n_jobs, backend=backend)(tasks):
-        figures.update(res_dict)
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        for res_dict in parallel(tasks):
+            figures.update(res_dict)
 
     return figures
 
@@ -3661,7 +3706,10 @@ def unsupervised_cv_and_temporal_tests(
         umap = None  # type: ignore
 
     if kf is not None:
-        def _process_split(train_idx: np.ndarray, test_idx: np.ndarray) -> tuple[float, float, float, float]:
+
+        def _process_split(
+            train_idx: np.ndarray, test_idx: np.ndarray
+        ) -> tuple[float, float, float, float]:
             df_train = df_active.iloc[train_idx]
             df_test = df_active.iloc[test_idx]
 
@@ -3677,7 +3725,11 @@ def unsupervised_cv_and_temporal_tests(
 
             axis_score = _axis_similarity(pca_train.components_, pca_test.components_)
             dist_score = _distance_discrepancy(emb_proj, emb_test)
-            var_ratio = float(pca_train.explained_variance_ratio_[0]) if pca_train.explained_variance_ratio_.size else float("nan")
+            var_ratio = (
+                float(pca_train.explained_variance_ratio_[0])
+                if pca_train.explained_variance_ratio_.size
+                else float("nan")
+            )
 
             umap_score = float("nan")
             if umap is not None:
@@ -3690,9 +3742,10 @@ def unsupervised_cv_and_temporal_tests(
 
             return axis_score, dist_score, var_ratio, umap_score
 
-        results = Parallel(n_jobs=-1)(
-            delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
-        )
+        with Parallel(n_jobs=-1) as parallel:
+            results = parallel(
+                delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
+            )
         for axis, dist, var, um in results:
             pca_axis_scores.append(axis)
             pca_dist_scores.append(dist)
@@ -3836,17 +3889,11 @@ def format_metrics_table(df: pd.DataFrame) -> pd.DataFrame:
                 lambda x: f"{int(round(x))}" if pd.notna(x) else ""
             )
         elif col == "nb_axes_kaiser":
-            formatted[col] = series.map(
-                lambda x: f"{int(x)}" if pd.notna(x) else ""
-            )
+            formatted[col] = series.map(lambda x: f"{int(x)}" if pd.notna(x) else "")
         elif pd.api.types.is_integer_dtype(series):
-            formatted[col] = series.map(
-                lambda x: f"{int(x)}" if pd.notna(x) else ""
-            )
+            formatted[col] = series.map(lambda x: f"{int(x)}" if pd.notna(x) else "")
         elif pd.api.types.is_float_dtype(series):
-            formatted[col] = series.map(
-                lambda x: f"{x:.2f}" if pd.notna(x) else ""
-            )
+            formatted[col] = series.map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
         else:
             formatted[col] = series.astype(str).replace("nan", "")
     return formatted

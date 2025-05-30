@@ -39,6 +39,7 @@ def test_run_pipeline_respects_optimize(tmp_path, monkeypatch):
     monkeypatch.setattr(phase4, "evaluate_methods", lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr(phase4, "plot_methods_heatmap", lambda *a, **k: None)
     monkeypatch.setattr(phase4, "generate_figures", lambda *a, **k: {})
+    monkeypatch.setattr(phase4, "save_segment_analysis_figures", lambda *a, **k: None)
     phase4.run_pipeline(cfg)
 
     assert called.get("optimize") is False
@@ -56,9 +57,20 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         def __init__(self, n_jobs=None, backend=None):
             calls["n_jobs"] = n_jobs
             calls["backend"] = backend
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
 
         def __call__(self, tasks):
             return [task() for task in tasks]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
 
     def fake_delayed(func):
         def wrapper(*args, **kwargs):
@@ -84,38 +96,46 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
     assert calls["backend"] == "multiprocessing"
 
 
-def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
-    created = []
-    concat_calls = {}
+def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
+    build_calls = {}
 
     def fake_run_pipeline(cfg):
-        path = Path(cfg["output_pdf"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("pdf")
-        created.append(path.name)
+        Path(cfg["output_dir"]).mkdir(parents=True, exist_ok=True)
         return {}
 
     class FakeParallel:
         def __init__(self, n_jobs=None, backend=None):
             pass
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
         def __call__(self, tasks):
             return [task() for task in tasks]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
 
     def fake_delayed(func):
         def wrapper(*args, **kwargs):
             return lambda: func(*args, **kwargs)
         return wrapper
 
-    def fake_concat(out_dir, pdf_path):
-        concat_calls["args"] = (out_dir, pdf_path)
+    def fake_build(out_dir, pdf_path, datasets):
+        build_calls["args"] = (out_dir, pdf_path, datasets)
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
-        pdf_path.write_text("combined")
+        pdf_path.write_text("final")
         return pdf_path
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
     monkeypatch.setattr(phase4, "plot_general_heatmap", lambda *a, **k: None)
-    monkeypatch.setattr(phase4, "concat_pdf_reports", fake_concat)
+    monkeypatch.setattr(phase4, "build_type_report", fake_build)
     monkeypatch.setattr(phase4, "Parallel", FakeParallel)
     monkeypatch.setattr(phase4, "delayed", fake_delayed)
 
@@ -128,6 +148,9 @@ def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
 
     phase4.run_pipeline_parallel(cfg, datasets)
 
-    expected_final = Path(cfg["output_pdf"]).with_name("phase4_report_combined.pdf")
-    assert concat_calls["args"] == (Path(cfg["output_dir"]), expected_final)
+    assert build_calls["args"] == (
+        Path(cfg["output_dir"]),
+        Path(cfg["output_pdf"]),
+        datasets,
+    )
     
