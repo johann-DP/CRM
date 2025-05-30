@@ -16,9 +16,8 @@ def _run_pipeline_single(config: Dict[str, Any], name: str) -> tuple[str, Dict[s
     if "output_dir" in cfg:
         base = Path(cfg["output_dir"])
         cfg["output_dir"] = str(base / name)
-    if "output_pdf" in cfg:
-        pdf = Path(cfg["output_pdf"])
-        cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
+    # intermediate PDFs are no longer generated
+    cfg.pop("output_pdf", None)
     return name, phase4.run_pipeline(cfg)
 
 
@@ -32,7 +31,8 @@ def run_pipeline_parallel(
     """Run :func:`phase4.run_pipeline` on several datasets in parallel."""
 
     n_jobs = n_jobs or len(datasets)
-    results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_run_pipeline_single)(config, ds) for ds in datasets
-    )
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        results = parallel(
+            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+        )
     return dict(results)
