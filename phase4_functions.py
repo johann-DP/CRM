@@ -2483,9 +2483,7 @@ def plot_correlation_circle(
     # preserving their relative lengths.
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
-    if not any(
-        isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches
-    ):
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
         circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
@@ -2526,7 +2524,7 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    limit = max(scale, 1.0) * 1.1
+    limit = scale if scale > 0 else 1.0
     ax.set_xlim(-limit, limit)
     ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
