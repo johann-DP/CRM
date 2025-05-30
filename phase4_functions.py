@@ -3073,16 +3073,36 @@ def _factor_method_figures(
         fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
         figures[f"{method}_scatter_2d"] = fig
         _save(fig, f"{method}_scatter_2d")
-        max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-        km_labels, km_k, km_curve = optimize_clusters(
-            "kmeans", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
-        ag_labels, ag_k, ag_curve = optimize_clusters(
-            "agglomerative", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
-        gmm_labels, gmm_k, gmm_curve = optimize_clusters(
-            "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
+        max_k = min(15, len(emb) - 1)
+        k_range = range(2, max_k + 1)
+        if cluster_k is not None:
+            km_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "kmeans", k_range
+            )
+            ag_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "agglomerative", k_range
+            )
+            gmm_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "gmm", k_range
+            )
+            km_labels = KMeans(n_clusters=cluster_k).fit_predict(emb.iloc[:, :2].values)
+            ag_labels = AgglomerativeClustering(n_clusters=cluster_k).fit_predict(
+                emb.iloc[:, :2].values
+            )
+            gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
+                emb.iloc[:, :2].values
+            )
+            km_k = ag_k = gmm_k = cluster_k
+        else:
+            km_labels, km_k, km_curve = optimize_clusters(
+                "kmeans", emb.iloc[:, :2].values, k_range
+            )
+            ag_labels, ag_k, ag_curve = optimize_clusters(
+                "agglomerative", emb.iloc[:, :2].values, k_range
+            )
+            gmm_labels, gmm_k, gmm_curve = optimize_clusters(
+                "gmm", emb.iloc[:, :2].values, k_range
+            )
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
@@ -3233,16 +3253,36 @@ def _nonlin_method_figures(
         fig = plot_scatter_2d(emb.iloc[:, :2], df_active, color_var, title)
         figures[f"{method}_scatter_2d"] = fig
         _save(fig, f"{method}_scatter_2d")
-        max_k = cluster_k if cluster_k is not None else min(15, len(emb) - 1)
-        km_labels, km_k, km_curve = optimize_clusters(
-            "kmeans", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
-        ag_labels, ag_k, ag_curve = optimize_clusters(
-            "agglomerative", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
-        gmm_labels, gmm_k, gmm_curve = optimize_clusters(
-            "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
-        )
+        max_k = min(15, len(emb) - 1)
+        k_range = range(2, max_k + 1)
+        if cluster_k is not None:
+            km_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "kmeans", k_range
+            )
+            ag_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "agglomerative", k_range
+            )
+            gmm_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "gmm", k_range
+            )
+            km_labels = KMeans(n_clusters=cluster_k).fit_predict(emb.iloc[:, :2].values)
+            ag_labels = AgglomerativeClustering(n_clusters=cluster_k).fit_predict(
+                emb.iloc[:, :2].values
+            )
+            gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
+                emb.iloc[:, :2].values
+            )
+            km_k = ag_k = gmm_k = cluster_k
+        else:
+            km_labels, km_k, km_curve = optimize_clusters(
+                "kmeans", emb.iloc[:, :2].values, k_range
+            )
+            ag_labels, ag_k, ag_curve = optimize_clusters(
+                "agglomerative", emb.iloc[:, :2].values, k_range
+            )
+            gmm_labels, gmm_k, gmm_curve = optimize_clusters(
+                "gmm", emb.iloc[:, :2].values, k_range
+            )
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
@@ -3327,7 +3367,7 @@ def generate_figures(
     qual_vars: List[str],
     output_dir: Optional[Path] = None,
     *,
-    cluster_k: int | None = None,
+    cluster_k: int | Mapping[str, int] | None = None,
     segment_col: str | None = None,
     n_jobs: Optional[int] = None,
     backend: str = "loky",
@@ -3338,10 +3378,11 @@ def generate_figures(
     ----------
     output_dir : Path or None, optional
         Directory where figures will be saved.
-    cluster_k : int or None, optional
-        If ``None``, the number of clusters is tuned automatically up to a
-        maximum of 10. Otherwise ``cluster_k`` is treated as the upper bound for
-        the search range.
+    cluster_k : int or Mapping[str, int] or None, optional
+        When a mapping is provided, it specifies the number of clusters to use
+        for each method. If an integer is given, it applies to all methods. When
+        ``None``, the number of clusters is tuned automatically up to a maximum
+        of 10.
     segment_col : str or None, optional
         Name of the column in ``df_active`` containing business segments.
         When provided, a heatmap comparing clusters to segments is generated for
@@ -3363,6 +3404,7 @@ def generate_figures(
 
     tasks = []
     for method, res in factor_results.items():
+        ck = cluster_k.get(method) if isinstance(cluster_k, Mapping) else cluster_k
         tasks.append(
             delayed(_factor_method_figures)(
                 method,
@@ -3371,20 +3413,21 @@ def generate_figures(
                 quant_vars,
                 qual_vars,
                 out,
-                cluster_k,
+                ck,
                 segments,
                 color_var,
             )
         )
 
     for method, res in nonlin_results.items():
+        ck = cluster_k.get(method) if isinstance(cluster_k, Mapping) else cluster_k
         tasks.append(
             delayed(_nonlin_method_figures)(
                 method,
                 res,
                 df_active,
                 out,
-                cluster_k,
+                ck,
                 segments,
                 color_var,
             )
