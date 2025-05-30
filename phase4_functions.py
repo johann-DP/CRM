@@ -1754,7 +1754,6 @@ def cluster_evaluation_metrics(
 
     records: list[dict[str, float]] = []
     best_k = None
-    highest_upper = -np.inf
 
     for k, mean, lower, upper, dunn in results:
         records.append(
@@ -1768,13 +1767,12 @@ def cluster_evaluation_metrics(
         )
         if np.isnan(mean):
             continue
-        if best_k is None and mean > highest_upper:
-            best_k = k
-        highest_upper = max(highest_upper, upper)
 
     df = pd.DataFrame.from_records(records)
-    if best_k is None:
+    if df["silhouette"].notna().any():
         best_k = int(df.loc[df["silhouette"].idxmax(), "k"])
+    else:
+        best_k = int(df["k"].iloc[0])
     return df.sort_values("k"), best_k
 
 
