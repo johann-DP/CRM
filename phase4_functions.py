@@ -2528,7 +2528,7 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    limit = max(scale, 1.0) * 1.1
+    limit = scale * 1.1 if scale > 0 else 1.1
     ax.set_xlim(-limit, limit)
     ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
