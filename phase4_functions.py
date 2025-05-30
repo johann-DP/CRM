@@ -32,6 +32,15 @@ warnings.filterwarnings(
     message="No handles with labels found to put in legend",
     module="matplotlib",
 )
+warnings.filterwarnings(
+    "ignore",
+    message="Tight layout not applied.*",
+    module="matplotlib",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="Workbook contains no default style",
+)
 
 
 def _read_dataset(path: Path) -> pd.DataFrame:
