@@ -1955,7 +1955,11 @@ def hdbscan_evaluation_metrics(
     *,
     min_samples_values: Iterable[int] = (5, 10),
 ) -> tuple[pd.DataFrame, tuple[int, int]]:
-    """Return silhouette and Dunn curves for HDBSCAN."""
+    """Return silhouette and Dunn curves for HDBSCAN.
+
+    Only configurations producing between 2 and 15 clusters are considered
+    when determining the best parameters.
+    """
     try:  # optional dependency
         import hdbscan
     except Exception as exc:  # pragma: no cover - missing library
@@ -1967,7 +1971,7 @@ def hdbscan_evaluation_metrics(
         clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms)
         labels = clusterer.fit_predict(X)
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        if n_clusters < 2:
+        if n_clusters < 2 or n_clusters > 15:
             return mcs, ms, float("nan"), float("nan"), float("nan"), n_clusters
         samples = silhouette_samples(X, labels)
         sil_mean = float(samples.mean())
@@ -2010,19 +2014,21 @@ def hdbscan_evaluation_metrics(
             int(df.loc[df["silhouette"].idxmax(), "min_samples"]),
         )
     elif best is None:
-        best = (next(iter(mcs_values), 5), next(iter(min_samples_values), 5))
+        best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5))
     return df.sort_values(["min_cluster_size", "min_samples"]), best
 
 
 def optimize_hdbscan_clusters(
     X: np.ndarray,
-    mcs_values: Iterable[int] = range(5, 51, 5),
+    mcs_values: Iterable[int] = range(2, 16),
     min_samples_values: Iterable[int] = (5, 10),
 ) -> tuple[np.ndarray, tuple[int, int], pd.DataFrame]:
     """Return labels and evaluation curves for HDBSCAN.
 
-    If the ``hdbscan`` package is unavailable the function falls back to
-    :func:`tune_dbscan_clusters` for compatibility with the test suite.
+    The search for ``min_cluster_size`` is limited to the range ``2..15`` so
+    that the resulting number of clusters remains comparable to the other
+    algorithms.  If the ``hdbscan`` package is unavailable the function falls
+    back to :func:`tune_dbscan_clusters` for compatibility with the test suite.
     """
     try:
         curves, best = hdbscan_evaluation_metrics(
