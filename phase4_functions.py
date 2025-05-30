@@ -1516,7 +1516,7 @@ import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score, silhouette_samples
-from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from sklearn.cluster import AgglomerativeClustering, DBSCAN, SpectralClustering
 from sklearn.mixture import GaussianMixture
 
 
@@ -1631,26 +1631,19 @@ def tune_gmm_clusters(
 def auto_cluster_labels(
     X: np.ndarray, k_range: Iterable[int] = range(2, 11)
 ) -> Tuple[np.ndarray, int, str]:
-    """Return automatic cluster labels using HDBSCAN when available.
+    """Return automatic cluster labels using Spectral clustering.
 
-    If the optional :mod:`hdbscan` package is installed and produces at least
-    two distinct clusters, it is used. Otherwise the function falls back to a
-    K-Means clustering with the number of clusters tuned via silhouette score
-    over ``k_range``.
+    The function tunes the number of clusters using the silhouette score over
+    ``k_range`` and fits a :class:`~sklearn.cluster.SpectralClustering` model
+    with the best ``k``. If the evaluation fails, it falls back to K-Means.
     """
 
-    try:  # pragma: no cover - optional dependency
-        import hdbscan  # type: ignore
-
-        clusterer = hdbscan.HDBSCAN()
-        labels = clusterer.fit_predict(X)
-        if len(np.unique(labels)) > 1:
-            return labels, len(np.unique(labels)), "hdbscan"
-    except Exception:  # pragma: no cover - missing library
-        labels = None
-
-    km_labels, km_k = tune_kmeans_clusters(X, k_range)
-    return km_labels, km_k, "kmeans"
+    try:
+        labels, best_k, _ = optimize_clusters("spectral", X, k_range)
+        return labels, best_k, "spectral"
+    except Exception:  # pragma: no cover - optional dependency or failure
+        km_labels, km_k = tune_kmeans_clusters(X, k_range)
+        return km_labels, km_k, "kmeans"
 
 
 def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
@@ -1710,7 +1703,7 @@ def cluster_evaluation_metrics(
     ----------
     X : array-like of shape (n_samples, n_features)
         Data to cluster.
-    method : {"kmeans", "agglomerative", "gmm"}
+    method : {"kmeans", "agglomerative", "gmm", "spectral"}
         Algorithm to evaluate.
     k_range : iterable of int, default ``range(2, 16)``
         Candidate numbers of clusters.
@@ -1737,6 +1730,8 @@ def cluster_evaluation_metrics(
             labels = GaussianMixture(
                 n_components=k, covariance_type="full"
             ).fit_predict(X)
+        elif method == "spectral":
+            labels = SpectralClustering(n_clusters=k, assign_labels="discretize").fit_predict(X)
         else:
             raise ValueError(f"Unknown method '{method}'")
 
@@ -1785,7 +1780,7 @@ def optimize_clusters(
 
     Parameters
     ----------
-    method : {"kmeans", "agglomerative", "gmm"}
+    method : {"kmeans", "agglomerative", "gmm", "spectral"}
         Clustering algorithm to use.
     X : array-like of shape (n_samples, n_features)
         Input data to cluster.
@@ -1812,6 +1807,8 @@ def optimize_clusters(
         labels = GaussianMixture(
             n_components=best_k, covariance_type="full"
         ).fit_predict(X)
+    elif method == "spectral":
+        labels = SpectralClustering(n_clusters=best_k, assign_labels="discretize").fit_predict(X)
     else:  # pragma: no cover - defensive
         raise ValueError(f"Unknown method '{method}'")
 
@@ -1947,161 +1944,13 @@ def plot_cluster_evaluation(
     return fig
 
 
-def hdbscan_evaluation_metrics(
-    X: np.ndarray,
-    mcs_values: Iterable[int],
-    *,
-    min_samples_values: Iterable[int] = (5, 10),
-) -> Tuple[pd.DataFrame, Tuple[int, int, int]]:
-    """Return silhouette & Dunn curves for HDBSCAN over k=2..15."""
-    try:
-        import hdbscan
-        from hdbscan import flat as hdbflat
-    except ImportError as exc:
-        raise RuntimeError("hdbscan is required") from exc
-
-    X = np.asarray(X)
-
-    def _eval(mcs: int, ms: int):
-        rows = []
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms, prediction_data=True)
-        try:
-            clusterer.fit(X)
-        except Exception:
-            # dataset too small for these parameters
-            for k in range(2, 16):
-                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
-            return rows
-
-        for k in range(2, 16):
-            try:
-                eps = hdbflat.select_epsilon(clusterer.condensed_tree_, k)
-                labels = hdbflat.flatten_to_clusters(
-                    clusterer.condensed_tree_,
-                    epsilon=eps,
-                    min_cluster_size=mcs
-                )
-            except Exception:
-                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
-                continue
-
-            # filter out noise points
-            mask = labels >= 0
-            unique = np.unique(labels[mask])
-            if len(unique) < 2:
-                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
-                continue
-
-            # compute silhouette on non-noise
-            samples = silhouette_samples(X[mask], labels[mask])
-            sil_mean = float(samples.mean())
-            sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-            dunn = dunn_index(X[mask], labels[mask])
-            rows.append((mcs, ms, k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn))
-
-        return rows
-
-    nested = Parallel(n_jobs=-1)(
-        delayed(_eval)(mcs, ms)
-        for mcs in mcs_values
-        for ms in min_samples_values
-    )
-    results = [r for group in nested for r in group]
-
-    records = []
-    best = None
-    highest_upper = -np.inf
-
-    for mcs, ms, k, mean, lower, upper, dunn in results:
-        records.append({
-            "min_cluster_size": mcs,
-            "min_samples": ms,
-            "k": k,
-            "silhouette": mean,
-            "silhouette_lower": lower,
-            "silhouette_upper": upper,
-            "dunn_index": dunn,
-        })
-        if np.isnan(mean):
-            continue
-        if best is None or upper > highest_upper:
-            best = (mcs, ms, k)
-            highest_upper = upper
-
-    df = pd.DataFrame.from_records(records)
-    # ensure we have at least one best
-    if best is None:
-        if not df.empty:
-            df_non_na = df.dropna(subset=["silhouette"])
-            if not df_non_na.empty:
-                idx = df_non_na["silhouette"].idxmax()
-                if pd.notna(idx):
-                    best = (
-                        int(df_non_na.loc[idx, "min_cluster_size"]),
-                        int(df_non_na.loc[idx, "min_samples"]),
-                        int(df_non_na.loc[idx, "k"]),
-                    )
-        if best is None:
-            best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5), 2)
-
-    # keep only k in [2..15] and one row per k
-    df = df[df["k"].between(2, 15)]
-    df = df.sort_values("silhouette", ascending=False).drop_duplicates("k")
-    df = df.sort_values("k")
-
-    return df, best
-
-
-def optimize_hdbscan_clusters(
-    X: np.ndarray,
-    mcs_values: Iterable[int] = range(2, 16),
-    min_samples_values: Iterable[int] = (5, 10),
-) -> Tuple[np.ndarray, Tuple[int, int, int], pd.DataFrame]:
-    """
-    Return labels, best parameters, and evaluation curves for HDBSCAN.
-    Falls back to DBSCAN if hdbscan is unavailable.
-    """
-    try:
-        curves, best = hdbscan_evaluation_metrics(
-            X,
-            mcs_values,
-            min_samples_values=min_samples_values
-        )
-        import hdbscan
-        from hdbscan import flat as hdbflat  # noqa: F401
-
-        best_mcs, best_ms, best_k = best
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=best_mcs, min_samples=best_ms)
-        clusterer.fit(X)
-        try:
-            eps = hdbflat.select_epsilon(clusterer.condensed_tree_, best_k)
-            labels = hdbflat.flatten_to_clusters(
-                clusterer.condensed_tree_,
-                epsilon=eps,
-                min_cluster_size=best_mcs
-            )
-        except Exception:
-            labels = clusterer.labels_
-
-        return labels, best, curves
-
-    except RuntimeError:
-        labels, eps = tune_dbscan_clusters(X)
-        df = pd.DataFrame({
-            "k": [len(set(labels)) - (1 if -1 in labels else 0)],
-            "silhouette": [np.nan],
-            "dunn_index": [np.nan],
-        })
-        return labels, (int(eps), 5, 2), df
-
-
 
 def plot_cluster_metrics_grid(
     curves: Mapping[str, pd.DataFrame], optimal: Mapping[str, int]
 ) -> plt.Figure:
     """Return a figure with silhouette/Dunn curves."""
     fig, axes = plt.subplots(2, 2, figsize=(12, 6), dpi=200)
-    methods = ["kmeans", "agglomerative", "gmm", "hdbscan"]
+    methods = ["kmeans", "agglomerative", "gmm", "spectral"]
     for ax, method in zip(axes.ravel(), methods):
         df = curves.get(method)
         if df is None or df.empty:
@@ -2806,13 +2655,13 @@ def plot_cluster_grid(
     emb_df: pd.DataFrame,
     km_labels: np.ndarray,
     ag_labels: np.ndarray,
-    hdb_labels: np.ndarray,
+    spec_labels: np.ndarray,
     gmm_labels: np.ndarray,
     method: str,
     km_k: int,
     ag_k: int,
     gmm_k: int,
-    hdb_mcs: int,
+    spec_k: int,
 ) -> plt.Figure:
     """Return a 2x2 grid comparing clustering algorithms."""
 
@@ -2853,8 +2702,8 @@ def plot_cluster_grid(
     )
     _plot(
         axes[2],
-        hdb_labels,
-        f"{method.upper()} \u2013 HDBSCAN (mcs={hdb_mcs})",
+        spec_labels,
+        f"{method.upper()} \u2013 Spectral (k={spec_k})",
     )
     _plot(
         axes[3],
@@ -3238,22 +3087,21 @@ def _factor_method_figures(
         gmm_labels, gmm_k, gmm_curve = optimize_clusters(
             "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_labels, hdb_best, hdb_curve = optimize_hdbscan_clusters(
-            emb.iloc[:, :2].values
+        spec_labels, spec_k, spec_curve = optimize_clusters(
+            "spectral", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_mcs = hdb_best[0]
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
             km_labels,
             ag_labels,
-            hdb_labels,
+            spec_labels,
             gmm_labels,
             method,
             km_k,
             ag_k,
             gmm_k,
-            hdb_mcs,
+            spec_k,
         )
         figures[f"{method}_cluster_grid"] = grid_fig
         _save(grid_fig, f"{method}_cluster_grid")
@@ -3263,22 +3111,22 @@ def _factor_method_figures(
         gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
         figures[f"{method}_kmeans_silhouette"] = km_eval
         figures[f"{method}_agglomerative_silhouette"] = ag_eval
-        hdb_eval = plot_cluster_evaluation(hdb_curve, "hdbscan", None)
+        spec_eval = plot_cluster_evaluation(spec_curve, "spectral", spec_k)
         figures[f"{method}_gmm_silhouette"] = gmm_eval
-        figures[f"{method}_hdbscan_silhouette"] = hdb_eval
+        figures[f"{method}_spectral_silhouette"] = spec_eval
 
         metrics_fig = plot_cluster_metrics_grid(
             {
                 "kmeans": km_curve,
                 "agglomerative": ag_curve,
                 "gmm": gmm_curve,
-                "hdbscan": hdb_curve,
+                "spectral": spec_curve,
             },
             {
                 "kmeans": km_k,
                 "agglomerative": ag_k,
                 "gmm": gmm_k,
-                "hdbscan": hdb_mcs,
+                "spectral": spec_k,
             },
         )
         summary_fig = plot_analysis_summary(None, None, metrics_fig)
@@ -3287,7 +3135,7 @@ def _factor_method_figures(
         _save(km_eval, f"{method}_kmeans_silhouette")
         _save(ag_eval, f"{method}_agglomerative_silhouette")
         _save(gmm_eval, f"{method}_gmm_silhouette")
-        _save(hdb_eval, f"{method}_hdbscan_silhouette")
+        _save(spec_eval, f"{method}_spectral_silhouette")
 
         labels = km_labels
         if segments is not None:
@@ -3409,22 +3257,21 @@ def _nonlin_method_figures(
         gmm_labels, gmm_k, gmm_curve = optimize_clusters(
             "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_labels, hdb_best, hdb_curve = optimize_hdbscan_clusters(
-            emb.iloc[:, :2].values
+        spec_labels, spec_k, spec_curve = optimize_clusters(
+            "spectral", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_mcs = hdb_best[0]
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
             km_labels,
             ag_labels,
-            hdb_labels,
+            spec_labels,
             gmm_labels,
             method,
             km_k,
             ag_k,
             gmm_k,
-            hdb_mcs,
+            spec_k,
         )
         figures[f"{method}_cluster_grid"] = grid_fig
         _save(grid_fig, f"{method}_cluster_grid")
@@ -3440,24 +3287,24 @@ def _nonlin_method_figures(
         km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
         ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
         gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
-        hdb_eval = plot_cluster_evaluation(hdb_curve, "hdbscan", None)
+        spec_eval = plot_cluster_evaluation(spec_curve, "spectral", spec_k)
         figures[f"{method}_kmeans_silhouette"] = km_eval
         figures[f"{method}_agglomerative_silhouette"] = ag_eval
         figures[f"{method}_gmm_silhouette"] = gmm_eval
-        figures[f"{method}_hdbscan_silhouette"] = hdb_eval
+        figures[f"{method}_spectral_silhouette"] = spec_eval
 
         metrics_fig = plot_cluster_metrics_grid(
             {
                 "kmeans": km_curve,
                 "agglomerative": ag_curve,
                 "gmm": gmm_curve,
-                "hdbscan": hdb_curve,
+                "spectral": spec_curve,
             },
             {
                 "kmeans": km_k,
                 "agglomerative": ag_k,
                 "gmm": gmm_k,
-                "hdbscan": hdb_mcs,
+                "spectral": spec_k,
             },
         )
 
@@ -3467,7 +3314,7 @@ def _nonlin_method_figures(
         _save(km_eval, f"{method}_kmeans_silhouette")
         _save(ag_eval, f"{method}_agglomerative_silhouette")
         _save(gmm_eval, f"{method}_gmm_silhouette")
-        _save(hdb_eval, f"{method}_hdbscan_silhouette")
+        _save(spec_eval, f"{method}_spectral_silhouette")
         if segments is not None:
             table = cluster_segment_table(labels, segments.loc[emb.index])
             heat = plot_cluster_segment_heatmap(
