@@ -60,6 +60,12 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         def __call__(self, tasks):
             return [task() for task in tasks]
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
     def fake_delayed(func):
         def wrapper(*args, **kwargs):
             return lambda: func(*args, **kwargs)
@@ -101,6 +107,12 @@ def test_run_pipeline_parallel_concats_reports(monkeypatch, tmp_path):
 
         def __call__(self, tasks):
             return [task() for task in tasks]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
 
     def fake_delayed(func):
         def wrapper(*args, **kwargs):
