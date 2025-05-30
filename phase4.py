@@ -131,6 +131,8 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
     for key, value in config.items():
         if key.startswith(prefix) and value is not None:
             params[key[len(prefix) :]] = value
+    # Filter out clustering hints like ``k_raw`` that are not method arguments
+    params = {k: v for k, v in params.items() if not str(k).startswith("k_")}
     return params
 
 
