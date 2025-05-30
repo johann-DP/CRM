@@ -1965,7 +1965,13 @@ def hdbscan_evaluation_metrics(
     def _eval(mcs: int, ms: int):
         rows = []
         clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms, prediction_data=True)
-        clusterer.fit(X)
+        try:
+            clusterer.fit(X)
+        except Exception:
+            # dataset too small for these parameters
+            for k in range(2, 16):
+                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
+            return rows
 
         for k in range(2, 16):
             try:
@@ -2024,15 +2030,19 @@ def hdbscan_evaluation_metrics(
 
     df = pd.DataFrame.from_records(records)
     # ensure we have at least one best
-    if best is None and not df.empty:
-        idx = df["silhouette"].idxmax()
-        best = (
-            int(df.loc[idx, "min_cluster_size"]),
-            int(df.loc[idx, "min_samples"]),
-            int(df.loc[idx, "k"]),
-        )
-    elif best is None:
-        best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5), 2)
+    if best is None:
+        if not df.empty:
+            df_non_na = df.dropna(subset=["silhouette"])
+            if not df_non_na.empty:
+                idx = df_non_na["silhouette"].idxmax()
+                if pd.notna(idx):
+                    best = (
+                        int(df_non_na.loc[idx, "min_cluster_size"]),
+                        int(df_non_na.loc[idx, "min_samples"]),
+                        int(df_non_na.loc[idx, "k"]),
+                    )
+        if best is None:
+            best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5), 2)
 
     # keep only k in [2..15] and one row per k
     df = df[df["k"].between(2, 15)]
