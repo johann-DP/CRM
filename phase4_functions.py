@@ -1965,17 +1965,23 @@ def hdbscan_evaluation_metrics(
 
     X = np.asarray(X)
 
-    def _eval(mcs: int, ms: int) -> tuple[int, int, float, float, float, float]:
+    def _eval(
+        mcs: int, ms: int
+    ) -> tuple[int, int, int, float, float, float, float]:
+        """Return evaluation metrics for a pair of parameters."""
+
         clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms)
         labels = clusterer.fit_predict(X)
-        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        if n_clusters < 2 or n_clusters > 15:
-            return mcs, ms, float("nan"), float("nan"), float("nan"), n_clusters
+        k = len(set(labels)) - (1 if -1 in labels else 0)
+        if k < 2 or k > 15:
+            # Return NaNs for metrics outside the desired k range
+            return mcs, ms, k, float("nan"), float("nan"), float("nan"), float("nan")
+
         samples = silhouette_samples(X, labels)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
         dunn = dunn_index(X, labels)
-        return mcs, ms, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
+        return mcs, ms, k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
 
     with Parallel(n_jobs=-1) as parallel:
         results = parallel(
@@ -1988,11 +1994,12 @@ def hdbscan_evaluation_metrics(
     best: tuple[int, int] | None = None
     highest_upper = -np.inf
 
-    for mcs, ms, mean, lower, upper, dunn in results:
+    for mcs, ms, k, mean, lower, upper, dunn in results:
         records.append(
             {
                 "min_cluster_size": mcs,
                 "min_samples": ms,
+                "k": k,
                 "silhouette": mean,
                 "silhouette_lower": lower,
                 "silhouette_upper": upper,
@@ -2013,7 +2020,13 @@ def hdbscan_evaluation_metrics(
         )
     elif best is None:
         best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5))
-    return df.sort_values(["min_cluster_size", "min_samples"]), best
+
+    # Keep only valid cluster counts and one row per ``k``
+    df = df[df["k"].between(2, 15)]
+    df = df.sort_values("silhouette", ascending=False).drop_duplicates("k")
+    df = df.sort_values("k")
+
+    return df, best
 
 
 def optimize_hdbscan_clusters(
