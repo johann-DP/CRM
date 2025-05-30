@@ -8,7 +8,14 @@ def main():
         config = yaml.safe_load(fh)
     datasets = pf.load_datasets(config, ignore_schema=True)
     result = pf.compare_datasets_versions(datasets, output_dir=Path("rapport_output"))
-    pf.build_pdf_report(Path("rapport_output"), Path("RapportAnalyse.pdf"), list(datasets))
+
+    figures = {}
+    for ds, info in result["details"].items():
+        for name, fig in info.get("figures", {}).items():
+            figures[f"{ds}_{name}"] = fig
+
+    tables = {"metrics": result["metrics"]}
+    pf.export_report_to_pdf(figures, tables, Path("RapportAnalyse.pdf"))
 
 
 if __name__ == "__main__":
