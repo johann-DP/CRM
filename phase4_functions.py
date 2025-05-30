@@ -3317,7 +3317,7 @@ def _factor_method_figures(
     summary_fig = plot_analysis_summary(
         corr_path if "corr_path" in locals() else None,
         scree_path if "scree_path" in locals() else None,
-        km_eval,
+        metrics_fig,
         contrib_fig,
     )
     figures[f"{method}_analysis_summary"] = summary_fig
