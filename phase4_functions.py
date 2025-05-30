@@ -2451,32 +2451,34 @@ def plot_correlation_circle(
         raise AttributeError("factor_model lacks components")
 
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
+    scale = float(norms.max()) if len(norms) else 1.0
 
-    # Use a single reference circle centred at the origin.  The radius is fixed
-    # to 1 so that the correlation circle is not cluttered with additional
-    # cos² circles.
+    # Use a single reference circle centred at the origin with a radius scaled
+    # to the longest vector. This keeps all arrows inside the square while
+    # preserving their relative lengths.
     fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
 
-    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
-        circle = plt.Circle((0, 0), 1.0, color="grey", fill=False, linestyle="dashed")
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
+        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
 
+    offset = 0.05 * scale
     palette = sns.color_palette("husl", len(coords))
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.2 + 0.8 * min(1.0, norm)
+        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
         ax.arrow(
             0,
             0,
             x,
             y,
-            head_width=0.02,
+            head_width=0.02 * scale,
             length_includes_head=True,
-            width=0.004,
-            linewidth=1.2,
+            width=0.002 * scale,
+            linewidth=0.8,
             color=color,
             alpha=alpha,
         )
@@ -2489,8 +2491,9 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    ax.set_xlim(-1.0, 1.0)
-    ax.set_ylim(-1.0, 1.0)
+    limit = max(scale, 1.0) * 1.1
+    ax.set_xlim(-limit, limit)
+    ax.set_ylim(-limit, limit)
     ax.set_xlabel("F1")
     ax.set_ylabel("F2")
 
@@ -2511,7 +2514,7 @@ def plot_correlation_circle(
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=300)
+    fig.savefig(output, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return output
 
