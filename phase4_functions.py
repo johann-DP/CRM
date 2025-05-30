@@ -2602,7 +2602,7 @@ def plot_scatter_2d(
                 label=str(cat),
             )
         handles, labels = ax.get_legend_handles_labels()
-        if labels:
+        if labels and not str(color_var).lower().startswith("cluster"):
             if str(color_var).lower().startswith("sous-"):
                 ax.legend(
                     title=color_var,
@@ -2649,7 +2649,7 @@ def plot_scatter_3d(
                 label=str(cat),
             )
         handles, labels = ax.get_legend_handles_labels()
-        if labels:
+        if labels and not str(color_var).lower().startswith("cluster"):
             if str(color_var).lower().startswith("sous-"):
                 ax.legend(
                     title=color_var,
@@ -2705,9 +2705,6 @@ def plot_cluster_scatter_3d(
             color="black",
             zorder=3,
         )
-    handles, labels = ax.get_legend_handles_labels()
-    if labels:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2762,9 +2759,6 @@ def plot_cluster_scatter(
             color="black",
             zorder=3,
         )
-    handles, labels = ax.get_legend_handles_labels()
-    if labels:
-        ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2834,10 +2828,7 @@ def plot_cluster_grid(
         f"{method.upper()} \u2013 Gaussian Mixture (k={gmm_k})",
     )
 
-    for ax in axes:
-        handles, labels = ax.get_legend_handles_labels()
-        if labels:
-            ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
+
 
     fig.tight_layout()
     return fig
@@ -3915,8 +3906,83 @@ def export_report_to_pdf(
 
     logger.info("Exporting PDF report to %s", out)
 
-    # Ensure previous figures do not accumulate and trigger warnings
     plt.close("all")
+
+    METHODS = {
+        "pca",
+        "mca",
+        "famd",
+        "mfa",
+        "umap",
+        "pacmap",
+        "phate",
+        "tsne",
+        "trimap",
+    }
+
+    def _to_image(src: Path | plt.Figure | None) -> np.ndarray | None:
+        if src is None:
+            return None
+        if isinstance(src, (str, Path)):
+            return plt.imread(str(src))
+        buf = io.BytesIO()
+        src.savefig(buf, format="png", dpi=200)
+        buf.seek(0)
+        img = plt.imread(buf)
+        buf.close()
+        return img
+
+    def _combine_scatter(fig2d: Path | plt.Figure | None, fig3d: Path | plt.Figure | None) -> plt.Figure | None:
+        img2d = _to_image(fig2d)
+        img3d = _to_image(fig3d)
+        if img2d is None and img3d is None:
+            return None
+        if img2d is not None and img3d is not None:
+            fig, axes = plt.subplots(1, 2, figsize=(11, 8.5), dpi=200)
+            axes[0].imshow(img2d)
+            axes[0].axis("off")
+            axes[1].imshow(img3d)
+            axes[1].axis("off")
+        else:
+            fig, ax = plt.subplots(figsize=(11, 8.5), dpi=200)
+            img = img2d if img2d is not None else img3d
+            ax.imshow(img)
+            ax.axis("off")
+        fig.tight_layout()
+        return fig
+
+    def _fig_to_path(fig: plt.Figure | Path | str | None, tmp_list: list[str]) -> str | None:
+        if fig is None:
+            return None
+        if isinstance(fig, (str, Path)):
+            return str(fig)
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        tmp_list.append(tmp.name)
+        return tmp.name
+
+    grouped: dict[str, dict[str, dict[str, Union[plt.Figure, Path, str]]]] = {}
+    used_keys: set[str] = set()
+
+    for key, fig in figures.items():
+        parts = key.split("_")
+        dataset = "main"
+        method = None
+        idx = 0
+        for i, part in enumerate(parts):
+            if part.lower() in METHODS:
+                method = part.lower()
+                dataset = "_".join(parts[:i]) or "main"
+                idx = i + 1
+                break
+        if method is None:
+            continue
+        fig_type = "_".join(parts[idx:])
+        grouped.setdefault(dataset, {}).setdefault(method, {})[fig_type] = fig
+        used_keys.add(key)
+
+    remaining = {k: v for k, v in figures.items() if k not in used_keys}
 
     try:
         from fpdf import FPDF  # type: ignore
@@ -3928,14 +3994,12 @@ def export_report_to_pdf(
             pdf.set_font("Helvetica", "B", size)
             pdf.cell(0, 10, txt=text, ln=1, align="C")
 
-        # Title page
         pdf.add_page()
         _add_title("Rapport d'analyse Phase 4 – Résultats Dimensionnels", 16)
         pdf.set_font("Helvetica", size=12)
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        # Tables first (comparatif des méthodes, etc.)
         for name, table in tables.items():
             if isinstance(table, (str, Path)):
                 try:
@@ -3947,26 +4011,32 @@ def export_report_to_pdf(
             pdf.add_page()
             _add_title(name)
             pdf.set_font("Courier", size=8)
-            table_str = table.to_string()
-            for line in table_str.splitlines():
+            for line in table.to_string().splitlines():
                 pdf.cell(0, 4, line, ln=1)
 
-        # Figures
         tmp_paths: list[str] = []
-        for name, figure in figures.items():
-            if figure is None:
-                continue
-            pdf.add_page()
-            _add_title(name)
-            if isinstance(figure, (str, Path)):
-                img_path = str(figure)
-            else:
-                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                figure.savefig(tmp.name, dpi=200, bbox_inches="tight")
-                plt.close(figure)
-                img_path = tmp.name
-                tmp_paths.append(tmp.name)
-            pdf.image(img_path, w=180)
+
+        for dataset in sorted(grouped):
+            for method in sorted(grouped[dataset]):
+                items = grouped[dataset][method]
+                pages = [
+                    (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
+                    (items.get("cluster_grid"), "Nuages clusterisés"),
+                    (items.get("analysis_summary"), "Analyse détaillée"),
+                ]
+                for fig, label in pages:
+                    img = _fig_to_path(fig, tmp_paths)
+                    if img:
+                        pdf.add_page()
+                        _add_title(f"{dataset} – {method.upper()} – {label}")
+                        pdf.image(img, w=180)
+
+        for name, fig in remaining.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                _add_title(name)
+                pdf.image(img, w=180)
 
         pdf.output(str(out))
 
@@ -3982,47 +4052,41 @@ def export_report_to_pdf(
         with PdfPages(out) as pdf_backend:
             fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
             today = datetime.datetime.now().strftime("%Y-%m-%d")
-            ax.text(
-                0.5,
-                0.6,
-                "Rapport des analyses – Phase 4",
-                fontsize=20,
-                ha="center",
-                va="center",
-            )
-            ax.text(
-                0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center"
-            )
+            ax.text(0.5, 0.6, "Rapport des analyses – Phase 4", fontsize=20, ha="center", va="center")
+            ax.text(0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center")
             ax.axis("off")
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
-            for name, figure in figures.items():
-                if figure is None:
-                    continue
-                if isinstance(figure, (str, Path)):
-                    img = plt.imread(figure)
-                    f, ax = plt.subplots()
-                    ax.imshow(img)
-                    ax.axis("off")
-                    f.suptitle(name, fontsize=12)
-                    pdf_backend.savefig(f, dpi=300)
-                    plt.close(f)
-                    continue
+            def _save_page(title: str, fig: plt.Figure | Path | str | None) -> None:
+                if fig is None:
+                    return
                 if isinstance(fig, (str, Path)):
                     img = plt.imread(fig)
                     f, ax = plt.subplots()
                     ax.imshow(img)
                     ax.axis("off")
-                    f.suptitle(name, fontsize=12)
+                    f.suptitle(title, fontsize=12)
                     pdf_backend.savefig(f, dpi=300)
                     plt.close(f)
-                    continue
-                try:
-                    figure.suptitle(name, fontsize=12)
-                    pdf_backend.savefig(figure, dpi=300)
-                finally:
-                    plt.close(figure)
+                else:
+                    fig.suptitle(title, fontsize=12)
+                    pdf_backend.savefig(fig, dpi=300)
+                    plt.close(fig)
+
+            for dataset in sorted(grouped):
+                for method in sorted(grouped[dataset]):
+                    items = grouped[dataset][method]
+                    pages = [
+                        (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
+                        (items.get("cluster_grid"), "Nuages clusterisés"),
+                        (items.get("analysis_summary"), "Analyse détaillée"),
+                    ]
+                    for fig, label in pages:
+                        _save_page(f"{dataset} – {method.upper()} – {label}", fig)
+
+            for name, fig in remaining.items():
+                _save_page(name, fig)
 
             for name, table in tables.items():
                 if isinstance(table, (str, Path)):
@@ -4032,9 +4096,9 @@ def export_report_to_pdf(
                         continue
                 if not isinstance(table, pd.DataFrame):
                     continue
-                fig = _table_to_figure(table, name)
-                pdf_backend.savefig(fig, dpi=300)
-                plt.close(fig)
+                tfig = _table_to_figure(table, name)
+                pdf_backend.savefig(tfig, dpi=300)
+                plt.close(tfig)
 
         plt.close("all")
 
