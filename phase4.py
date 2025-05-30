@@ -27,6 +27,11 @@ import json
 import logging
 import os
 
+try:
+    from threadpoolctl import threadpool_limits
+except Exception:  # pragma: no cover - optional dependency
+    threadpool_limits = None
+
 # limite OpenBLAS à 24 threads (ou moins)
 os.environ["OPENBLAS_NUM_THREADS"] = "24"
 from pathlib import Path
@@ -90,6 +95,13 @@ def _setup_logging(output_dir: Path, level: str = "INFO") -> logging.Logger:
     output_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(level)
+    # Remove existing handlers to avoid duplicate log lines when running the
+    # pipeline multiple times within the same process.
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+        with suppress(Exception):
+            h.close()
+
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     file_handler = logging.FileHandler(output_dir / "phase4.log", encoding="utf-8")
     file_handler.setFormatter(fmt)
@@ -892,10 +904,11 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             _run_method(name, func, args, kwargs) for name, func, args, kwargs in tasks
         ]
     else:
-        results = Parallel(n_jobs=n_jobs or len(tasks), backend=backend)(
-            delayed(_run_method)(name, func, args, kwargs)
-            for name, func, args, kwargs in tasks
-        )
+        with Parallel(n_jobs=n_jobs or len(tasks), backend=backend) as parallel:
+            results = parallel(
+                delayed(_run_method)(name, func, args, kwargs)
+                for name, func, args, kwargs in tasks
+            )
 
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
@@ -994,6 +1007,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     logging.info("Analysis complete")
+    logging.shutdown()
     return {
         "metrics": metrics,
         "figures": figures,
@@ -1029,9 +1043,10 @@ def run_pipeline_parallel(
     from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
-    results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_run_pipeline_single)(config, ds) for ds in datasets
-    )
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        results = parallel(
+            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+        )
     results = dict(results)
 
     metrics_frames = []
@@ -1054,6 +1069,7 @@ def run_pipeline_parallel(
         combined = pdf.with_name(f"{pdf.stem}_combined{pdf.suffix}")
         concat_pdf_reports(base_dir, combined)
 
+    logging.shutdown()
     return results
 
 
