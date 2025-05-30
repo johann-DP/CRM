@@ -1749,7 +1749,8 @@ def cluster_evaluation_metrics(
         dunn = dunn_index(X, labels)
         return k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
 
-    results = Parallel(n_jobs=-1)(delayed(_eval)(k) for k in k_range)
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(delayed(_eval)(k) for k in k_range)
 
     records: list[dict[str, float]] = []
     best_k = None
@@ -1848,7 +1849,8 @@ def dbscan_evaluation_metrics(
         dunn = dunn_index(X, labels)
         return eps, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn, n_clusters
 
-    results = Parallel(n_jobs=-1)(delayed(_eval)(e) for e in eps_values)
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(delayed(_eval)(e) for e in eps_values)
 
     records: list[dict[str, float]] = []
     best_eps = None
@@ -1973,9 +1975,12 @@ def hdbscan_evaluation_metrics(
         dunn = dunn_index(X, labels)
         return mcs, ms, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
 
-    results = Parallel(n_jobs=-1)(
-        delayed(_eval)(mcs, ms) for mcs in mcs_values for ms in min_samples_values
-    )
+    with Parallel(n_jobs=-1) as parallel:
+        results = parallel(
+            delayed(_eval)(mcs, ms)
+            for mcs in mcs_values
+            for ms in min_samples_values
+        )
 
     records: list[dict[str, float]] = []
     best: tuple[int, int] | None = None
@@ -2279,9 +2284,9 @@ def evaluate_methods(
         }
         return method, labels, row
 
-    parallel_res = Parallel(n_jobs=-1)(
-        delayed(_process)(it) for it in results_dict.items()
-    )
+    with Parallel(n_jobs=-1) as parallel:
+        parallel_res = parallel(delayed(_process)(it) for it in results_dict.items())
+
     rows = []
     for method, labels, row in parallel_res:
         results_dict[method]["cluster_labels"] = labels
@@ -3555,8 +3560,9 @@ def generate_figures(
         )
 
     n_jobs = n_jobs if n_jobs is not None else -1
-    for res_dict in Parallel(n_jobs=n_jobs, backend=backend)(tasks):
-        figures.update(res_dict)
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        for res_dict in parallel(tasks):
+            figures.update(res_dict)
 
     return figures
 
@@ -3734,9 +3740,10 @@ def unsupervised_cv_and_temporal_tests(
 
             return axis_score, dist_score, var_ratio, umap_score
 
-        results = Parallel(n_jobs=-1)(
-            delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
-        )
+        with Parallel(n_jobs=-1) as parallel:
+            results = parallel(
+                delayed(_process_split)(tr, te) for tr, te in kf.split(df_active)
+            )
         for axis, dist, var, um in results:
             pca_axis_scores.append(axis)
             pca_dist_scores.append(dist)

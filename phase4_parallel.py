@@ -32,7 +32,8 @@ def run_pipeline_parallel(
     """Run :func:`phase4.run_pipeline` on several datasets in parallel."""
 
     n_jobs = n_jobs or len(datasets)
-    results = Parallel(n_jobs=n_jobs, backend=backend)(
-        delayed(_run_pipeline_single)(config, ds) for ds in datasets
-    )
+    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+        results = parallel(
+            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+        )
     return dict(results)
