@@ -1025,6 +1025,16 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         metrics.to_csv(output_dir / "metrics.csv")
         plot_methods_heatmap(metrics, output_dir)
 
+    cluster_map: Dict[str, int] = {}
+    for name in list(factor_names) + list(nonlin_names):
+        cfg = config.get(name.lower(), {}) if isinstance(config.get(name.lower()), Mapping) else {}
+        val = cfg.get(f"k_{data_key}")
+        if val is not None:
+            try:
+                cluster_map[name] = int(val)
+            except Exception:
+                pass
+
     logging.info("Generating figures...")
     figures = generate_figures(
         factor_results,
@@ -1033,6 +1043,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         quant_vars,
         qual_vars,
         output_dir=output_dir,
+        cluster_k=cluster_map or None,
         segment_col=config.get("segment_col"),
         n_jobs=n_jobs,
         backend=backend,
