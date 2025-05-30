@@ -1,6 +1,7 @@
 import yaml
 from pathlib import Path
 import phase4_functions as pf
+from phase4 import build_pdf_report
 
 
 def main():
