@@ -183,8 +183,16 @@ def build_pdf_report(
             desc = f"Contributions des variables – {method}"
         elif "scatter_2d" in suffix:
             desc = f"Nuage d'individus – {method} (2D)"
-        elif "clusters" in suffix:
+        elif "clusters_kmeans" in suffix:
             desc = f"Segmentation K-means sur projection {method}"
+        elif "clusters_agglomerative" in suffix:
+            desc = f"Segmentation agglomerative sur projection {method}"
+        elif "clusters_hdbscan" in suffix:
+            desc = f"Segmentation HDBSCAN sur projection {method}"
+        elif "clusters_gmm" in suffix:
+            desc = f"Segmentation Gaussian mixture sur projection {method}"
+        elif "cluster_grid" in suffix or "cluster_comparison" in suffix:
+            desc = f"Nuages clusterisés comparatifs – {method}"
         elif "scatter_3d" in suffix:
             desc = f"Nuage 3D – {method}"
         elif "general_heatmap" in name:
@@ -301,14 +309,14 @@ def build_pdf_report(
                 pats = [
                     "*clusters_kmeans*.png",
                     "*clusters_agglomerative*.png",
-                    "*clusters_dbscan*.png",
+                    "*clusters_hdbscan*.png",
                     "*clusters_gmm*.png",
                 ]
                 imgs = [_first_image(method_dir, pat) for pat in pats]
                 if not any(imgs):
                     return
                 fig, axes = plt.subplots(2, 2, figsize=(11, 8.5), dpi=200)
-                titles = ["K-means", "Agglomerative", "DBSCAN", "Gaussian Mixture"]
+                titles = ["K-means", "Agglomerative", "HDBSCAN", "Gaussian Mixture"]
                 for ax, img, title in zip(axes.ravel(), imgs, titles):
                     if img is not None and Path(img).exists():
                         ax.imshow(plt.imread(img))
