@@ -2626,7 +2626,7 @@ def plot_scatter_2d(
                 label=str(cat),
             )
         handles, labels = ax.get_legend_handles_labels()
-        if labels:
+        if labels and not str(color_var).lower().startswith("cluster"):
             if str(color_var).lower().startswith("sous-"):
                 ax.legend(
                     title=color_var,
@@ -2673,7 +2673,7 @@ def plot_scatter_3d(
                 label=str(cat),
             )
         handles, labels = ax.get_legend_handles_labels()
-        if labels:
+        if labels and not str(color_var).lower().startswith("cluster"):
             if str(color_var).lower().startswith("sous-"):
                 ax.legend(
                     title=color_var,
