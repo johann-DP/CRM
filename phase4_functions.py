@@ -1952,76 +1952,89 @@ def hdbscan_evaluation_metrics(
     mcs_values: Iterable[int],
     *,
     min_samples_values: Iterable[int] = (5, 10),
-) -> tuple[pd.DataFrame, tuple[int, int]]:
-    """Return silhouette and Dunn curves for HDBSCAN.
-
-    Only configurations producing between 2 and 15 clusters are considered
-    when determining the best parameters.
-    """
-    try:  # optional dependency
+) -> Tuple[pd.DataFrame, Tuple[int, int, int]]:
+    """Return silhouette & Dunn curves for HDBSCAN over k=2..15."""
+    try:
         import hdbscan
-    except Exception as exc:  # pragma: no cover - missing library
+        from hdbscan import flat as hdbflat
+    except ImportError as exc:
         raise RuntimeError("hdbscan is required") from exc
 
     X = np.asarray(X)
 
-    def _eval(
-        mcs: int, ms: int
-    ) -> tuple[int, int, int, float, float, float, float]:
-        """Return evaluation metrics for a pair of parameters."""
+    def _eval(mcs: int, ms: int):
+        rows = []
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms, prediction_data=True)
+        clusterer.fit(X)
 
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms)
-        labels = clusterer.fit_predict(X)
-        k = len(set(labels)) - (1 if -1 in labels else 0)
-        if k < 2 or k > 15:
-            # Return NaNs for metrics outside the desired k range
-            return mcs, ms, k, float("nan"), float("nan"), float("nan"), float("nan")
+        for k in range(2, 16):
+            try:
+                eps = hdbflat.select_epsilon(clusterer.condensed_tree_, k)
+                labels = hdbflat.flatten_to_clusters(
+                    clusterer.condensed_tree_,
+                    epsilon=eps,
+                    min_cluster_size=mcs
+                )
+            except Exception:
+                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
+                continue
 
-        samples = silhouette_samples(X, labels)
-        sil_mean = float(samples.mean())
-        sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-        dunn = dunn_index(X, labels)
-        return mcs, ms, k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
+            # filter out noise points
+            mask = labels >= 0
+            unique = np.unique(labels[mask])
+            if len(unique) < 2:
+                rows.append((mcs, ms, k, np.nan, np.nan, np.nan, np.nan))
+                continue
 
-    with Parallel(n_jobs=-1) as parallel:
-        results = parallel(
-            delayed(_eval)(mcs, ms)
-            for mcs in mcs_values
-            for ms in min_samples_values
-        )
+            # compute silhouette on non-noise
+            samples = silhouette_samples(X[mask], labels[mask])
+            sil_mean = float(samples.mean())
+            sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
+            dunn = dunn_index(X[mask], labels[mask])
+            rows.append((mcs, ms, k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn))
 
-    records: list[dict[str, float]] = []
-    best: tuple[int, int] | None = None
+        return rows
+
+    nested = Parallel(n_jobs=-1)(
+        delayed(_eval)(mcs, ms)
+        for mcs in mcs_values
+        for ms in min_samples_values
+    )
+    results = [r for group in nested for r in group]
+
+    records = []
+    best = None
     highest_upper = -np.inf
 
     for mcs, ms, k, mean, lower, upper, dunn in results:
-        records.append(
-            {
-                "min_cluster_size": mcs,
-                "min_samples": ms,
-                "k": k,
-                "silhouette": mean,
-                "silhouette_lower": lower,
-                "silhouette_upper": upper,
-                "dunn_index": dunn,
-            }
-        )
+        records.append({
+            "min_cluster_size": mcs,
+            "min_samples": ms,
+            "k": k,
+            "silhouette": mean,
+            "silhouette_lower": lower,
+            "silhouette_upper": upper,
+            "dunn_index": dunn,
+        })
         if np.isnan(mean):
             continue
-        if best is None and mean > highest_upper:
-            best = (mcs, ms)
-        highest_upper = max(highest_upper, upper)
+        if best is None or upper > highest_upper:
+            best = (mcs, ms, k)
+            highest_upper = upper
 
     df = pd.DataFrame.from_records(records)
+    # ensure we have at least one best
     if best is None and not df.empty:
+        idx = df["silhouette"].idxmax()
         best = (
-            int(df.loc[df["silhouette"].idxmax(), "min_cluster_size"]),
-            int(df.loc[df["silhouette"].idxmax(), "min_samples"]),
+            int(df.loc[idx, "min_cluster_size"]),
+            int(df.loc[idx, "min_samples"]),
+            int(df.loc[idx, "k"]),
         )
     elif best is None:
-        best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5))
+        best = (next(iter(mcs_values), 2), next(iter(min_samples_values), 5), 2)
 
-    # Keep only valid cluster counts and one row per ``k``
+    # keep only k in [2..15] and one row per k
     df = df[df["k"].between(2, 15)]
     df = df.sort_values("silhouette", ascending=False).drop_duplicates("k")
     df = df.sort_values("k")
@@ -2033,33 +2046,44 @@ def optimize_hdbscan_clusters(
     X: np.ndarray,
     mcs_values: Iterable[int] = range(2, 16),
     min_samples_values: Iterable[int] = (5, 10),
-) -> tuple[np.ndarray, tuple[int, int], pd.DataFrame]:
-    """Return labels and evaluation curves for HDBSCAN.
-
-    The search for ``min_cluster_size`` is limited to the range ``2..15`` so
-    that the resulting number of clusters remains comparable to the other
-    algorithms.  If the ``hdbscan`` package is unavailable the function falls
-    back to :func:`tune_dbscan_clusters` for compatibility with the test suite.
+) -> Tuple[np.ndarray, Tuple[int, int, int], pd.DataFrame]:
+    """
+    Return labels, best parameters, and evaluation curves for HDBSCAN.
+    Falls back to DBSCAN if hdbscan is unavailable.
     """
     try:
         curves, best = hdbscan_evaluation_metrics(
-            X, mcs_values, min_samples_values=min_samples_values
+            X,
+            mcs_values,
+            min_samples_values=min_samples_values
         )
-        import hdbscan  # type: ignore
+        import hdbscan
+        from hdbscan import flat as hdbflat  # noqa: F401
 
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=best[0], min_samples=best[1])
-        labels = clusterer.fit_predict(X)
+        best_mcs, best_ms, best_k = best
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=best_mcs, min_samples=best_ms)
+        clusterer.fit(X)
+        try:
+            eps = hdbflat.select_epsilon(clusterer.condensed_tree_, best_k)
+            labels = hdbflat.flatten_to_clusters(
+                clusterer.condensed_tree_,
+                epsilon=eps,
+                min_cluster_size=best_mcs
+            )
+        except Exception:
+            labels = clusterer.labels_
+
         return labels, best, curves
-    except Exception:
+
+    except RuntimeError:
         labels, eps = tune_dbscan_clusters(X)
-        df = pd.DataFrame(
-            {
-                "k": [len(set(labels)) - (1 if -1 in labels else 0)],
-                "silhouette": [float("nan")],
-                "dunn_index": [float("nan")],
-            }
-        )
-        return labels, (int(eps), 5), df
+        df = pd.DataFrame({
+            "k": [len(set(labels)) - (1 if -1 in labels else 0)],
+            "silhouette": [np.nan],
+            "dunn_index": [np.nan],
+        })
+        return labels, (int(eps), 5, 2), df
+
 
 
 def plot_cluster_metrics_grid(
@@ -3204,9 +3228,10 @@ def _factor_method_figures(
         gmm_labels, gmm_k, gmm_curve = optimize_clusters(
             "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_labels, (hdb_mcs, _), hdb_curve = optimize_hdbscan_clusters(
+        hdb_labels, hdb_best, hdb_curve = optimize_hdbscan_clusters(
             emb.iloc[:, :2].values
         )
+        hdb_mcs = hdb_best[0]
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
@@ -3374,9 +3399,10 @@ def _nonlin_method_figures(
         gmm_labels, gmm_k, gmm_curve = optimize_clusters(
             "gmm", emb.iloc[:, :2].values, range(2, max_k + 1)
         )
-        hdb_labels, (hdb_mcs, _), hdb_curve = optimize_hdbscan_clusters(
+        hdb_labels, hdb_best, hdb_curve = optimize_hdbscan_clusters(
             emb.iloc[:, :2].values
         )
+        hdb_mcs = hdb_best[0]
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
