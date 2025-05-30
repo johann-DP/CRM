@@ -1,326 +1,115 @@
-import argparse
-import datetime
-import io
-import logging
-import os
-import tempfile
-from contextlib import suppress
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+generate_phase4_report_fixed.py
+Script autonome pour générer le PDF final Phase 4
+(selon votre plan : 3 pages / dataset-méthode + heatmap générale + 2 pages segments).
+"""
 from pathlib import Path
-from typing import Mapping, Union
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.image as mpimg
 
-import yaml
-import pandas as pd
-import matplotlib
-matplotlib.use("Agg")  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
-import numpy as np  # noqa: E402
+# Chemin absolu vers votre dossier de sortie phase4.py
+BASE_DIR = Path(r"\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output")
+# Chemin du PDF de sortie DANS le dossier phase4_output
+OUTPUT_PDF = BASE_DIR / "RapportAnalyse_fixed.pdf"
 
+# Ordre exact des jeux de données et méthodes factorielles
+DATASETS = ["raw", "cleaned_1", "cleaned_3_univ", "cleaned_3_multi"]
+METHODS  = ["famd", "mca", "mfa", "pacmap", "pca", "phate", "umap"]
 
-logger = logging.getLogger(__name__)
-
-DEFAULT_DATASETS = ["raw", "cleaned_1", "cleaned_3_multi", "cleaned_3_univ"]
-
-
-def gather_figures(base_dir: Path, datasets: list[str]) -> dict[str, Path]:
-    figures: dict[str, Path] = {}
-    for ds in datasets:
-        ds_dir = base_dir / ds
-        if not ds_dir.exists():
-            continue
-        for img in ds_dir.rglob("*.png"):
-            figures[f"{ds}_{img.stem}"] = img
-    for img in base_dir.glob("*.png"):
-        figures[img.stem] = img
-    return figures
-
-
-def gather_metrics(base_dir: Path, datasets: list[str]) -> pd.DataFrame | None:
-    frames: list[pd.DataFrame] = []
-    for ds in datasets:
-        csv_path = base_dir / ds / "metrics.csv"
-        if not csv_path.exists():
-            continue
-        try:
-            df = pd.read_csv(csv_path, index_col=0)
-        except Exception:
-            df = pd.read_csv(csv_path)
-        if "method" not in df.columns:
-            df = df.rename(columns={df.columns[0]: "method"})
-        df["dataset"] = ds
-        frames.append(df)
-    return pd.concat(frames, ignore_index=True) if frames else None
-
-
-def _table_to_figure(df: pd.DataFrame, title: str) -> plt.Figure:
-    fig_height = 0.4 * len(df) + 1.5
-    fig_height = min(fig_height, 8.27)
-    fig, ax = plt.subplots(figsize=(11.69, fig_height), dpi=200)
+def add_image_page(pdf, img_path: Path, title: str):
+    """Ajoute une page pleine image au PDF, avec titre en haut."""
+    fig = plt.figure(figsize=(11.69, 8.27))  # A4 paysage
+    fig.suptitle(title, fontsize=16, y=0.98)
+    ax = fig.add_subplot(111)
+    ax.imshow(mpimg.imread(str(img_path)))
     ax.axis("off")
-    ax.set_title(title)
-    table = ax.table(
-        cellText=df.values,
-        colLabels=list(df.columns),
-        rowLabels=list(df.index),
-        cellLoc="center",
-        rowLoc="center",
-        loc="center",
-    )
-    table.scale(1, 1.2)
-    fig.tight_layout()
-    return fig
+    pdf.savefig(fig, dpi=300)
+    plt.close(fig)
 
-
-def format_metrics_table(df: pd.DataFrame) -> pd.DataFrame:
-    formatted = df.copy()
-    for col in formatted.columns:
-        series = formatted[col]
-        if col == "variance_cumulee_%":
-            formatted[col] = series.map(lambda x: f"{int(round(x))}" if pd.notna(x) else "")
-        elif col == "nb_axes_kaiser":
-            formatted[col] = series.map(lambda x: f"{int(x)}" if pd.notna(x) else "")
-        elif pd.api.types.is_integer_dtype(series):
-            formatted[col] = series.map(lambda x: f"{int(x)}" if pd.notna(x) else "")
-        elif pd.api.types.is_float_dtype(series):
-            formatted[col] = series.map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
-        else:
-            formatted[col] = series.astype(str).replace("nan", "")
-    return formatted
-
-
-def export_report_to_pdf(
-    figures: Mapping[str, Union[plt.Figure, str, Path]],
-    tables: Mapping[str, Union[pd.DataFrame, str, Path]],
-    output_path: str | Path,
-) -> Path | None:
-    if not isinstance(output_path, (str, Path)):
-        raise TypeError("output_path must be a path-like object")
-
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    logger.info("Exporting PDF report to %s", out)
-
-    plt.close("all")
-
-    METHODS = {
-        "pca",
-        "mca",
-        "famd",
-        "mfa",
-        "umap",
-        "pacmap",
-        "phate",
-        "tsne",
-        "trimap",
-    }
-
-    def _to_image(src: Path | plt.Figure | None) -> np.ndarray | None:
-        if src is None:
-            return None
-        if isinstance(src, (str, Path)):
-            return plt.imread(str(src))
-        buf = io.BytesIO()
-        src.savefig(buf, format="png", dpi=200)
-        buf.seek(0)
-        img = plt.imread(buf)
-        buf.close()
-        return img
-
-    def _combine_scatter(fig2d: Path | plt.Figure | None, fig3d: Path | plt.Figure | None) -> plt.Figure | None:
-        img2d = _to_image(fig2d)
-        img3d = _to_image(fig3d)
-        if img2d is None and img3d is None:
-            return None
-        if img2d is not None and img3d is not None:
-            fig, axes = plt.subplots(1, 2, figsize=(11, 8.5), dpi=200)
-            axes[0].imshow(img2d)
-            axes[0].axis("off")
-            axes[1].imshow(img3d)
-            axes[1].axis("off")
-        else:
-            fig, ax = plt.subplots(figsize=(11, 8.5), dpi=200)
-            img = img2d if img2d is not None else img3d
-            ax.imshow(img)
-            ax.axis("off")
-        fig.tight_layout()
-        return fig
-
-    def _fig_to_path(fig: plt.Figure | Path | str | None, tmp_list: list[str]) -> str | None:
-        if fig is None:
-            return None
-        if isinstance(fig, (str, Path)):
-            return str(fig)
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        fig.savefig(tmp.name, dpi=200, bbox_inches="tight")
+def main():
+    BASE_DIR.mkdir(parents=True, exist_ok=True)
+    with PdfPages(str(OUTPUT_PDF)) as pdf:
+        # --- Page de garde ---
+        fig = plt.figure(figsize=(11.69, 8.27))
+        plt.text(0.5, 0.6, "Rapport d'analyse Phase 4", ha="center", va="center", fontsize=24)
+        plt.text(0.5, 0.4, "Généré automatiquement", ha="center", va="center", fontsize=12)
+        plt.axis("off")
+        pdf.savefig(fig, dpi=300)
         plt.close(fig)
-        tmp_list.append(tmp.name)
-        return tmp.name
 
-    grouped: dict[str, dict[str, dict[str, Union[plt.Figure, Path, str]]]] = {}
-    used_keys: set[str] = set()
+        # --- 3 pages par dataset × méthode ---
+        for ds in DATASETS:
+            for m in METHODS:
+                folder = BASE_DIR / ds / m
 
-    for key, fig in figures.items():
-        parts = key.split("_")
-        dataset = "main"
-        method = None
-        idx = 0
-        for i, part in enumerate(parts):
-            if part.lower() in METHODS:
-                method = part.lower()
-                dataset = "_".join(parts[:i]) or "main"
-                idx = i + 1
-                break
-        if method is None:
-            continue
-        fig_type = "_".join(parts[idx:])
-        grouped.setdefault(dataset, {}).setdefault(method, {})[fig_type] = fig
-        used_keys.add(key)
+                # Page 1 : nuages de points bruts (2D & 3D)
+                p2 = folder / f"{m}_scatter_2d.png"
+                p3 = folder / f"{m}_scatter_3d.png"
+                if p2.exists() or p3.exists():
+                    if p2.exists() and p3.exists():
+                        fig, axs = plt.subplots(1, 2, figsize=(11.69, 8.27))
+                        for ax, img_path, label in zip(axs, [p2, p3], ["2D", "3D"]):
+                            ax.imshow(mpimg.imread(str(img_path)))
+                            ax.set_title(label)
+                            ax.axis("off")
+                        fig.suptitle(f"{ds} – {m.upper()} – Nuages de points bruts", fontsize=16, y=0.95)
+                        pdf.savefig(fig, dpi=300)
+                        plt.close(fig)
+                    else:
+                        img = p2 if p2.exists() else p3
+                        add_image_page(pdf, img, f"{ds} – {m.upper()} – Nuage { '2D' if p2.exists() else '3D'} brut")
 
-    remaining = {k: v for k, v in figures.items() if k not in used_keys}
+                # Page 2 : nuages clusterisés (cluster_grid)
+                grid = folder / f"{m}_cluster_grid.png"
+                if grid.exists():
+                    add_image_page(pdf, grid, f"{ds} – {m.upper()} – Nuages clusterisés")
 
-    try:
-        from fpdf import FPDF  # type: ignore
+                # Page 3 : analyse détaillée (analysis_summary)
+                summary = folder / f"{m}_analysis_summary.png"
+                if summary.exists():
+                    add_image_page(pdf, summary, f"{ds} – {m.upper()} – Analyse détaillée")
 
-        pdf = FPDF(orientation="L", format="A4", unit="mm")
-        pdf.set_auto_page_break(auto=True, margin=10)
+        # --- Heatmap générale ---
+        gh = BASE_DIR / "general_heatmap.png"
+        if gh.exists():
+            add_image_page(pdf, gh, "Heatmap générale")
 
-        def _add_title(text: str, size: int = 14) -> None:
-            pdf.set_font("Helvetica", "B", size)
-            pdf.cell(0, 10, txt=text, ln=1, align="C")
-
-        pdf.add_page()
-        _add_title("Rapport d'analyse Phase 4 – Résultats Dimensionnels", 16)
-        pdf.set_font("Helvetica", size=12)
-        today = datetime.datetime.now().strftime("%Y-%m-%d")
-        pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
-
-        for name, table in tables.items():
-            if isinstance(table, (str, Path)):
-                try:
-                    table = pd.read_csv(table)
-                except Exception:
-                    continue
-            if not isinstance(table, pd.DataFrame):
-                continue
-            pdf.add_page()
-            _add_title(name)
-            pdf.set_font("Courier", size=8)
-            for line in table.to_string().splitlines():
-                pdf.cell(0, 4, line, ln=1)
-
-        tmp_paths: list[str] = []
-
-        for dataset in sorted(grouped):
-            for method in sorted(grouped[dataset]):
-                items = grouped[dataset][method]
-                pages = [
-                    (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
-                    (items.get("cluster_grid"), "Nuages clusterisés"),
-                    (items.get("analysis_summary"), "Analyse détaillée"),
-                ]
-                for fig, label in pages:
-                    img = _fig_to_path(fig, tmp_paths)
-                    if img:
-                        pdf.add_page()
-                        _add_title(f"{dataset} – {method.upper()} – {label}")
-                        pdf.image(img, w=180)
-
-        for name, fig in remaining.items():
-            img = _fig_to_path(fig, tmp_paths)
-            if img:
-                pdf.add_page()
-                _add_title(name)
-                pdf.image(img, w=180)
-
-        pdf.output(str(out))
-
-        for p in tmp_paths:
-            with suppress(OSError):
-                os.remove(p)
-
-        plt.close("all")
-
-    except Exception:
-        logger.info("FPDF not available, falling back to PdfPages")
-
-        with PdfPages(out) as pdf_backend:
-            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
-            today = datetime.datetime.now().strftime("%Y-%m-%d")
-            ax.text(0.5, 0.6, "Rapport des analyses – Phase 4", fontsize=20, ha="center", va="center")
-            ax.text(0.5, 0.4, f"Généré le {today}", fontsize=12, ha="center", va="center")
+        # --- 2 pages Segments (dossier old/segments) ---
+        segdir = BASE_DIR / "old" / "segments"
+        # 1re page : 4 variables
+        vars1 = ["Catégorie", "Sous-catégorie", "Entité opérationnelle", "Statut commercial"]
+        fig, axs = plt.subplots(2, 2, figsize=(11.69, 8.27))
+        for ax, var in zip(axs.flatten(), vars1):
+            img = segdir / f"segment_{var}.png"
+            if img.exists():
+                ax.imshow(mpimg.imread(str(img)))
+            ax.set_title(var)
             ax.axis("off")
-            pdf_backend.savefig(fig, dpi=300)
-            plt.close(fig)
+        plt.tight_layout()
+        pdf.savefig(fig, dpi=300)
+        plt.close(fig)
 
-            def _save_page(title: str, fig: plt.Figure | Path | str | None) -> None:
-                if fig is None:
-                    return
-                if isinstance(fig, (str, Path)):
-                    img = plt.imread(fig)
-                    f, ax = plt.subplots()
-                    ax.imshow(img)
-                    ax.axis("off")
-                    f.suptitle(title, fontsize=12)
-                    pdf_backend.savefig(f, dpi=300)
-                    plt.close(f)
-                else:
-                    fig.suptitle(title, fontsize=12)
-                    pdf_backend.savefig(fig, dpi=300)
-                    plt.close(fig)
+        # 2e page : 3 variables + placeholder % missing
+        vars2 = ["Pilier", "Statut production", "Type opportunité"]
+        fig, axs = plt.subplots(2, 2, figsize=(11.69, 8.27))
+        for ax, var in zip(axs.flatten()[:3], vars2):
+            img = segdir / f"segment_{var}.png"
+            if img.exists():
+                ax.imshow(mpimg.imread(str(img)))
+            ax.set_title(var)
+            ax.axis("off")
+        axm = axs.flatten()[3]
+        axm.text(0.5, 0.5, "% Missing par segment\n(à calculer)",
+                 ha="center", va="center", fontsize=14)
+        axm.axis("off")
+        plt.tight_layout()
+        pdf.savefig(fig, dpi=300)
+        plt.close(fig)
 
-            for dataset in sorted(grouped):
-                for method in sorted(grouped[dataset]):
-                    items = grouped[dataset][method]
-                    pages = [
-                        (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
-                        (items.get("cluster_grid"), "Nuages clusterisés"),
-                        (items.get("analysis_summary"), "Analyse détaillée"),
-                    ]
-                    for fig, label in pages:
-                        _save_page(f"{dataset} – {method.upper()} – {label}", fig)
-
-            for name, fig in remaining.items():
-                _save_page(name, fig)
-
-            for name, table in tables.items():
-                if isinstance(table, (str, Path)):
-                    try:
-                        table = pd.read_csv(table)
-                    except Exception:
-                        continue
-                if not isinstance(table, pd.DataFrame):
-                    continue
-                tfig = _table_to_figure(table, name)
-                pdf_backend.savefig(tfig, dpi=300)
-                plt.close(tfig)
-
-        plt.close("all")
-
-    return out
-
-
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Assemble Phase 4 PDF report")
-    parser.add_argument("--config", default="config.yaml", help="Config file")
-    parser.add_argument(
-        "--datasets", nargs="+", default=DEFAULT_DATASETS, help="Datasets processed by phase4.py"
-    )
-    args = parser.parse_args(argv)
-
-    with open(args.config, "r", encoding="utf-8") as fh:
-        cfg = yaml.safe_load(fh)
-
-    output_dir = Path(cfg.get("output_dir", "phase4_output"))
-    output_pdf = Path(cfg.get("output_pdf", output_dir / "phase4_report.pdf"))
-
-    figures = gather_figures(output_dir, args.datasets)
-    metrics = gather_metrics(output_dir, args.datasets)
-    tables = {"metrics": format_metrics_table(metrics)} if metrics is not None else {}
-
-    export_report_to_pdf(figures, tables, output_pdf)
-
+    print(f"PDF généré dans : {OUTPUT_PDF}")
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     main()
