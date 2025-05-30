@@ -36,7 +36,6 @@ def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
     palette = sns.color_palette("husl", len(coords))
     handles: list[Line2D] = []
-    offset = 0.05
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
         alpha = 0.3 + 0.7 * norm
@@ -51,14 +50,6 @@ def plot_correlation_circle(coords: pd.DataFrame, title: str) -> plt.Figure:
             linewidth=0.8,
             color=color,
             alpha=alpha,
-        )
-        ax.text(
-            x + (offset if x >= 0 else -offset),
-            y + (offset if y >= 0 else -offset),
-            str(var),
-            fontsize=8,
-            ha="left" if x >= 0 else "right",
-            va="bottom" if y >= 0 else "top",
         )
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
