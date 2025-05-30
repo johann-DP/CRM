@@ -23,6 +23,10 @@ famd:
   # Let fine-tuning choose the component rule (variance, kaiser or elbow)
   n_components_rule:
   variance_threshold: 0.9
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
 mfa:
   n_components: 10
   weights: null
@@ -30,8 +34,26 @@ mfa:
   # Specify groups only if you want to restrict variables.
   # By default (groups: null), all variables are included automatically.
   groups: null
-pca: {n_components: 3, svd_solver: randomized, whiten: true}
-mca: {n_components: 15, normalize: false, n_iter: 5}
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
+pca:
+  n_components: 3
+  svd_solver: randomized
+  whiten: true
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
+mca:
+  n_components: 15
+  normalize: false
+  n_iter: 5
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
 umap:
   n_neighbors: 30
   min_dist: 0.1
@@ -39,13 +61,25 @@ umap:
   # metric will be selected during fine-tuning
   metric: cosine
   n_components: 2
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
 phate:
-  n_components: 3
   knn: 15
   t: 20
   decay: 20
   # n_components selected by fine tuning
+  n_components: 3
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:
 pacmap:
   n_components: 3
   n_neighbors: 5
   MN_ratio: 0.5
+  k_raw:
+  k_cleaned_1:
+  k_cleaned_3_univ:
+  k_cleaned_3_multi:

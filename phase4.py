@@ -557,7 +557,7 @@ def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -
             for ax in axes.ravel()[len(images[i : i + 4]) :]:
                 ax.axis("off")
             fig.suptitle(title, fontsize=12)
-            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            fig.tight_layout(rect=(0, 0.03, 1, 0.95))
             pdf.savefig(fig)
             plt.close(fig)
 
