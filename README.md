@@ -87,9 +87,15 @@ of ``output_dir``.
 python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
 
+When `output_pdf` is specified in the configuration, this command also
+produces a consolidated PDF report following the [report page order](#report-page-order).
+
 The optional ``--dataset-jobs`` flag controls how many worker processes run
 those datasets in parallel. ``--dataset-backend`` selects the joblib backend
 used for that parallelism (default ``multiprocessing``).
+
+When the configuration sets ``output_pdf``, all generated figures are compiled
+into that file via ``export_report_to_pdf`` once the analyses finish.
 
 
 Set `optimize_params: true` in the configuration to automatically tune the main

@@ -47,6 +47,7 @@ import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger
+from phase4_functions import export_report_to_pdf
 
 import warnings
 
@@ -79,6 +80,7 @@ from phase4_functions import (
     plot_methods_heatmap,
     plot_general_heatmap,
     generate_figures,
+    export_report_to_pdf,
     select_variables,
     unsupervised_cv_and_temporal_tests,
     format_metrics_table,
@@ -1086,7 +1088,10 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _run_pipeline_single(
-    config: Dict[str, Any], name: str
+    config: Dict[str, Any],
+    name: str,
+    *,
+    keep_figures: bool = False,
 ) -> tuple[str, Dict[str, Any]]:
     """Helper for :func:`run_pipeline_parallel` executing a single dataset."""
 
@@ -1099,9 +1104,6 @@ def _run_pipeline_single(
         pdf = Path(cfg["output_pdf"])
         cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
     result = run_pipeline(cfg)
-    # Avoid pickling large matplotlib objects in parallel mode
-    if isinstance(result, dict) and "figures" in result:
-        result.pop("figures", None)
     return name, result
 
 
@@ -1113,33 +1115,47 @@ def run_pipeline_parallel(
     backend: str = "multiprocessing",
 ) -> Dict[str, Dict[str, Any]]:
     """Run :func:`run_pipeline` on several datasets in parallel."""
-    from phase4_parallel import _run_pipeline_single
 
     n_jobs = n_jobs or len(datasets)
     with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         results = parallel(
-            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+            delayed(_run_pipeline_single)(config, ds, keep_figures=True)
+            for ds in datasets
         )
     results = dict(results)
 
     metrics_frames = []
+    figures: dict[str, Any] = {}
     for name, res in results.items():
         df_m = res.get("metrics")
         if isinstance(df_m, pd.DataFrame) and not df_m.empty:
             df_m = df_m.reset_index().rename(columns={"index": "method"})
             df_m["dataset"] = name
             metrics_frames.append(df_m)
+        figs = res.get("figures") or {}
+        for fname, fig in figs.items():
+            figures[f"{name}_{fname}"] = fig
 
+    all_metrics = None
     if metrics_frames:
         all_metrics = pd.concat(metrics_frames, ignore_index=True)
         plot_general_heatmap(
             all_metrics, Path(config.get("output_dir", "phase4_output"))
         )
+    else:
+        all_metrics = pd.DataFrame()
+
+    all_figs: dict[str, Any] = {}
+    for name, res in results.items():
+        figs = res.get("figures")
+        if isinstance(figs, Mapping):
+            for key, fig in figs.items():
+                all_figs[f"{name}_{key}"] = fig
 
     if "output_pdf" in config:
-        base_dir = Path(config.get("output_dir", "phase4_output"))
         pdf = Path(config["output_pdf"])
-        build_type_report(base_dir, pdf, datasets)
+        tables = {"metrics": all_metrics}
+        export_report_to_pdf(figures, tables, pdf)
 
     logging.shutdown()
     return results
