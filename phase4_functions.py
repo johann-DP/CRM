@@ -2696,8 +2696,6 @@ def plot_cluster_grid(
     )
     axes[3].axis("off")
 
-
-
     fig.tight_layout()
     return fig
 
