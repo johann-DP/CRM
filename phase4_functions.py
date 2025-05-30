@@ -2768,25 +2768,6 @@ def plot_cluster_scatter(
     return fig
 
 
-def plot_cluster_distribution(labels: np.ndarray, title: str) -> plt.Figure:
-    """Return a bar chart showing the count of points per cluster."""
-    unique, counts = np.unique(labels, return_counts=True)
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
-    try:
-        cmap = matplotlib.colormaps.get_cmap("tab10")
-    except AttributeError:  # pragma: no cover - older Matplotlib
-        cmap = matplotlib.cm.get_cmap("tab10")
-    n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
-    colors = [cmap(i % n_colors) for i in range(len(unique))]
-    positions = range(len(unique))
-    ax.bar(positions, counts, color=colors, edgecolor="black")
-    ax.set_xticks(list(positions))
-    ax.set_xticklabels([str(u) for u in unique])
-    ax.set_xlabel("Cluster")
-    ax.set_ylabel("Effectif")
-    ax.set_title(title)
-    fig.tight_layout()
-    return fig
 
 
 def plot_cluster_grid(
@@ -3279,12 +3260,6 @@ def _factor_method_figures(
         _save(hdb_eval, f"{method}_hdbscan_silhouette")
 
         labels = km_labels
-        dist_fig = plot_cluster_distribution(
-            labels,
-            f"Répartition des segments – {method.upper()} (K-Means)",
-        )
-        figures[f"{method}_cluster_dist"] = dist_fig
-        _save(dist_fig, f"{method}_cluster_dist_kmeans")
         if segments is not None:
             table = cluster_segment_table(labels, segments.loc[emb.index])
             heat = plot_cluster_segment_heatmap(
