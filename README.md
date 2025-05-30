@@ -132,3 +132,12 @@ python -m pip install fpdf
 If `fpdf` is not installed, the code falls back to Matplotlib's `PdfPages`,
 producing a simpler layout.
 
+
+### Report page order
+
+For each dataset and factor method, the combined PDF includes exactly three pages:
+1. **Raw scatter plots** – the 2D (and 3D when available) projections without clustering.
+2. **Clustered scatter grid** – a 2×2 grid comparing K-means, Agglomerative, HDBSCAN and Gaussian Mixture partitions.
+3. **Analysis summary** – a 2×2 figure gathering variable contributions, correlation circle, scree plot and silhouette curves.
+
+Additional pages such as heatmaps or segment summaries are appended after the per-method sections.
