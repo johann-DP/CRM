@@ -18,7 +18,11 @@ def _run_pipeline_single(config: Dict[str, Any], name: str) -> tuple[str, Dict[s
         cfg["output_dir"] = str(base / name)
     # intermediate PDFs are no longer generated
     cfg.pop("output_pdf", None)
-    return name, phase4.run_pipeline(cfg)
+    result = phase4.run_pipeline(cfg)
+    # Drop heavy figure objects to avoid pickling overhead
+    if isinstance(result, dict) and "figures" in result:
+        result.pop("figures", None)
+    return name, result
 
 
 def run_pipeline_parallel(

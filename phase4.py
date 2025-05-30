@@ -1099,7 +1099,11 @@ def _run_pipeline_single(
     if "output_pdf" in cfg:
         pdf = Path(cfg["output_pdf"])
         cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
-    return name, run_pipeline(cfg)
+    result = run_pipeline(cfg)
+    # Avoid pickling large matplotlib objects in parallel mode
+    if isinstance(result, dict) and "figures" in result:
+        result.pop("figures", None)
+    return name, result
 
 
 def run_pipeline_parallel(
