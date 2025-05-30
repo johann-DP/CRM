@@ -47,6 +47,7 @@ import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger
+from phase4_functions import export_report_to_pdf
 
 import warnings
 
@@ -1100,9 +1101,6 @@ def _run_pipeline_single(
         pdf = Path(cfg["output_pdf"])
         cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
     result = run_pipeline(cfg)
-    # Avoid pickling large matplotlib objects in parallel mode
-    if isinstance(result, dict) and "figures" in result:
-        result.pop("figures", None)
     return name, result
 
 
@@ -1124,23 +1122,29 @@ def run_pipeline_parallel(
     results = dict(results)
 
     metrics_frames = []
+    figures: dict[str, Any] = {}
     for name, res in results.items():
         df_m = res.get("metrics")
         if isinstance(df_m, pd.DataFrame) and not df_m.empty:
             df_m = df_m.reset_index().rename(columns={"index": "method"})
             df_m["dataset"] = name
             metrics_frames.append(df_m)
+        figs = res.get("figures") or {}
+        for fname, fig in figs.items():
+            figures[f"{name}_{fname}"] = fig
 
     if metrics_frames:
         all_metrics = pd.concat(metrics_frames, ignore_index=True)
         plot_general_heatmap(
             all_metrics, Path(config.get("output_dir", "phase4_output"))
         )
+    else:
+        all_metrics = pd.DataFrame()
 
     if "output_pdf" in config:
-        base_dir = Path(config.get("output_dir", "phase4_output"))
         pdf = Path(config["output_pdf"])
-        build_type_report(base_dir, pdf, datasets)
+        tables = {"metrics": all_metrics}
+        export_report_to_pdf(figures, tables, pdf)
 
     logging.shutdown()
     return results

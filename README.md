@@ -38,6 +38,9 @@ The optional ``--dataset-jobs`` flag controls how many worker processes run
 those datasets in parallel. ``--dataset-backend`` selects the joblib backend
 used for that parallelism (default ``multiprocessing``).
 
+When the configuration sets ``output_pdf``, all generated figures are compiled
+into that file via ``export_report_to_pdf`` once the analyses finish.
+
 
 Set `optimize_params: true` in the configuration to automatically tune the main
 hyperparameters of each dimensionality reduction method (number of components
