@@ -7,17 +7,18 @@ def main():
     with open("config.yaml", "r", encoding="utf-8") as fh:
         config = yaml.safe_load(fh)
     datasets = pf.load_datasets(config, ignore_schema=True)
-    out_dir = Path("rapport_output")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    result = pf.compare_datasets_versions(datasets, output_dir=out_dir)
+    result = pf.compare_datasets_versions(
+        datasets, output_dir=Path("rapport_output")
+    )
 
-    all_figs = {}
-    for ds, info in result["details"].items():
-        for name, fig in info.get("figures", {}).items():
-            all_figs[f"{ds}_{name}"] = fig
-
+    figures = {
+        f"{ver}_{name}": fig
+        for ver, det in result["details"].items()
+        for name, fig in det.get("figures", {}).items()
+    }
     tables = {"metrics": result["metrics"]}
-    pf.export_report_to_pdf(all_figs, tables, Path("RapportAnalyse.pdf"))
+
+    pf.export_report_to_pdf(figures, tables, Path("RapportAnalyse.pdf"))
 
 
 if __name__ == "__main__":

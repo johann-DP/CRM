@@ -2579,6 +2579,10 @@ def plot_cluster_scatter_3d(
             color="black",
             zorder=3,
         )
+    # omit cluster legend to keep only variable legends in final report
+    # handles, labels = ax.get_legend_handles_labels()
+    # if labels:
+    #     ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_zlabel(emb_df.columns[2])
@@ -2633,6 +2637,10 @@ def plot_cluster_scatter(
             color="black",
             zorder=3,
         )
+    # omit cluster legend to keep only variable legends in final report
+    # handles, labels = ax.get_legend_handles_labels()
+    # if labels:
+    #     ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(emb_df.columns[0])
     ax.set_ylabel(emb_df.columns[1])
     ax.set_title(title)
@@ -2694,6 +2702,12 @@ def plot_cluster_grid(
         gmm_labels,
         f"{method.upper()} \u2013 Gaussian Mixture (k={gmm_k})",
     )
+
+    # omit cluster legends on the grid plots
+    # for ax in axes:
+    #     handles, labels = ax.get_legend_handles_labels()
+    #     if labels:
+    #         ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
 
     fig.tight_layout()
     return fig

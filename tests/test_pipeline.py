@@ -57,11 +57,6 @@ def test_run_pipeline_parallel_calls(monkeypatch, tmp_path):
         def __init__(self, n_jobs=None, backend=None):
             calls["n_jobs"] = n_jobs
             calls["backend"] = backend
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            pass
 
         def __call__(self, tasks):
             return [task() for task in tasks]
@@ -107,12 +102,6 @@ def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
         def __init__(self, n_jobs=None, backend=None):
             pass
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            pass
-
         def __call__(self, tasks):
             return [task() for task in tasks]
 
@@ -127,11 +116,11 @@ def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
             return lambda: func(*args, **kwargs)
         return wrapper
 
-    def fake_export(figs, tables, pdf_path):
-        build_calls["args"] = (figs, tables, pdf_path)
-        Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(pdf_path).write_text("final")
-        return Path(pdf_path)
+    def fake_export(figs, tables, out):
+        build_calls["args"] = (figs, set(tables), Path(out))
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_text("final")
+        return Path(out)
 
     monkeypatch.setattr(phase4, "run_pipeline", fake_run_pipeline)
     monkeypatch.setattr(phase4, "plot_general_heatmap", lambda *a, **k: None)
@@ -148,7 +137,4 @@ def test_run_pipeline_parallel_builds_report(monkeypatch, tmp_path):
 
     phase4.run_pipeline_parallel(cfg, datasets)
 
-    figs, tables, pdf_path = build_calls.get("args")
-    assert isinstance(figs, dict)
-    assert Path(pdf_path) == Path(cfg["output_pdf"])
-    
+    assert build_calls["args"][2] == Path(cfg["output_pdf"])
