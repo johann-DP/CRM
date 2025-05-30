@@ -8,7 +8,8 @@ def main():
         config = yaml.safe_load(fh)
     datasets = pf.load_datasets(config, ignore_schema=True)
     result = pf.compare_datasets_versions(
-        datasets, output_dir=Path("rapport_output")
+        datasets,
+        output_dir=Path("rapport_output"),
     )
 
     figures = {

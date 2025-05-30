@@ -1132,11 +1132,10 @@ def run_pipeline_parallel(
             df_m = df_m.reset_index().rename(columns={"index": "method"})
             df_m["dataset"] = name
             metrics_frames.append(df_m)
-        figs = res.get("figures") or {}
-        for fname, fig in figs.items():
+
+        for fname, fig in (res.get("figures") or {}).items():
             figures[f"{name}_{fname}"] = fig
 
-    all_metrics = None
     if metrics_frames:
         all_metrics = pd.concat(metrics_frames, ignore_index=True)
         plot_general_heatmap(
@@ -1144,13 +1143,6 @@ def run_pipeline_parallel(
         )
     else:
         all_metrics = pd.DataFrame()
-
-    all_figs: dict[str, Any] = {}
-    for name, res in results.items():
-        figs = res.get("figures")
-        if isinstance(figs, Mapping):
-            for key, fig in figs.items():
-                all_figs[f"{name}_{key}"] = fig
 
     if "output_pdf" in config:
         pdf = Path(config["output_pdf"])
