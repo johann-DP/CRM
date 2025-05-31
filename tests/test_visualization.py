@@ -70,6 +70,13 @@ def test_cluster_segment_table_and_heatmap():
     assert hasattr(fig, "savefig")
 
 
+def test_plot_clusters_by_k():
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(20, 2)), columns=["F1", "F2"])
+    fig = pf.plot_clusters_by_k(X, "kmeans", [2, 3], "pca")
+    assert hasattr(fig, "savefig")
+
+
 def test_cluster_evaluation_and_stability_plots():
     rng = np.random.default_rng(0)
     X = rng.normal(size=(20, 2))
