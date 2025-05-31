@@ -1521,6 +1521,82 @@ from sklearn.mixture import GaussianMixture
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 
 
+def silhouette_score_safe(X: np.ndarray, labels: np.ndarray) -> float:
+    """Return silhouette score or ``-1`` if it cannot be computed."""
+
+    if len(np.unique(labels)) < 2:
+        return -1.0
+    try:
+        return float(silhouette_score(X, labels))
+    except Exception:
+        return -1.0
+
+
+def silhouette_samples_safe(
+    X: np.ndarray,
+    labels: np.ndarray,
+    *,
+    sample_size: int | None = None,
+    random_state: int | None = None,
+) -> np.ndarray:
+    """Return silhouette samples for ``labels`` with optional subsampling."""
+
+    if len(np.unique(labels)) < 2:
+        n = sample_size if sample_size is not None else len(X)
+        return np.full(n, np.nan)
+    try:
+        scores = silhouette_samples(X, labels)
+        if sample_size is not None and sample_size < len(scores):
+            rng = np.random.default_rng(random_state)
+            idx = rng.choice(len(scores), size=sample_size, replace=False)
+            scores = scores[idx]
+        return scores
+    except Exception:
+        n = sample_size if sample_size is not None else len(X)
+        return np.full(n, np.nan)
+
+
+def dunn_index(
+    X: np.ndarray,
+    labels: np.ndarray,
+    *,
+    sample_size: int | None = None,
+) -> float:
+    """Compute the Dunn index of a clustering."""
+
+    from scipy.spatial.distance import pdist, squareform
+
+    if len(np.unique(labels)) < 2:
+        return float("nan")
+
+    if sample_size is not None and sample_size < len(X):
+        rng = np.random.default_rng()
+        idx = rng.choice(len(X), size=sample_size, replace=False)
+        X = X[idx]
+        labels = labels[idx]
+
+    dist = squareform(pdist(X))
+    unique = np.unique(labels)
+
+    intra_diam = []
+    min_inter = np.inf
+
+    for i, ci in enumerate(unique):
+        idx_i = np.where(labels == ci)[0]
+        intra = dist[np.ix_(idx_i, idx_i)].max() if len(idx_i) > 1 else 0.0
+        intra_diam.append(intra)
+        for cj in unique[i + 1 :]:
+            idx_j = np.where(labels == cj)[0]
+            inter = dist[np.ix_(idx_i, idx_j)].min()
+            if inter < min_inter:
+                min_inter = inter
+
+    max_intra = max(intra_diam)
+    if max_intra == 0:
+        return float("nan")
+    return float(min_inter / max_intra)
+
+
 def tune_kmeans_clusters(
     X: np.ndarray, k_range: Iterable[int] = range(2, 16)
 ) -> Tuple[np.ndarray, int]:
