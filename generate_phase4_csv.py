@@ -38,7 +38,8 @@ from phase4_functions import (
     run_phate,
     run_pacmap,
     evaluate_methods,
-)<<<<<<< qbbsp3-codex/écrire-script-pour-générer-fichiers-csv
+)
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
