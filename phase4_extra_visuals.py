@@ -19,19 +19,22 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import matplotlib
-matplotlib.use("Agg")  # noqa: E402 - set backend before importing pyplot
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import yaml
+from sklearn.cluster import KMeans
 
 from phase4_functions import (
     load_datasets,
     prepare_data,
     select_variables,
     handle_missing_values,
+    cluster_evaluation_metrics,
     run_pca,
     run_famd,
     run_umap,
@@ -65,25 +68,39 @@ def _choose_color_var(df: pd.DataFrame, qual_vars: Sequence[str]) -> str | None:
     return None
 
 
+def _best_kmeans_labels(X: np.ndarray, k_range: range = range(2, 11)) -> tuple[np.ndarray, int]:
+    """Return K-Means labels using the best normalized metric mean."""
+    curves, _ = cluster_evaluation_metrics(X, "kmeans", k_range)
+    metrics = ["silhouette", "dunn_index", "calinski_harabasz", "inv_davies_bouldin"]
+    norm = {}
+    for m in metrics:
+        col = curves[m]
+        cmin, cmax = col.min(), col.max()
+        if np.isnan(cmin) or cmax == cmin:
+            norm[m] = np.full(len(col), np.nan)
+        else:
+            norm[m] = (col - cmin) / (cmax - cmin)
+    score = pd.DataFrame(norm).mean(axis=1)
+    if score.notna().any():
+        k_best = int(curves.loc[score.idxmax(), "k"])
+    else:
+        k_best = int(curves["k"].iloc[0])
+    labels = KMeans(n_clusters=k_best).fit_predict(X)
+    return labels, k_best
+
+
 def _plot_density(df: pd.DataFrame, x: str, y: str, title: str, out: Path) -> Path:
-    """Draw a 2D density map.
-
-    Falls back to a histogram when KDE fails (e.g. when data lack
-    sufficient variance).
-    """
-
     fig, ax = plt.subplots(figsize=(6, 5), dpi=200)
-    data = df[[x, y]].dropna()
-    try:
-        if data[x].nunique() > 1 and data[y].nunique() > 1:
-            sns.kdeplot(data=data, x=x, y=y, fill=True, cmap="mako", thresh=0, ax=ax)
-        else:  # not enough unique points for KDE
-            raise ValueError("insufficient variation")
-    except ValueError as exc:
-        logging.warning("KDE density failed (%s), using histplot", exc)
-        sns.histplot(data=data, x=x, y=y, bins=30, pthresh=0.05, cmap="mako", ax=ax)
-
-    ax.scatter(data[x], data[y], s=5, color="white", alpha=0.4)
+    if df[x].nunique() > 1 and df[y].nunique() > 1:
+        try:
+            sns.kdeplot(data=df, x=x, y=y, fill=True, cmap="mako", thresh=0, ax=ax)
+        except Exception as exc:  # fallback on failure
+            logging.warning("kdeplot failed (%s); falling back to hist", exc)
+            sns.histplot(data=df, x=x, y=y, bins=30, pmax=0.9, cmap="mako", cbar=True, ax=ax)
+    else:
+        logging.warning("Too little variation for KDE, using histplot")
+        sns.histplot(data=df, x=x, y=y, bins=30, pmax=0.9, cmap="mako", cbar=True, ax=ax)
+    ax.scatter(df[x], df[y], s=5, color="white", alpha=0.4)
     ax.set_xlabel(x)
     ax.set_ylabel(y)
     ax.set_title(title)
@@ -117,13 +134,13 @@ def _plot_ellipses(
 ) -> Path:
     fig, ax = plt.subplots(figsize=(6, 5), dpi=200)
     if group is None or group not in df.columns:
-        ax.scatter(df[x], df[y], s=10, alpha=0.6)
+        ax.scatter(df[x], df[y], s=10, alpha=0.1, color="gray")
     else:
         cats = df[group].astype("category")
         palette = sns.color_palette("tab10", len(cats.cat.categories))
         for color, cat in zip(palette, cats.cat.categories):
             sub = df.loc[cats == cat, [x, y]].values
-            ax.scatter(sub[:, 0], sub[:, 1], s=10, alpha=0.6, color=color, label=str(cat))
+            ax.scatter(sub[:, 0], sub[:, 1], s=10, alpha=0.1, color=color, label=str(cat))
             _cov_ellipse(ax, sub, color)
         ax.legend(title=group, bbox_to_anchor=(1.05, 1), loc="upper left")
     ax.set_xlabel(x)
@@ -145,7 +162,8 @@ def process_dataset(name: str, df: pd.DataFrame, out_dir: Path) -> None:
     df_prep = prepare_data(df, exclude_lost=True)
     df_active, quant, qual = select_variables(df_prep, min_modalite_freq=5)
     df_active = handle_missing_values(df_active, quant, qual)
-    color_var = _choose_color_var(df_active, qual)
+    # Determine clustering labels on the active data (2D embeddings)
+    color_var = None
 
     results = {
         "pca": run_pca(df_active, quant_vars=quant, n_components=2),
@@ -185,44 +203,80 @@ def process_dataset(name: str, df: pd.DataFrame, out_dir: Path) -> None:
 
     if results["famd"] is not None:
         emb = results["famd"]["embeddings"]
+        labels, k_best = _best_kmeans_labels(emb.values)
+        df_plot = pd.DataFrame(
+            {
+                emb.columns[0]: emb.iloc[:, 0],
+                emb.columns[1]: emb.iloc[:, 1],
+                "cluster": labels.astype(str),
+            },
+            index=emb.index,
+        )
         _plot_ellipses(
-            pd.concat([emb.iloc[:, :2], df_active[color_var]], axis=1),
+            df_plot,
             emb.columns[0],
             emb.columns[1],
-            color_var,
-            f"{name} FAMD – ellipses",
+            "cluster",
+            f"{name} FAMD – ellipses (k={k_best})",
             sub / "ellipses" / "famd_ellipses.png",
         )
 
     emb = results["pca"]["embeddings"]
+    labels, k_best = _best_kmeans_labels(emb.values)
+    df_plot = pd.DataFrame(
+        {
+            emb.columns[0]: emb.iloc[:, 0],
+            emb.columns[1]: emb.iloc[:, 1],
+            "cluster": labels.astype(str),
+        },
+        index=emb.index,
+    )
     _plot_ellipses(
-        pd.concat([emb.iloc[:, :2], df_active[color_var]], axis=1),
+        df_plot,
         emb.columns[0],
         emb.columns[1],
-        color_var,
-        f"{name} PCA – ellipses",
+        "cluster",
+        f"{name} PCA – ellipses (k={k_best})",
         sub / "ellipses" / "pca_ellipses.png",
     )
 
     emb = results["umap"]["embeddings"]
     if not emb.empty:
+        labels, k_best = _best_kmeans_labels(emb.values)
+        df_plot = pd.DataFrame(
+            {
+                emb.columns[0]: emb.iloc[:, 0],
+                emb.columns[1]: emb.iloc[:, 1],
+                "cluster": labels.astype(str),
+            },
+            index=emb.index,
+        )
         _plot_ellipses(
-            pd.concat([emb.iloc[:, :2], df_active[color_var]], axis=1),
+            df_plot,
             emb.columns[0],
             emb.columns[1],
-            color_var,
-            f"{name} UMAP – ellipses",
+            "cluster",
+            f"{name} UMAP – ellipses (k={k_best})",
             sub / "ellipses" / "umap_ellipses.png",
         )
 
     emb = results.get("pacmap", {}).get("embeddings")
     if emb is not None and not emb.empty:
+        labels, k_best = _best_kmeans_labels(emb.values)
+        df_plot = pd.DataFrame(
+            {
+                emb.columns[0]: emb.iloc[:, 0],
+                emb.columns[1]: emb.iloc[:, 1],
+                "cluster": labels.astype(str),
+            },
+            index=emb.index,
+        )
         _plot_ellipses(
-            pd.concat([emb.iloc[:, :2], df_active[color_var]], axis=1),
+            df_plot,
             emb.columns[0],
             emb.columns[1],
-            color_var,
-            f"{name} PaCMAP – ellipses",
+            "cluster",
+            f"{name} PaCMAP – ellipses (k={k_best})",
             sub / "ellipses" / "pacmap_ellipses.png",
         )
 
