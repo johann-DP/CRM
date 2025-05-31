@@ -353,10 +353,12 @@ def main(argv: list[str] | None = None) -> None:
     output_pdf = Path(cfg.get("output_pdf", output_dir / "phase4_report.pdf"))
 
     figures = gather_figures(output_dir, args.datasets)
+    logging.info("Found %d images in %s", len(figures), output_dir)
     metrics = gather_metrics(output_dir, args.datasets)
     tables = {"metrics": format_metrics_table(metrics)} if metrics is not None else {}
 
     export_report_to_pdf(figures, tables, output_pdf)
+    logging.info("Report written to %s", output_pdf)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual execution
