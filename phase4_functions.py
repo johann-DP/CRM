@@ -1808,7 +1808,7 @@ def cluster_evaluation_metrics(
         samples = silhouette_samples_safe(X, labels, sample_size=1000)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-        dunn = dunn_index(X, labels)
+        dunn = dunn_index(X, labels, sample_size=1000)
         ch = calinski_harabasz_score(X, labels)
         db = davies_bouldin_score(X, labels)
         inv_db = 1.0 / db if db > 0 else float("nan")
@@ -2263,7 +2263,7 @@ def evaluate_methods(
             inv_db = float("nan")
         else:
             sil = float(silhouette_score(X_low, labels))
-            dunn = dunn_index(X_low, labels)
+            dunn = dunn_index(X_low, labels, sample_size=1000)
             ch = float(calinski_harabasz_score(X_low, labels))
             db = davies_bouldin_score(X_low, labels)
             inv_db = 1.0 / db if db > 0 else float("nan")
