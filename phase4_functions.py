@@ -2201,7 +2201,26 @@ def evaluate_methods(
         kaiser = int(sum(1 for eig in np.array(inertias) * n_features if eig > 1))
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
-        X_low = info["embeddings"].values
+        emb = info.get("embeddings")
+        if not isinstance(emb, pd.DataFrame) or emb.empty:
+            logger.warning("%s missing embeddings for evaluation", method)
+            row = {
+                "method": method,
+                "variance_cumulee_%": float("nan"),
+                "nb_axes_kaiser": float("nan"),
+                "silhouette": float("nan"),
+                "dunn_index": float("nan"),
+                "trustworthiness": float("nan"),
+                "continuity": float("nan"),
+                "runtime_seconds": info.get("runtime_seconds")
+                or info.get("runtime_s")
+                or info.get("runtime"),
+                "cluster_k": float("nan"),
+                "cluster_algo": "",
+            }
+            return method, np.array([]), row
+
+        X_low = emb.values
         labels, best_k, algo = auto_cluster_labels(X_low, k_range)
         info["cluster_labels"] = labels
         info["cluster_k"] = best_k
@@ -3242,7 +3261,6 @@ def _factor_method_figures(
         _save(km_eval, f"{method}_kmeans_silhouette")
         _save(ag_eval, f"{method}_agglomerative_silhouette")
         _save(gmm_eval, f"{method}_gmm_silhouette")
-        _save(spec_eval, f"{method}_spectral_silhouette")
         _save(spec_eval, f"{method}_spectral_silhouette")
 
         labels = km_labels
