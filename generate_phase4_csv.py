@@ -199,7 +199,7 @@ def run(config: Mapping[str, Any]) -> None:
         stats = tmp.groupby("cluster")[quant_vars].agg(["mean", "std"])
         stats.to_csv(output_dir / f"{method}_cluster_stats.csv")
         logging.info("Saved statistics for %s", method)
-
+  
     # Distances and compacity/separation indices ---------------------------
     X_high = encode_data(df_active, quant_vars, qual_vars)
     records = []
