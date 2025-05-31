@@ -23,10 +23,26 @@ famd:
   # Let fine-tuning choose the component rule (variance, kaiser or elbow)
   n_components_rule:
   variance_threshold: 0.9
-  k_raw: 3
-  k_cleaned_1: 2
-  k_cleaned_3_univ: 2
-  k_cleaned_3_multi: 3
+  kmeans:
+    raw: [2, 7, 9]
+    cleaned_1: [3, 7]
+    cleaned_3_univ: [2, 7]
+    cleaned_3_multi: [2, 8]
+  agglomerative:
+    raw:
+    cleaned_1: [2, 3, 5]
+    cleaned_3_univ: [2, 11]
+    cleaned_3_multi: [2, 7]
+  gaussian:
+    raw: [2, 9, 12]
+    cleaned_1: [2, 7]
+    cleaned_3_univ:
+    cleaned_3_multi: [3, 8, 10]
+  spectral:
+    raw: [9, 13]
+    cleaned_1: [12, 13]
+    cleaned_3_univ: [5, 9]
+    cleaned_3_multi: [13, 14, 15]
 mfa:
   n_components: 10
   weights: null

@@ -1028,6 +1028,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         plot_methods_heatmap(metrics, output_dir)
 
     cluster_map: Dict[str, int] = {}
+    cluster_lists: Dict[str, Dict[str, list[int]]] = {}
     for name in list(factor_names) + list(nonlin_names):
         cfg = config.get(name.lower(), {}) if isinstance(config.get(name.lower()), Mapping) else {}
         val = cfg.get(f"k_{data_key}")
@@ -1036,6 +1037,23 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
                 cluster_map[name] = int(val)
             except Exception:
                 pass
+        for algo_key, algo_name in {
+            "kmeans": "kmeans",
+            "agglomerative": "agglomerative",
+            "gaussian": "gmm",
+            "spectral": "spectral",
+        }.items():
+            dvals = cfg.get(algo_key, {})
+            if isinstance(dvals, Mapping):
+                lst = dvals.get(data_key)
+                if lst:
+                    if not isinstance(lst, list):
+                        lst = [lst]
+                    try:
+                        ints = [int(x) for x in lst]
+                    except Exception:
+                        continue
+                    cluster_lists.setdefault(name, {})[algo_name] = ints
 
     logging.info("Generating figures...")
     figures = generate_figures(
@@ -1046,6 +1064,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         qual_vars,
         output_dir=output_dir,
         cluster_k=cluster_map or None,
+        cluster_lists=cluster_lists or None,
         segment_col=config.get("segment_col"),
         n_jobs=n_jobs,
         backend=backend,

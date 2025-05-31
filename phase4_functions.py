@@ -1516,8 +1516,9 @@ import numpy as np
 import pandas as pd
 from sklearn.manifold import trustworthiness
 from sklearn.metrics import silhouette_score, silhouette_samples
-from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from sklearn.cluster import AgglomerativeClustering, DBSCAN, SpectralClustering
 from sklearn.mixture import GaussianMixture
+from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 
 
 def tune_kmeans_clusters(
@@ -1628,6 +1629,33 @@ def tune_gmm_clusters(
     return best_labels, best_k
 
 
+def tune_spectral_clusters(
+    X: np.ndarray, k_range: Iterable[int] = range(2, 16)
+) -> Tuple[np.ndarray, int]:
+    """Return Spectral clustering labels using the best silhouette."""
+    best_score = -1.0
+    best_labels: Optional[np.ndarray] = None
+    best_k = 2
+    X = np.asarray(X)
+    for k in k_range:
+        if k >= len(X) or k < 2:
+            continue
+        labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
+        if len(np.unique(labels)) < 2:
+            score = -1.0
+        else:
+            score = silhouette_score(X, labels)
+        if score > best_score:
+            best_score = score
+            best_labels = labels
+            best_k = k
+    if best_labels is None:
+        k = max(2, min(len(X), 2))
+        best_labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
+        best_k = k
+    return best_labels, best_k
+
+
 def auto_cluster_labels(
     X: np.ndarray, k_range: Iterable[int] = range(2, 11)
 ) -> Tuple[np.ndarray, int, str]:
@@ -1694,7 +1722,7 @@ def cluster_evaluation_metrics(
     ----------
     X : array-like of shape (n_samples, n_features)
         Data to cluster.
-    method : {"kmeans", "agglomerative", "gmm"}
+    method : {"kmeans", "agglomerative", "gmm", "spectral"}
         Algorithm to evaluate.
     k_range : iterable of int, default ``range(2, 16)``
         Candidate numbers of clusters.
@@ -1702,7 +1730,8 @@ def cluster_evaluation_metrics(
     Returns
     -------
     pandas.DataFrame
-        Table with columns ``k``, ``silhouette`` and ``dunn_index``.
+        Table with columns ``k``, ``silhouette``, ``dunn_index``,
+        ``calinski_harabasz`` and ``inv_davies_bouldin``.
     int
         ``k`` giving the highest silhouette score.
     """
@@ -1710,9 +1739,17 @@ def cluster_evaluation_metrics(
     X = np.asarray(X)
     n_samples = len(X)
 
-    def _eval(k: int) -> tuple[int, float, float, float, float]:
+    def _eval(k: int) -> tuple[int, float, float, float, float, float, float]:
         if k >= n_samples or k < 2:
-            return k, float("nan"), float("nan"), float("nan"), float("nan")
+            return (
+                k,
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+            )
         if method == "kmeans":
             labels = KMeans(n_clusters=k).fit_predict(X)
         elif method == "agglomerative":
@@ -1721,17 +1758,38 @@ def cluster_evaluation_metrics(
             labels = GaussianMixture(
                 n_components=k, covariance_type="full"
             ).fit_predict(X)
+        elif method == "spectral":
+            labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
         else:
             raise ValueError(f"Unknown method '{method}'")
 
         if len(np.unique(labels)) < 2:
-            return k, float("nan"), float("nan"), float("nan"), float("nan")
+            return (
+                k,
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+                float("nan"),
+            )
 
         samples = silhouette_samples(X, labels)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
         dunn = dunn_index(X, labels)
-        return k, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn
+        ch = calinski_harabasz_score(X, labels)
+        db = davies_bouldin_score(X, labels)
+        inv_db = 1.0 / db if db > 0 else float("nan")
+        return (
+            k,
+            sil_mean,
+            sil_mean - sil_err,
+            sil_mean + sil_err,
+            dunn,
+            ch,
+            inv_db,
+        )
 
     with Parallel(n_jobs=-1) as parallel:
         results = parallel(delayed(_eval)(k) for k in k_range)
@@ -1739,7 +1797,7 @@ def cluster_evaluation_metrics(
     records: list[dict[str, float]] = []
     best_k = None
 
-    for k, mean, lower, upper, dunn in results:
+    for k, mean, lower, upper, dunn, ch, inv_db in results:
         records.append(
             {
                 "k": k,
@@ -1747,6 +1805,8 @@ def cluster_evaluation_metrics(
                 "silhouette_lower": lower,
                 "silhouette_upper": upper,
                 "dunn_index": dunn,
+                "calinski_harabasz": ch,
+                "inv_davies_bouldin": inv_db,
             }
         )
         if np.isnan(mean):
@@ -1769,7 +1829,7 @@ def optimize_clusters(
 
     Parameters
     ----------
-    method : {"kmeans", "agglomerative", "gmm"}
+    method : {"kmeans", "agglomerative", "gmm", "spectral"}
         Clustering algorithm to use.
     X : array-like of shape (n_samples, n_features)
         Input data to cluster.
@@ -1796,6 +1856,8 @@ def optimize_clusters(
         labels = GaussianMixture(
             n_components=best_k, covariance_type="full"
         ).fit_predict(X)
+    elif method == "spectral":
+        labels = SpectralClustering(n_clusters=best_k, assign_labels="kmeans").fit_predict(X)
     else:  # pragma: no cover - defensive
         raise ValueError(f"Unknown method '{method}'")
 
@@ -1868,7 +1930,7 @@ def dbscan_evaluation_metrics(
 def plot_cluster_evaluation(
     df: pd.DataFrame, method: str, k_opt: int | None = None
 ) -> plt.Figure:
-    """Plot silhouette and Dunn index curves for ``method``.
+    """Plot clustering metrics for ``method`` as normalized bar plots.
 
     Parameters
     ----------
@@ -1898,35 +1960,36 @@ def plot_cluster_evaluation(
         xcol = df.columns[0]
         xlabel = xcol
 
-    fig, ax1 = plt.subplots(figsize=(6, 4), dpi=200)
-    ax2 = ax1.twinx()
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
 
-    ax1.plot(
-        df[xcol],
-        df["silhouette"],
-        marker="o",
-        color="tab:blue",
-        label="Silhouette",
-    )
-    ax2.bar(
-        df[xcol],
-        df["dunn_index"],
-        color="tab:orange",
-        alpha=0.3,
-        label="Dunn index",
-    )
+    metrics = [
+        "silhouette",
+        "dunn_index",
+        "calinski_harabasz",
+        "inv_davies_bouldin",
+    ]
+    norm = {}
+    for m in metrics:
+        col = df[m]
+        cmin, cmax = col.min(), col.max()
+        if np.isnan(cmin) or cmax == cmin:
+            norm[m] = np.full(len(col), np.nan)
+        else:
+            norm[m] = (col - cmin) / (cmax - cmin)
+    width = 0.2
+    offsets = np.linspace(-1.5 * width, 1.5 * width, len(metrics))
+    for off, m in zip(offsets, metrics):
+        ax.bar(df[xcol] + off, norm[m], width=width, label=m)
 
     if xcol == "k" and k_opt is not None and k_opt in df[xcol].values:
-        ax1.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
+        ax.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
 
-    ax1.set_xlabel(xlabel)
-    ax1.set_ylabel("Silhouette")
-    ax2.set_ylabel("Dunn index")
-    ax1.set_title(f"Évaluation clustering – {method.upper()}")
-
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Normalized score")
+    ax.set_title(f"Évaluation clustering – {method.upper()}")
+    ax.set_ylim(0, 1)
+    if metrics:
+        ax.legend()
     fig.tight_layout()
     return fig
 
@@ -1935,27 +1998,41 @@ def plot_cluster_evaluation(
 def plot_cluster_metrics_grid(
     curves: Mapping[str, pd.DataFrame], optimal: Mapping[str, int]
 ) -> plt.Figure:
-    """Return a figure with silhouette/Dunn curves."""
+    """Return a figure with normalized metrics for each clustering method."""
     fig, axes = plt.subplots(2, 2, figsize=(12, 6), dpi=200)
-    methods = ["kmeans", "agglomerative", "gmm"]
+    methods = ["kmeans", "agglomerative", "gmm", "spectral"]
     for ax, method in zip(axes.ravel(), methods):
         df = curves.get(method)
         if df is None or df.empty:
             ax.axis("off")
             continue
-        ax2 = ax.twinx()
         xcol = "k" if "k" in df.columns else "min_cluster_size"
-        ax.plot(df[xcol], df["silhouette"], marker="o", color="tab:blue")
-        # Removed confidence interval shading for clarity
-        ax2.bar(df[xcol], df["dunn_index"], color="tab:orange", alpha=0.3)
+        metrics = [
+            "silhouette",
+            "dunn_index",
+            "calinski_harabasz",
+            "inv_davies_bouldin",
+        ]
+        norm = {}
+        for m in metrics:
+            col = df[m]
+            cmin, cmax = col.min(), col.max()
+            if np.isnan(cmin) or cmax == cmin:
+                norm[m] = np.full(len(col), np.nan)
+            else:
+                norm[m] = (col - cmin) / (cmax - cmin)
+        width = 0.2
+        offsets = np.linspace(-1.5 * width, 1.5 * width, len(metrics))
+        for off, m in zip(offsets, metrics):
+            ax.bar(df[xcol] + off, norm[m], width=width, label=m)
         k_opt = optimal.get(method)
         if k_opt is not None and k_opt in df[xcol].values:
-            val = float(df.loc[df[xcol] == k_opt, "silhouette"].iloc[0])
-            ax.scatter([k_opt], [val], marker="x", s=60)
             ax.axvline(k_opt, color="grey", ls="--", lw=1)
         ax.set_title(method)
-        ax.set_ylabel("Silhouette")
-        ax2.set_ylabel("Dunn")
+        ax.set_ylabel("Normalized score")
+        ax.set_ylim(0, 1)
+        if metrics:
+            ax.legend(fontsize="x-small")
 
     for ax in axes.ravel()[len(methods):]:
         ax.axis("off")
@@ -2655,10 +2732,12 @@ def plot_cluster_grid(
     km_labels: np.ndarray,
     ag_labels: np.ndarray,
     gmm_labels: np.ndarray,
+    spec_labels: np.ndarray,
     method: str,
     km_k: int,
     ag_k: int,
     gmm_k: int,
+    spec_k: int,
 ) -> plt.Figure:
     """Return a 2x2 grid comparing clustering algorithms."""
 
@@ -2702,6 +2781,11 @@ def plot_cluster_grid(
         gmm_labels,
         f"{method.upper()} \u2013 Gaussian Mixture (k={gmm_k})",
     )
+    _plot(
+        axes[3],
+        spec_labels,
+        f"{method.upper()} \u2013 Spectral (k={spec_k})",
+    )
 
     # omit cluster legends on the grid plots
     # for ax in axes:
@@ -2709,6 +2793,68 @@ def plot_cluster_grid(
     #     if labels:
     #         ax.legend(title="cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
 
+    fig.tight_layout()
+    return fig
+
+
+def plot_clusters_by_k(
+    emb_df: pd.DataFrame,
+    algorithm: str,
+    k_values: Sequence[int],
+    method: str,
+) -> plt.Figure:
+    """Return a grid of scatter plots for ``algorithm`` at each ``k``."""
+    if not k_values:
+        raise ValueError("k_values must not be empty")
+
+    valid_k = [k for k in k_values if isinstance(k, (int, np.integer)) and k >= 2]
+    n = len(valid_k)
+    cols = min(3, n)
+    rows = int(np.ceil(n / cols))
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 4 * rows), dpi=200)
+    axes = np.array(axes).reshape(-1)
+
+    def _fit_predict(k: int) -> np.ndarray:
+        if algorithm == "kmeans":
+            return KMeans(n_clusters=k).fit_predict(emb_df.values)
+        if algorithm == "agglomerative":
+            return AgglomerativeClustering(n_clusters=k).fit_predict(emb_df.values)
+        if algorithm in {"gaussian", "gmm"}:
+            return GaussianMixture(n_components=k, covariance_type="full").fit_predict(
+                emb_df.values
+            )
+        if algorithm == "spectral":
+            return SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(
+                emb_df.values
+            )
+        raise ValueError(f"Unknown algorithm '{algorithm}'")
+
+    for ax, k in zip(axes, valid_k):
+        labels = _fit_predict(k)
+        unique = np.unique(labels)
+        try:
+            cmap = matplotlib.colormaps.get_cmap("tab10")
+        except AttributeError:  # pragma: no cover - older Matplotlib
+            cmap = matplotlib.cm.get_cmap("tab10")
+        n_colors = cmap.N if hasattr(cmap, "N") else len(unique)
+        for i, lab in enumerate(unique):
+            mask = labels == lab
+            color = "lightgray" if lab == -1 else cmap(i % n_colors)
+            ax.scatter(
+                emb_df.loc[mask, emb_df.columns[0]],
+                emb_df.loc[mask, emb_df.columns[1]],
+                s=10,
+                alpha=0.6,
+                color=color,
+            )
+        ax.set_xlabel(emb_df.columns[0])
+        ax.set_ylabel(emb_df.columns[1])
+        ax.set_title(f"k={k}")
+
+    for ax in axes[n:]:
+        ax.axis("off")
+
+    fig.suptitle(f"{method.upper()} – {algorithm.capitalize()} clustering", fontsize=12)
     fig.tight_layout()
     return fig
 
@@ -3052,6 +3198,7 @@ def _factor_method_figures(
     qual_vars: List[str],
     out: Optional[Path],
     cluster_k: int | None,
+    cluster_lists: Mapping[str, Sequence[int]] | None,
     segments: Optional[pd.Series],
     color_var: Optional[str],
 ) -> Dict[str, plt.Figure]:
@@ -3085,6 +3232,9 @@ def _factor_method_figures(
             gmm_curve, _ = cluster_evaluation_metrics(
                 emb.iloc[:, :2].values, "gmm", k_range
             )
+            spec_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "spectral", k_range
+            )
             km_labels = KMeans(n_clusters=cluster_k).fit_predict(emb.iloc[:, :2].values)
             ag_labels = AgglomerativeClustering(n_clusters=cluster_k).fit_predict(
                 emb.iloc[:, :2].values
@@ -3092,7 +3242,11 @@ def _factor_method_figures(
             gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
                 emb.iloc[:, :2].values
             )
+            spec_labels = SpectralClustering(n_clusters=cluster_k, assign_labels="kmeans").fit_predict(
+                emb.iloc[:, :2].values
+            )
             km_k = ag_k = gmm_k = cluster_k
+            spec_k = cluster_k
         else:
             km_labels, km_k, km_curve = optimize_clusters(
                 "kmeans", emb.iloc[:, :2].values, k_range
@@ -3103,37 +3257,62 @@ def _factor_method_figures(
             gmm_labels, gmm_k, gmm_curve = optimize_clusters(
                 "gmm", emb.iloc[:, :2].values, k_range
             )
+            spec_labels, spec_k, spec_curve = optimize_clusters(
+                "spectral", emb.iloc[:, :2].values, k_range
+            )
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
             km_labels,
             ag_labels,
             gmm_labels,
+            spec_labels,
             method,
             km_k,
             ag_k,
             gmm_k,
+            spec_k,
         )
         figures[f"{method}_cluster_grid"] = grid_fig
         _save(grid_fig, f"{method}_cluster_grid")
 
+        cl_map = cluster_lists or {}
+        for algo, best_k in [
+            ("kmeans", km_k),
+            ("agglomerative", ag_k),
+            ("gmm", gmm_k),
+            ("spectral", spec_k),
+        ]:
+            ks = cl_map.get(algo)
+            if ks is None or len(ks) == 0:
+                ks = [best_k]
+            figk = plot_clusters_by_k(emb.iloc[:, :2], algo, ks, method)
+            figures[f"{method}_{algo}_kgrid"] = figk
+            _save(figk, f"{method}_{algo}_kgrid")
+
+        labels = km_labels
+
         km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
         ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
         gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
+        spec_eval = plot_cluster_evaluation(spec_curve, "spectral", spec_k)
         figures[f"{method}_kmeans_silhouette"] = km_eval
         figures[f"{method}_agglomerative_silhouette"] = ag_eval
         figures[f"{method}_gmm_silhouette"] = gmm_eval
+        figures[f"{method}_spectral_silhouette"] = spec_eval
 
         metrics_fig = plot_cluster_metrics_grid(
             {
                 "kmeans": km_curve,
                 "agglomerative": ag_curve,
                 "gmm": gmm_curve,
+                "spectral": spec_curve,
             },
             {
                 "kmeans": km_k,
                 "agglomerative": ag_k,
                 "gmm": gmm_k,
+                "spectral": spec_k,
             },
         )
         summary_fig = plot_analysis_summary(None, None, metrics_fig)
@@ -3142,6 +3321,8 @@ def _factor_method_figures(
         _save(km_eval, f"{method}_kmeans_silhouette")
         _save(ag_eval, f"{method}_agglomerative_silhouette")
         _save(gmm_eval, f"{method}_gmm_silhouette")
+        _save(spec_eval, f"{method}_spectral_silhouette")
+        _save(spec_eval, f"{method}_spectral_silhouette")
 
         labels = km_labels
         if segments is not None:
@@ -3232,6 +3413,7 @@ def _nonlin_method_figures(
     df_active: pd.DataFrame,
     out: Optional[Path],
     cluster_k: int | None,
+    cluster_lists: Mapping[str, Sequence[int]] | None,
     segments: Optional[pd.Series],
     color_var: Optional[str],
 ) -> Dict[str, plt.Figure]:
@@ -3265,6 +3447,9 @@ def _nonlin_method_figures(
             gmm_curve, _ = cluster_evaluation_metrics(
                 emb.iloc[:, :2].values, "gmm", k_range
             )
+            spec_curve, _ = cluster_evaluation_metrics(
+                emb.iloc[:, :2].values, "spectral", k_range
+            )
             km_labels = KMeans(n_clusters=cluster_k).fit_predict(emb.iloc[:, :2].values)
             ag_labels = AgglomerativeClustering(n_clusters=cluster_k).fit_predict(
                 emb.iloc[:, :2].values
@@ -3272,7 +3457,11 @@ def _nonlin_method_figures(
             gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
                 emb.iloc[:, :2].values
             )
+            spec_labels = SpectralClustering(n_clusters=cluster_k, assign_labels="kmeans").fit_predict(
+                emb.iloc[:, :2].values
+            )
             km_k = ag_k = gmm_k = cluster_k
+            spec_k = cluster_k
         else:
             km_labels, km_k, km_curve = optimize_clusters(
                 "kmeans", emb.iloc[:, :2].values, k_range
@@ -3283,45 +3472,62 @@ def _nonlin_method_figures(
             gmm_labels, gmm_k, gmm_curve = optimize_clusters(
                 "gmm", emb.iloc[:, :2].values, k_range
             )
+            spec_labels, spec_k, spec_curve = optimize_clusters(
+                "spectral", emb.iloc[:, :2].values, k_range
+            )
 
         grid_fig = plot_cluster_grid(
             emb.iloc[:, :2],
             km_labels,
             ag_labels,
             gmm_labels,
+            spec_labels,
             method,
             km_k,
             ag_k,
             gmm_k,
+            spec_k,
         )
         figures[f"{method}_cluster_grid"] = grid_fig
         _save(grid_fig, f"{method}_cluster_grid")
+
+        cl_map = cluster_lists or {}
+        for algo, best_k in [
+            ("kmeans", km_k),
+            ("agglomerative", ag_k),
+            ("gmm", gmm_k),
+            ("spectral", spec_k),
+        ]:
+            ks = cl_map.get(algo)
+            if ks is None or len(ks) == 0:
+                ks = [best_k]
+            figk = plot_clusters_by_k(emb.iloc[:, :2], algo, ks, method)
+            figures[f"{method}_{algo}_kgrid"] = figk
+            _save(figk, f"{method}_{algo}_kgrid")
+
         labels = km_labels
-        title = (
-            f"Projection {method.upper()} – coloration par clusters (K-Means, k={km_k})"
-        )
-        save_name = f"{method}_clusters_kmeans_k{km_k}"
-        cfig = plot_cluster_scatter(emb.iloc[:, :2], labels, title)
-        figures[save_name] = cfig
-        _save(cfig, save_name)
 
         km_eval = plot_cluster_evaluation(km_curve, "kmeans", km_k)
         ag_eval = plot_cluster_evaluation(ag_curve, "agglomerative", ag_k)
         gmm_eval = plot_cluster_evaluation(gmm_curve, "gmm", gmm_k)
+        spec_eval = plot_cluster_evaluation(spec_curve, "spectral", spec_k)
         figures[f"{method}_kmeans_silhouette"] = km_eval
         figures[f"{method}_agglomerative_silhouette"] = ag_eval
         figures[f"{method}_gmm_silhouette"] = gmm_eval
+        figures[f"{method}_spectral_silhouette"] = spec_eval
 
         metrics_fig = plot_cluster_metrics_grid(
             {
                 "kmeans": km_curve,
                 "agglomerative": ag_curve,
                 "gmm": gmm_curve,
+                "spectral": spec_curve,
             },
             {
                 "kmeans": km_k,
                 "agglomerative": ag_k,
                 "gmm": gmm_k,
+                "spectral": spec_k,
             },
         )
 
@@ -3368,6 +3574,7 @@ def generate_figures(
     output_dir: Optional[Path] = None,
     *,
     cluster_k: int | Mapping[str, int] | None = None,
+    cluster_lists: Mapping[str, Mapping[str, Sequence[int]]] | None = None,
     segment_col: str | None = None,
     n_jobs: Optional[int] = None,
     backend: str = "loky",
@@ -3383,6 +3590,10 @@ def generate_figures(
         for each method. If an integer is given, it applies to all methods. When
         ``None``, the number of clusters is tuned automatically up to a maximum
         of 10.
+    cluster_lists : mapping, optional
+        Mapping from method name to a mapping of clustering algorithm to the
+        list of ``k`` values for which cluster scatter plots should be
+        generated. When an algorithm has no list, the optimal ``k`` is used.
     segment_col : str or None, optional
         Name of the column in ``df_active`` containing business segments.
         When provided, a heatmap comparing clusters to segments is generated for
@@ -3414,6 +3625,7 @@ def generate_figures(
                 qual_vars,
                 out,
                 ck,
+                cluster_lists.get(method) if isinstance(cluster_lists, Mapping) else None,
                 segments,
                 color_var,
             )
@@ -3428,6 +3640,7 @@ def generate_figures(
                 df_active,
                 out,
                 ck,
+                cluster_lists.get(method) if isinstance(cluster_lists, Mapping) else None,
                 segments,
                 color_var,
             )
@@ -3922,7 +4135,16 @@ def export_report_to_pdf(
             for method in sorted(grouped[dataset]):
                 items = grouped[dataset][method]
                 pages = [
-                    (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
+                    (
+                        _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                        "Nuages de points bruts",
+                    )
+                ]
+                for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                    key = f"{algo}_kgrid"
+                    if key in items:
+                        pages.append((items[key], f"Clusters {algo}"))
+                pages += [
                     (items.get("cluster_grid"), "Nuages clusterisés"),
                     (items.get("analysis_summary"), "Analyse détaillée"),
                 ]
@@ -3980,7 +4202,16 @@ def export_report_to_pdf(
                 for method in sorted(grouped[dataset]):
                     items = grouped[dataset][method]
                     pages = [
-                        (_combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")), "Nuages de points bruts"),
+                        (
+                            _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                            "Nuages de points bruts",
+                        )
+                    ]
+                    for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                        key = f"{algo}_kgrid"
+                        if key in items:
+                            pages.append((items[key], f"Clusters {algo}"))
+                    pages += [
                         (items.get("cluster_grid"), "Nuages clusterisés"),
                         (items.get("analysis_summary"), "Analyse détaillée"),
                     ]

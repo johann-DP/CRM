@@ -70,12 +70,19 @@ def test_cluster_segment_table_and_heatmap():
     assert hasattr(fig, "savefig")
 
 
+def test_plot_clusters_by_k():
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(20, 2)), columns=["F1", "F2"])
+    fig = pf.plot_clusters_by_k(X, "kmeans", [2, 3], "pca")
+    assert hasattr(fig, "savefig")
+
+
 def test_cluster_evaluation_and_stability_plots():
     rng = np.random.default_rng(0)
     X = rng.normal(size=(20, 2))
     curves = {}
     opts = {}
-    for method in ["kmeans", "agglomerative", "gmm"]:
+    for method in ["kmeans", "agglomerative", "gmm", "spectral"]:
         df, best = pf.cluster_evaluation_metrics(X, method, range(2, 4))
         curves[method] = df
         opts[method] = best
@@ -84,7 +91,7 @@ def test_cluster_evaluation_and_stability_plots():
     comb = pf.plot_combined_silhouette(curves, opts)
     assert hasattr(comb, "savefig")
 
-    for method in ["kmeans", "agglomerative", "gmm"]:
+    for method in ["kmeans", "agglomerative", "gmm", "spectral"]:
         labels, best_k, table = pf.optimize_clusters(method, X, range(2, 4))
         assert len(labels) == X.shape[0]
         assert best_k in table["k"].values
