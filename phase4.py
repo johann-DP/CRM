@@ -595,22 +595,53 @@ def build_type_report(base_dir: Path, pdf_path: Path, datasets: Sequence[str]) -
         key: {ds: [] for ds in datasets} for key, _ in categories
     }
 
+    methods = {
+        "pca",
+        "mca",
+        "famd",
+        "mfa",
+        "umap",
+        "pacmap",
+        "phate",
+        "tsne",
+        "trimap",
+    }
+
+    valid_kw = {
+        "scatter_2d",
+        "correlation",
+        "cluster",
+        "scree",
+        "contrib",
+        "robustness",
+        "silhouette",
+        "dunn",
+        "stability",
+        "segments",
+    }
+
     for ds in datasets:
         root = base_dir / ds
         if not root.exists():
             continue
-        for img in sorted(root.rglob("*.png")):
-            name = img.name.lower()
-            if "cluster_segments" in name or name.endswith("_segments.png"):
-                annex_images["heatmaps"].append(img)
-                continue
-            if any(k in name for k in ["silhouette", "dunn", "stability"]):
-                annex_images["cluster_validation"].append(img)
-                continue
-            for title, cond in categories:
-                if cond(name):
-                    figures[title][ds].append(img)
-                    break
+        for method_dir in sorted(
+            p for p in root.iterdir() if p.is_dir() and p.name.lower() in methods
+        ):
+            prefix = method_dir.name.lower()
+            for img in sorted(method_dir.glob(f"{prefix}*.png")):
+                name = img.name.lower()
+                if not any(k in name for k in valid_kw):
+                    continue
+                if "cluster_segments" in name or name.endswith("_segments.png"):
+                    annex_images["heatmaps"].append(img)
+                    continue
+                if any(k in name for k in ["silhouette", "dunn", "stability"]):
+                    annex_images["cluster_validation"].append(img)
+                    continue
+                for title, cond in categories:
+                    if cond(name):
+                        figures[title][ds].append(img)
+                        break
 
     segments_dir = base_dir / "old" / "segments"
     if segments_dir.exists():

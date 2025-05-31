@@ -35,15 +35,54 @@ DEFAULT_DATASETS = ["raw", "cleaned_1", "cleaned_3_multi", "cleaned_3_univ"]
 
 def gather_figures(base_dir: Path, datasets: list[str]) -> dict[str, Path]:
     """Return a mapping of figure names to file paths under ``base_dir``."""
+
+    methods = {
+        "pca",
+        "mca",
+        "famd",
+        "mfa",
+        "umap",
+        "pacmap",
+        "phate",
+        "tsne",
+        "trimap",
+    }
+
+    valid_kw = {
+        "scatter_2d",
+        "correlation",
+        "cluster",
+        "scree",
+        "contrib",
+        "robustness",
+        "silhouette",
+        "dunn",
+        "stability",
+        "segments",
+    }
+
     figures: dict[str, Path] = {}
     for ds in datasets:
         ds_dir = base_dir / ds
         if not ds_dir.exists():
             continue
-        for img in ds_dir.rglob("*.png"):
+        # Search only the expected <dataset>/<method> directories
+        for method_dir in sorted(
+            p for p in ds_dir.iterdir() if p.is_dir() and p.name.lower() in methods
+        ):
+            prefix = method_dir.name.lower()
+            for img in sorted(method_dir.glob(f"{prefix}*.png")):
+                name = img.name.lower()
+                if any(k in name for k in valid_kw):
+                    figures[f"{ds}_{img.stem}"] = img
+        # Include any dataset-level PNGs (segment summaries, etc.)
+        for img in sorted(ds_dir.glob("*.png")):
             figures[f"{ds}_{img.stem}"] = img
+
+    # Top-level figures such as heatmaps
     for img in base_dir.glob("*.png"):
         figures[img.stem] = img
+
     return figures
 
 
