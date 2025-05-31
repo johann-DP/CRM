@@ -132,7 +132,12 @@ def _method_params(method: str, config: Mapping[str, Any]) -> Dict[str, Any]:
         if key.startswith(prefix) and value is not None:
             params[key[len(prefix) :]] = value
     # Filter out clustering hints like ``k_raw`` that are not method arguments
-    params = {k: v for k, v in params.items() if not str(k).startswith("k_")}
+    skip = {"kmeans", "agglomerative", "gaussian", "spectral"}
+    params = {
+        k: v
+        for k, v in params.items()
+        if not str(k).startswith("k_") and k not in skip
+    }
     return params
 
 
@@ -1030,8 +1035,25 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     cluster_map: Dict[str, int] = {}
     cluster_lists: Dict[str, Dict[str, list[int]]] = {}
     for name in list(factor_names) + list(nonlin_names):
-        cfg = config.get(name.lower(), {}) if isinstance(config.get(name.lower()), Mapping) else {}
+        cfg = (
+            config.get(name.lower(), {})
+            if isinstance(config.get(name.lower()), Mapping)
+            else {}
+        )
         val = cfg.get(f"k_{data_key}")
+        if isinstance(val, list) and val:
+            val = val[0]
+        if val is None:
+            for meth in ["kmeans", "agglomerative", "gaussian", "spectral"]:
+                sub = cfg.get(meth)
+                if isinstance(sub, Mapping):
+                    v = sub.get(data_key)
+                    if isinstance(v, list) and v:
+                        val = v[0]
+                        break
+                    if isinstance(v, int):
+                        val = v
+                        break
         if val is not None:
             try:
                 cluster_map[name] = int(val)

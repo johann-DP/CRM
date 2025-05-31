@@ -1536,7 +1536,7 @@ def tune_kmeans_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1563,7 +1563,7 @@ def tune_agglomerative_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1591,7 +1591,7 @@ def tune_dbscan_clusters(
         if n_clusters < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1617,7 +1617,7 @@ def tune_gmm_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1664,51 +1664,6 @@ def auto_cluster_labels(
     labels, best_k = tune_kmeans_clusters(X, k_range)
     return labels, best_k, "kmeans"
 
-
-def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
-    """Compute the Dunn index of a clustering.
-
-    Parameters
-    ----------
-    X:
-        Coordinates of the points.
-    labels:
-        Cluster labels for each point.
-
-    Returns
-    -------
-    float
-        Dunn index (higher is better). ``NaN`` if undefined.
-    """
-    from scipy.spatial.distance import pdist, squareform
-
-    if len(np.unique(labels)) < 2:
-        return float("nan")
-
-    dist = squareform(pdist(X))
-    unique = np.unique(labels)
-
-    intra_diam = []
-    min_inter = np.inf
-
-    for i, ci in enumerate(unique):
-        idx_i = np.where(labels == ci)[0]
-        if len(idx_i) > 1:
-            intra = dist[np.ix_(idx_i, idx_i)].max()
-        else:
-            intra = 0.0
-        intra_diam.append(intra)
-
-        for cj in unique[i + 1 :]:
-            idx_j = np.where(labels == cj)[0]
-            inter = dist[np.ix_(idx_i, idx_j)].min()
-            if inter < min_inter:
-                min_inter = inter
-
-    max_intra = max(intra_diam)
-    if max_intra == 0:
-        return float("nan")
-    return float(min_inter / max_intra)
 
 
 def cluster_evaluation_metrics(
@@ -1774,7 +1729,7 @@ def cluster_evaluation_metrics(
                 float("nan"),
             )
 
-        samples = silhouette_samples(X, labels)
+        samples = silhouette_samples_safe(X, labels, sample_size=1000)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
         dunn = dunn_index(X, labels)
@@ -1887,10 +1842,10 @@ def dbscan_evaluation_metrics(
                 float("nan"),
                 n_clusters,
             )
-        samples = silhouette_samples(X, labels)
+        samples = silhouette_samples_safe(X, labels, sample_size=1000)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-        dunn = dunn_index(X, labels)
+        dunn = dunn_index(X, labels, sample_size=1000)
         return eps, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn, n_clusters
 
     with Parallel(n_jobs=-1) as parallel:
@@ -2201,7 +2156,26 @@ def evaluate_methods(
         kaiser = int(sum(1 for eig in np.array(inertias) * n_features if eig > 1))
         cum_inertia = float(sum(inertias) * 100) if inertias else np.nan
 
-        X_low = info["embeddings"].values
+        emb = info.get("embeddings")
+        if not isinstance(emb, pd.DataFrame) or emb.empty:
+            logger.warning("%s missing embeddings for evaluation", method)
+            row = {
+                "method": method,
+                "variance_cumulee_%": float("nan"),
+                "nb_axes_kaiser": float("nan"),
+                "silhouette": float("nan"),
+                "dunn_index": float("nan"),
+                "trustworthiness": float("nan"),
+                "continuity": float("nan"),
+                "runtime_seconds": info.get("runtime_seconds")
+                or info.get("runtime_s")
+                or info.get("runtime"),
+                "cluster_k": float("nan"),
+                "cluster_algo": "",
+            }
+            return method, np.array([]), row
+
+        X_low = emb.values
         labels, best_k, algo = auto_cluster_labels(X_low, k_range)
         info["cluster_labels"] = labels
         info["cluster_k"] = best_k
@@ -2209,9 +2183,14 @@ def evaluate_methods(
         if len(labels) <= best_k or len(set(labels)) < 2:
             sil = float("nan")
             dunn = float("nan")
+            ch = float("nan")
+            inv_db = float("nan")
         else:
             sil = float(silhouette_score(X_low, labels))
             dunn = dunn_index(X_low, labels)
+            ch = float(calinski_harabasz_score(X_low, labels))
+            db = davies_bouldin_score(X_low, labels)
+            inv_db = 1.0 / db if db > 0 else float("nan")
 
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
@@ -2244,6 +2223,8 @@ def evaluate_methods(
             "nb_axes_kaiser": kaiser,
             "silhouette": sil,
             "dunn_index": dunn,
+            "calinski_harabasz": ch,
+            "inv_davies_bouldin": inv_db,
             "trustworthiness": T,
             "continuity": C,
             "runtime_seconds": runtime,
