@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# flake8: noqa: E402
 """Generate additional Phase 4 visualisations.
 
 This script creates density maps on PCA and UMAP projections and
@@ -14,13 +15,11 @@ import argparse
 import json
 import logging
 import math
-import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import matplotlib
-
-matplotlib.use("Agg")
+matplotlib.use("Agg")  # noqa: E402 - set backend before importing pyplot
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import numpy as np
@@ -67,9 +66,24 @@ def _choose_color_var(df: pd.DataFrame, qual_vars: Sequence[str]) -> str | None:
 
 
 def _plot_density(df: pd.DataFrame, x: str, y: str, title: str, out: Path) -> Path:
+    """Draw a 2D density map.
+
+    Falls back to a histogram when KDE fails (e.g. when data lack
+    sufficient variance).
+    """
+
     fig, ax = plt.subplots(figsize=(6, 5), dpi=200)
-    sns.kdeplot(data=df, x=x, y=y, fill=True, cmap="mako", thresh=0, ax=ax)
-    ax.scatter(df[x], df[y], s=5, color="white", alpha=0.4)
+    data = df[[x, y]].dropna()
+    try:
+        if data[x].nunique() > 1 and data[y].nunique() > 1:
+            sns.kdeplot(data=data, x=x, y=y, fill=True, cmap="mako", thresh=0, ax=ax)
+        else:  # not enough unique points for KDE
+            raise ValueError("insufficient variation")
+    except ValueError as exc:
+        logging.warning("KDE density failed (%s), using histplot", exc)
+        sns.histplot(data=data, x=x, y=y, bins=30, pthresh=0.05, cmap="mako", ax=ax)
+
+    ax.scatter(data[x], data[y], s=5, color="white", alpha=0.4)
     ax.set_xlabel(x)
     ax.set_ylabel(y)
     ax.set_title(title)
