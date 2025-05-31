@@ -91,7 +91,10 @@ def run(config: Mapping[str, Any]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     phase4.set_blas_threads(int(config.get("n_jobs", -1)))
 
-    datasets = load_datasets(config, ignore_schema=bool(config.get("ignore_schema", False)))
+    print(f"Loading datasets (output: {output_dir})…", flush=True)
+    datasets = load_datasets(
+        config, ignore_schema=bool(config.get("ignore_schema", False))
+    )
     name = config.get("dataset", config.get("main_dataset", "raw"))
     if name not in datasets:
         raise KeyError(f"dataset '{name}' not found")
@@ -100,25 +103,34 @@ def run(config: Mapping[str, Any]) -> None:
     df_active, quant_vars, qual_vars = select_variables(
         df_prep, min_modalite_freq=int(config.get("min_modalite_freq", 5))
     )
+    print(f"Dataset '{name}' ready: {len(df_active)} rows, {len(quant_vars)} quantitative, {len(qual_vars)} qualitative", flush=True)
     df_active = handle_missing_values(df_active, quant_vars, qual_vars)
 
-    methods = [m.lower() for m in config.get(
-        "methods",
-        ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
-    )]
+    methods = [
+        m.lower()
+        for m in config.get(
+            "methods",
+            ["pca", "mca", "famd", "mfa", "umap", "phate", "pacmap"],
+        )
+    ]
 
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
 
+    print("Running factor methods…", flush=True)
+
     if "pca" in methods and quant_vars:
+        print(" - PCA", flush=True)
         factor_results["pca"] = run_pca(
             df_active, quant_vars, optimize=False, **method_params("pca", config)
         )
     if "mca" in methods and qual_vars:
+        print(" - MCA", flush=True)
         factor_results["mca"] = run_mca(
             df_active, qual_vars, optimize=False, **method_params("mca", config)
         )
     if "famd" in methods and quant_vars and qual_vars:
+        print(" - FAMD", flush=True)
         factor_results["famd"] = run_famd(
             df_active, quant_vars, qual_vars, optimize=False, **method_params("famd", config)
         )
@@ -132,13 +144,18 @@ def run(config: Mapping[str, Any]) -> None:
         grp = params.pop("groups", None)
         if grp:
             groups = grp
+        print(" - MFA", flush=True)
         factor_results["mfa"] = run_mfa(df_active, groups, optimize=False, **params)
 
+    print("Running non-linear methods…", flush=True)
     if "umap" in methods:
+        print(" - UMAP", flush=True)
         nonlin_results["umap"] = run_umap(df_active, **method_params("umap", config))
     if "phate" in methods:
+        print(" - PHATE", flush=True)
         nonlin_results["phate"] = run_phate(df_active, **method_params("phate", config))
     if "pacmap" in methods:
+        print(" - PaCMAP", flush=True)
         nonlin_results["pacmap"] = run_pacmap(df_active, **method_params("pacmap", config))
 
     all_results = {**factor_results, **nonlin_results}
@@ -150,6 +167,7 @@ def run(config: Mapping[str, Any]) -> None:
         qual_vars,
         k_range=range(2, k_max + 1),
     )
+    print("Clustering and metric evaluation done", flush=True)
 
     # Coordinates and cluster labels ---------------------------------------
     coord_df = pd.DataFrame(index=df_active.index)
@@ -166,11 +184,13 @@ def run(config: Mapping[str, Any]) -> None:
 
     coord_df.to_csv(output_dir / "coordinates.csv")
     labels_df.to_csv(output_dir / "cluster_labels.csv")
+    print("Saved coordinates and cluster labels", flush=True)
 
     segmented = df_prep.loc[coord_df.index].copy()
     for col in labels_df.columns:
         segmented[f"cluster_{col}"] = labels_df[col]
     segmented.to_csv(output_dir / "dataset_segmented.csv", index=False)
+    print("Saved segmented dataset", flush=True)
 
     # Cluster statistics ----------------------------------------------------
     for method, labels in labels_df.items():
@@ -178,6 +198,7 @@ def run(config: Mapping[str, Any]) -> None:
         tmp["cluster"] = labels
         stats = tmp.groupby("cluster")[quant_vars].agg(["mean", "std"])
         stats.to_csv(output_dir / f"{method}_cluster_stats.csv")
+        print(f"Saved statistics for {method}", flush=True)
 
     # Distances and compacity/separation indices ---------------------------
     X_high = encode_data(df_active, quant_vars, qual_vars)
@@ -205,11 +226,15 @@ def run(config: Mapping[str, Any]) -> None:
         records.append(rec)
     dist_df = pd.DataFrame(records).set_index("method")
     dist_df.to_csv(output_dir / "cluster_distance_metrics.csv")
+    print("Saved distance metrics", flush=True)
 
     # Method parameters -----------------------------------------------------
     params = {m: method_params(m, config) for m in methods}
     with open(output_dir / "method_params.json", "w", encoding="utf-8") as fh:
         json.dump(params, fh, ensure_ascii=False, indent=2)
+    print("Saved method parameters", flush=True)
+
+    print(f"CSV export complete. Results saved in {output_dir}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -225,4 +250,8 @@ if __name__ == "__main__":
     cfg = load_config(Path(args.config))
     if args.dataset:
         cfg["dataset"] = args.dataset
-    run(cfg)
+    try:
+        run(cfg)
+    except Exception as exc:  # pragma: no cover - runtime errors
+        print(f"Error: {exc}")
+        raise
