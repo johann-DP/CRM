@@ -200,3 +200,14 @@ For each dataset and factor method, the combined PDF includes exactly three page
 3. **Analysis summary** – a 2×2 figure gathering variable contributions, correlation circle, scree plot and silhouette curves.
 
 Additional pages such as heatmaps or segment summaries are appended after the per-method sections.
+
+## Standalone report builder
+
+generate_phase4_report.py collects the images exported by `phase4.py` and merges them into a single PDF with the same layout as `export_report_to_pdf`.
+The script accepts the optional ``--config`` and ``--datasets`` arguments to match your setup.
+
+```bash
+python generate_phase4_report.py --config config.yaml --datasets raw cleaned_1
+```
+
+When omitted, ``--config`` defaults to ``config.yaml`` and ``--datasets`` processes `raw`, `cleaned_1`, `cleaned_3_multi` and `cleaned_3_univ` in order.
