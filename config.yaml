@@ -23,10 +23,26 @@ famd:
   # Let fine-tuning choose the component rule (variance, kaiser or elbow)
   n_components_rule:
   variance_threshold: 0.9
-  k_raw: 3
-  k_cleaned_1: 2
-  k_cleaned_3_univ: 2
-  k_cleaned_3_multi: 3
+  kmeans:
+    raw: [ 2, 3, 4, 5, 8, 10, 14 ]
+    cleaned_1: [ 2, 3, 6, 8, 12, 14, 15 ]
+    cleaned_3_univ: [ 2, 3, 10, 14, 15 ]
+    cleaned_3_multi: [ 3, 4, 6, 7, 9, 11, 12, 14 ]
+  agglomerative:
+    raw: [ 2, 3, 11, 12, 13, 14, 15 ]
+    cleaned_1: [ 2, 3, 7, 8, 12, 13, 14, 15 ]
+    cleaned_3_univ: [ 2, 3, 4, 11, 12 ]
+    cleaned_3_multi: [ 2, 3, 4, 5, 14, 15]
+  gaussian:
+    raw: [ 2, 3, 7, 12 ]
+    cleaned_1: [ 2, 3, 7 ]
+    cleaned_3_univ: [ 2, 3, 7, 9 ]
+    cleaned_3_multi: [ 2, 3, 4, 7, 8, 12 ]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 mfa:
   n_components: 10
   weights: null
@@ -34,26 +50,74 @@ mfa:
   # Specify groups only if you want to restrict variables.
   # By default (groups: null), all variables are included automatically.
   groups: null
-  k_raw: 3
-  k_cleaned_1: 5
-  k_cleaned_3_univ: 3
-  k_cleaned_3_multi: 3
+  kmeans:
+    raw: [ 2, 3 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [ 2, 3, 11 ]
+    cleaned_3_multi: [ 2, 3 ]
+  agglomerative:
+    raw: [ 2, 3, 4, 5 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [ 2, 3 ]
+    cleaned_3_multi: [ 2, 3, 5]
+  gaussian:
+    raw: [2, 3, 4 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [ 2, 3, 4 ]
+    cleaned_3_multi: [ 2, 3, 4, 8, 11]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 pca:
   n_components: 3
   svd_solver: randomized
   whiten: true
-  k_raw: 3
-  k_cleaned_1: 3
-  k_cleaned_3_univ: 5
-  k_cleaned_3_multi: 5
+  kmeans:
+    raw: [ 2, 3, 4, 5 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [ 2, 3, 4, 5, 7, 9, 15 ]
+    cleaned_3_multi: [ 2, 3, 4, 5, 6, 8 ]
+  agglomerative:
+    raw: [ 2, 3, 4, 5 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [ 2, 3, 4, 5 ]
+    cleaned_3_multi: [ 2, 5, 8 ]
+  gaussian:
+    raw: [ 2, 3 ]
+    cleaned_1: [ 2, 3, 4, 5 ]
+    cleaned_3_univ: [ 2, 3, 5, 6, 8, 10, 13 ]
+    cleaned_3_multi: [ 2, 3, 5, 9, 11, 15 ]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 mca:
   n_components: 15
   normalize: false
   n_iter: 5
-  k_raw: 2
-  k_cleaned_1: 2
-  k_cleaned_3_univ: 2
-  k_cleaned_3_multi: 4
+  kmeans:
+    raw: [ 2, 3, 5, 6, 9, 10 ]
+    cleaned_1: [ 2, 3 ]
+    cleaned_3_univ: [2, 3, 10, 11, 13, 15 ]
+    cleaned_3_multi: [ 2, 3, 4, 6, 10, 13, 14 ]
+  agglomerative:
+    raw: [ 2, 3, 4, 5, 6 ]
+    cleaned_1: [ 2, 3, 15 ]
+    cleaned_3_univ: [ 2, 3, 4, 12, 13, 14, 15 ]
+    cleaned_3_multi: [ 2, 3, 4, 12, 13, 14, 15]
+  gaussian:
+    raw: [ 2, 3, 14 ]
+    cleaned_1: [ 2, 3, 7, 12 ]
+    cleaned_3_univ: [ 2, 3, 7, 11 ]
+    cleaned_3_multi: [ 2, 3, 4 ]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 umap:
   n_neighbors: 30
   min_dist: 0.1
@@ -61,25 +125,73 @@ umap:
   # metric will be selected during fine-tuning
   metric: cosine
   n_components: 2
-  k_raw: 12
-  k_cleaned_1: 13
-  k_cleaned_3_univ: 6
-  k_cleaned_3_multi: 6
+  kmeans:
+    raw: [ 3, 5, 6, 11, 12 ]
+    cleaned_1: [ 2, 3, 9, 10, 13 ]
+    cleaned_3_univ: [ 2, 4, 6, 8 ]
+    cleaned_3_multi: [ 3, 4, 6, 8, 11 ]
+  agglomerative:
+    raw: [ 3, 4, 5, 6, 12 ]
+    cleaned_1: [ 2, 3, 6, 13, 15 ]
+    cleaned_3_univ: [ 2, 4, 6, 11 ]
+    cleaned_3_multi: [ 3, 4, 6, 7, 8, 9 ]
+  gaussian:
+    raw: [ 2, 3, 5, 9, 10, 12 ]
+    cleaned_1: [ 2, 6, 9, 11, 12, 13, 14 ]
+    cleaned_3_univ: [ 2, 3, 4, 6, 8, 9 ]
+    cleaned_3_multi: [ 3, 4, 6, 8, 9, 10 ]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 phate:
   knn: 15
   t: 20
   decay: 20
   # n_components selected by fine tuning
   n_components: 3
-  k_raw: 2
-  k_cleaned_1: 15
-  k_cleaned_3_univ: 6
-  k_cleaned_3_multi: 9
+  kmeans:
+    raw: [ 2 ]
+    cleaned_1: [ 3, 4, 8, 12, 15 ]
+    cleaned_3_univ: [ 2, 3, 5, 6, 8, 9, 11, 12 ]
+    cleaned_3_multi: [ 3, 4, 9, 12 ]
+  agglomerative:
+    raw: [ 2 ]
+    cleaned_1: [ 2, 5, 7, 9, 10, 11, 12, 13, 15]
+    cleaned_3_univ: [ 3, 5, 6, 9, 10, 11, 13 ]
+    cleaned_3_multi: [ 3, 4, 9, 11, 12, 13 ]
+  gaussian:
+    raw: [ 2 ]
+    cleaned_1: [ 3, 5, 6, 11, 14 ]
+    cleaned_3_univ: [ 2, 5, 6, 10, 11, 12, 13, 15 ]
+    cleaned_3_multi: [ 3, 4, 9, 10, 12, 13, 15]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
 pacmap:
   n_components: 3
   n_neighbors: 5
   MN_ratio: 0.5
-  k_raw: 4
-  k_cleaned_1: 3
-  k_cleaned_3_univ: 5
-  k_cleaned_3_multi: 5
+  kmeans:
+    raw: [ 2, 4, 5, 6, 7, 8, 9, 11, 14]
+    cleaned_1: [ 2, 3, 5, 6, 7, 8, 11, 12, 14 ]
+    cleaned_3_univ: [ 3, 5, 8, 11, 14 ]
+    cleaned_3_multi: [ 3, 5, 7, 10, 12, 13, 14 ]
+  agglomerative:
+    raw: [ 2, 3, 4, 13, 14, 15 ]
+    cleaned_1: [ 2, 4, 9, 10 ]
+    cleaned_3_univ: [ 2, 3, 4, 5, 7, 10 ]
+    cleaned_3_multi: [ 3, 4, 5, 6, 13, 14 ]
+  gaussian:
+    raw: [ 2, 4, 7, 8, 9, 10, 11 ]
+    cleaned_1: [ 2, 3, 5, 7, 11, 15 ]
+    cleaned_3_univ: [ 3, 5, 7, 8, 13 ]
+    cleaned_3_multi: [ 2, 3, 5, 6, 7, 10, 14, 15 ]
+  spectral:
+    raw:
+    cleaned_1:
+    cleaned_3_univ:
+    cleaned_3_multi:
