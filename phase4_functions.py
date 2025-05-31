@@ -2028,8 +2028,8 @@ def plot_cluster_evaluation(
     for off, m, c in zip(offsets, metrics, colors):
         ax.bar(df[xcol] + off, norm[m], width=width, label=m, color=c)
 
-    if xcol == "k" and k_opt is not None and k_opt in df[xcol].values:
-        ax.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
+    # No vertical line to mark the optimal number of clusters; simply show the
+    # bars for the available k values.
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Normalized score")
@@ -2076,8 +2076,7 @@ def plot_cluster_metrics_grid(
         for off, m, c in zip(offsets, metrics, colors):
             ax.bar(df[xcol] + off, norm[m], width=width, label=m, color=c)
         k_opt = optimal.get(method)
-        if k_opt is not None and k_opt in df[xcol].values:
-            ax.axvline(k_opt, color="grey", ls="--", lw=1)
+        # The optimal k is not highlighted with a dashed line in this barplot.
         ax.set_title(method)
         ax.set_ylabel("Normalized score")
         ax.set_ylim(0, 1)
