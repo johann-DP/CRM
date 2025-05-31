@@ -2228,9 +2228,14 @@ def evaluate_methods(
         if len(labels) <= best_k or len(set(labels)) < 2:
             sil = float("nan")
             dunn = float("nan")
+            ch = float("nan")
+            inv_db = float("nan")
         else:
             sil = float(silhouette_score(X_low, labels))
             dunn = dunn_index(X_low, labels)
+            ch = float(calinski_harabasz_score(X_low, labels))
+            db = davies_bouldin_score(X_low, labels)
+            inv_db = 1.0 / db if db > 0 else float("nan")
 
         try:
             enc = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
@@ -2263,6 +2268,8 @@ def evaluate_methods(
             "nb_axes_kaiser": kaiser,
             "silhouette": sil,
             "dunn_index": dunn,
+            "calinski_harabasz": ch,
+            "inv_davies_bouldin": inv_db,
             "trustworthiness": T,
             "continuity": C,
             "runtime_seconds": runtime,

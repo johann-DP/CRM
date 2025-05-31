@@ -51,6 +51,8 @@ def test_evaluate_and_plot(tmp_path, monkeypatch):
         "nb_axes_kaiser",
         "silhouette",
         "dunn_index",
+        "calinski_harabasz",
+        "inv_davies_bouldin",
         "trustworthiness",
         "continuity",
         "runtime_seconds",
