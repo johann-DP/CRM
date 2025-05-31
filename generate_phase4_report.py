@@ -108,7 +108,11 @@ def export_report_to_pdf(
     tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
 ) -> Path | None:
-    """Create a structured PDF gathering all figures and tables."""
+    """Create a structured PDF gathering all figures.
+
+    Tables are accepted for backward compatibility but ignored so that the
+    generated report only contains graphics.
+    """
     if not isinstance(output_path, (str, Path)):
         raise TypeError("output_path must be a path-like object")
 
@@ -213,19 +217,8 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        for name, table in tables.items():
-            if isinstance(table, (str, Path)):
-                try:
-                    table = pd.read_csv(table)
-                except Exception:
-                    continue
-            if not isinstance(table, pd.DataFrame):
-                continue
-            pdf.add_page()
-            _add_title(name)
-            pdf.set_font("Courier", size=8)
-            for line in table.to_string().splitlines():
-                pdf.cell(0, 4, line, ln=1)
+
+        # Tables are intentionally ignored to keep the report concise.
 
         tmp_paths: list[str] = []
 
@@ -319,17 +312,9 @@ def export_report_to_pdf(
             for name, fig in remaining.items():
                 _save_page(name, fig)
 
-            for name, table in tables.items():
-                if isinstance(table, (str, Path)):
-                    try:
-                        table = pd.read_csv(table)
-                    except Exception:
-                        continue
-                if not isinstance(table, pd.DataFrame):
-                    continue
-                tfig = _table_to_figure(table, name)
-                pdf_backend.savefig(tfig, dpi=300)
-                plt.close(tfig)
+
+            # Tables used to be converted to figures and appended here, but
+            # they are skipped in the streamlined report.
 
         plt.close("all")
 
