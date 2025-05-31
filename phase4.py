@@ -1130,6 +1130,12 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
 
     # Save segment summary figures for later report assembly
     save_segment_analysis_figures(df_active, output_dir)
+    seg1_path = output_dir / "segment_summary_1.png"
+    seg2_path = output_dir / "segment_summary_2.png"
+    if seg1_path.exists():
+        figures["segment_summary_1"] = seg1_path
+    if seg2_path.exists():
+        figures["segment_summary_2"] = seg2_path
 
     logging.info("Analysis complete")
     logging.shutdown()
