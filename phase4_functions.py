@@ -4059,7 +4059,10 @@ def export_report_to_pdf(
     tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
 ) -> Path | None:
-    """Create a structured PDF gathering all figures and tables from phase 4.
+    """Create a structured PDF gathering all figures from phase 4.
+
+    Tables are no longer inserted into the final report. The ``tables``
+    argument is accepted for backward compatibility but ignored.
 
     The function tries to use :mod:`fpdf` for advanced layout. If ``fpdf`` is not
     available, it falls back to :class:`matplotlib.backends.backend_pdf.PdfPages`
@@ -4074,8 +4077,6 @@ def export_report_to_pdf(
         Mapping from table name to a :class:`pandas.DataFrame` or a CSV file path.
     output_path : str or :class:`pathlib.Path`
         Destination path of the PDF file.
-        Pages are added in portrait mode by default but switch to landscape when
-        a table has many columns.
 
     Returns
     -------
@@ -4185,19 +4186,9 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        for name, table in tables.items():
-            if isinstance(table, (str, Path)):
-                try:
-                    table = pd.read_csv(table)
-                except Exception:
-                    continue
-            if not isinstance(table, pd.DataFrame):
-                continue
-            pdf.add_page()
-            _add_title(name)
-            pdf.set_font("Courier", size=8)
-            for line in table.to_string().splitlines():
-                pdf.cell(0, 4, line, ln=1)
+
+        # Tables were previously inserted here, but they are now skipped to
+        # keep the report focused on the figures and heatmaps.
 
         tmp_paths: list[str] = []
 
@@ -4291,17 +4282,10 @@ def export_report_to_pdf(
             for name, fig in remaining.items():
                 _save_page(name, fig)
 
-            for name, table in tables.items():
-                if isinstance(table, (str, Path)):
-                    try:
-                        table = pd.read_csv(table)
-                    except Exception:
-                        continue
-                if not isinstance(table, pd.DataFrame):
-                    continue
-                tfig = _table_to_figure(table, name)
-                pdf_backend.savefig(tfig, dpi=300)
-                plt.close(tfig)
+
+            # Tables were previously appended to the fallback PDF here. This
+            # step is skipped to avoid including redundant tables in the final
+            # report.
 
         plt.close("all")
 
