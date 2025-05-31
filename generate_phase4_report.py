@@ -200,6 +200,11 @@ def export_report_to_pdf(
         used_keys.add(key)
 
     remaining = {k: v for k, v in figures.items() if k not in used_keys}
+    segment_figs = {
+        k: v for k, v in remaining.items() if "segment_summary_2" in k
+    }
+    for k in segment_figs:
+        del remaining[k]
 
     try:
         from fpdf import FPDF  # type: ignore
@@ -245,6 +250,14 @@ def export_report_to_pdf(
                         pdf.add_page()
                         _add_title(f"{dataset} – {method.upper()} – {label}")
                         pdf.image(img, w=180)
+
+        for name, fig in segment_figs.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _add_title(f"% NA par segment – {ds}")
+                pdf.image(img, w=180)
 
         for name, fig in remaining.items():
             img = _fig_to_path(fig, tmp_paths)
@@ -308,6 +321,10 @@ def export_report_to_pdf(
                     ]
                     for fig, label in pages:
                         _save_page(f"{dataset} – {method.upper()} – {label}", fig)
+
+            for name, fig in segment_figs.items():
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _save_page(f"% NA par segment – {ds}", fig)
 
             for name, fig in remaining.items():
                 _save_page(name, fig)
