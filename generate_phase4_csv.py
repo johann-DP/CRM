@@ -11,13 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence
-
-from contextlib import suppress
-
-import logging
-import os
 
 import numpy as np
 import pandas as pd
@@ -39,9 +35,6 @@ from phase4_functions import (
     run_pacmap,
     evaluate_methods,
 )
-
-logging.basicConfig(level=logging.INFO, format="%(message)s")
-logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Utility helpers
@@ -72,6 +65,15 @@ def encode_data(df: pd.DataFrame, quant_vars: Sequence[str], qual_vars: Sequence
     return np.empty((len(df), 0))
 
 
+def clean_thumbs(path: Path) -> None:
+    """Remove any ``Thumbs.db`` files under ``path``."""
+    for thumb in path.rglob("Thumbs.db"):
+        try:
+            thumb.unlink()
+        except Exception:
+            pass
+
+
 def intra_inter_distances(X: np.ndarray, labels: Sequence[int]) -> tuple[float, float]:
     """Return mean intra and inter cluster distances for ``labels``."""
     if X.size == 0:
@@ -97,20 +99,16 @@ def intra_inter_distances(X: np.ndarray, labels: Sequence[int]) -> tuple[float, 
 def run(config: Mapping[str, Any]) -> None:
     output_dir = Path(config.get("output_dir", "phase4_output"))
     output_dir.mkdir(parents=True, exist_ok=True)
-    # Remove stray Thumbs.db to avoid pandas errors on Windows
-    thumbs = output_dir / "Thumbs.db"
-    if thumbs.exists():
-        with suppress(Exception):
-            thumbs.unlink()
-
+    clean_thumbs(output_dir)
     phase4.set_blas_threads(int(config.get("n_jobs", -1)))
 
-    logger.info("Loading datasets (output: %s)…", output_dir)
+    logging.info("Loading datasets (output: %s)...", output_dir)
 
     datasets = load_datasets(config, ignore_schema=bool(config.get("ignore_schema", False)))
     name = config.get("dataset", config.get("main_dataset", "raw"))
     if name not in datasets:
         raise KeyError(f"dataset '{name}' not found")
+    logging.info("Dataset %s loaded", name)
 
     df_prep = prepare_data(datasets[name], exclude_lost=bool(config.get("exclude_lost", True)))
     df_active, quant_vars, qual_vars = select_variables(
@@ -126,24 +124,21 @@ def run(config: Mapping[str, Any]) -> None:
     factor_results: Dict[str, Any] = {}
     nonlin_results: Dict[str, Any] = {}
 
-    logger.info("Running factor methods…")
+    logging.info("Running factor methods...")
+
     if "pca" in methods and quant_vars:
-        logger.info(" - PCA")
         factor_results["pca"] = run_pca(
             df_active, quant_vars, optimize=False, **method_params("pca", config)
         )
     if "mca" in methods and qual_vars:
-        logger.info(" - MCA")
         factor_results["mca"] = run_mca(
             df_active, qual_vars, optimize=False, **method_params("mca", config)
         )
     if "famd" in methods and quant_vars and qual_vars:
-        logger.info(" - FAMD")
         factor_results["famd"] = run_famd(
             df_active, quant_vars, qual_vars, optimize=False, **method_params("famd", config)
         )
     if "mfa" in methods and (quant_vars or qual_vars):
-        logger.info(" - MFA")
         groups = []
         if quant_vars:
             groups.append(quant_vars)
@@ -155,15 +150,12 @@ def run(config: Mapping[str, Any]) -> None:
             groups = grp
         factor_results["mfa"] = run_mfa(df_active, groups, optimize=False, **params)
 
-    logger.info("Running non-linear methods…")
+    logging.info("Running non-linear methods...")
     if "umap" in methods:
-        logger.info(" - UMAP")
         nonlin_results["umap"] = run_umap(df_active, **method_params("umap", config))
     if "phate" in methods:
-        logger.info(" - PHATE")
         nonlin_results["phate"] = run_phate(df_active, **method_params("phate", config))
     if "pacmap" in methods:
-        logger.info(" - PaCMAP")
         nonlin_results["pacmap"] = run_pacmap(df_active, **method_params("pacmap", config))
 
     all_results = {**factor_results, **nonlin_results}
@@ -175,7 +167,7 @@ def run(config: Mapping[str, Any]) -> None:
         qual_vars,
         k_range=range(2, k_max + 1),
     )
-    logger.info("Clustering and metric evaluation done")
+    logging.info("Clustering and metric evaluation done")
 
     # Coordinates and cluster labels ---------------------------------------
     coord_df = pd.DataFrame(index=df_active.index)
@@ -192,13 +184,13 @@ def run(config: Mapping[str, Any]) -> None:
 
     coord_df.to_csv(output_dir / "coordinates.csv")
     labels_df.to_csv(output_dir / "cluster_labels.csv")
-    logger.info("Saved coordinates and cluster labels")
+    logging.info("Saved coordinates and cluster labels")
 
     segmented = df_prep.loc[coord_df.index].copy()
     for col in labels_df.columns:
         segmented[f"cluster_{col}"] = labels_df[col]
     segmented.to_csv(output_dir / "dataset_segmented.csv", index=False)
-    logger.info("Saved segmented dataset")
+    logging.info("Saved segmented dataset")
 
     # Cluster statistics ----------------------------------------------------
     for method, labels in labels_df.items():
@@ -206,8 +198,8 @@ def run(config: Mapping[str, Any]) -> None:
         tmp["cluster"] = labels
         stats = tmp.groupby("cluster")[quant_vars].agg(["mean", "std"])
         stats.to_csv(output_dir / f"{method}_cluster_stats.csv")
-        logger.info("Saved statistics for %s", method)
-
+        logging.info("Saved statistics for %s", method)
+  
     # Distances and compacity/separation indices ---------------------------
     X_high = encode_data(df_active, quant_vars, qual_vars)
     records = []
@@ -234,15 +226,14 @@ def run(config: Mapping[str, Any]) -> None:
         records.append(rec)
     dist_df = pd.DataFrame(records).set_index("method")
     dist_df.to_csv(output_dir / "cluster_distance_metrics.csv")
-    logger.info("Saved cluster distance metrics")
+    logging.info("Saved cluster distance metrics")
 
     # Method parameters -----------------------------------------------------
     params = {m: method_params(m, config) for m in methods}
     with open(output_dir / "method_params.json", "w", encoding="utf-8") as fh:
         json.dump(params, fh, ensure_ascii=False, indent=2)
-    logger.info("Saved method parameters")
-
-    logger.info("All CSV exports written to %s", output_dir)
+    logging.info("Saved method parameters")
+    logging.info("CSV export completed")
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +245,8 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config.yaml", help="Path to config file")
     parser.add_argument("--dataset", help="Dataset to process (override config)")
     args = parser.parse_args()
+
+    logging.basicConfig(format="%(message)s", level=logging.INFO)
 
     cfg = load_config(Path(args.config))
     if args.dataset:
