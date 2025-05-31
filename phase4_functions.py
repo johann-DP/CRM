@@ -1521,6 +1521,104 @@ from sklearn.mixture import GaussianMixture
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 
 
+def silhouette_score_safe(
+    X: np.ndarray,
+    labels: np.ndarray,
+    *,
+    sample_size: int | None = None,
+) -> float:
+    """Return the silhouette score with a fallback to subsampling.
+
+    Parameters
+    ----------
+    X : array-like of shape (n_samples, n_features)
+        Input data.
+    labels : array-like of shape (n_samples,)
+        Cluster labels for each sample.
+    sample_size : int or None, optional
+        If provided, compute the score on a random subset when the full
+        computation runs out of memory.
+    """
+
+    try:
+        return float(silhouette_score(X, labels))
+    except Exception:  # pragma: no cover - memory fallback
+        if sample_size is None:
+            sample_size = min(1000, len(X))
+        return float(
+            silhouette_score(X, labels, sample_size=sample_size, random_state=0)
+        )
+
+
+def silhouette_samples_safe(
+    X: np.ndarray,
+    labels: np.ndarray,
+    *,
+    sample_size: int | None = None,
+) -> np.ndarray:
+    """Return silhouette samples with a fallback to subsampling."""
+
+    try:
+        return silhouette_samples(X, labels)
+    except Exception:  # pragma: no cover - memory fallback
+        if sample_size is None:
+            sample_size = min(1000, len(X))
+        rng = np.random.default_rng(0)
+        idx = rng.choice(len(X), size=sample_size, replace=False)
+        return silhouette_samples(X[idx], labels[idx])
+
+
+def dunn_index(
+    X: np.ndarray,
+    labels: np.ndarray,
+    *,
+    sample_size: int | None = None,
+) -> float:
+    """Compute the Dunn index of a clustering with optional subsampling."""
+    from scipy.spatial.distance import pdist, squareform
+
+    X = np.asarray(X)
+    labels = np.asarray(labels)
+    if sample_size is not None and sample_size < len(X):
+        rng = np.random.default_rng(0)
+        idx = rng.choice(len(X), size=sample_size, replace=False)
+        X = X[idx]
+        labels = labels[idx]
+
+    if len(np.unique(labels)) < 2:
+        return float("nan")
+
+    try:
+        dist = squareform(pdist(X))
+    except Exception:  # pragma: no cover - memory fallback
+        if sample_size is None:
+            sample_size = min(1000, len(X))
+        return dunn_index(X, labels, sample_size=sample_size)
+
+    unique = np.unique(labels)
+    intra_diam = []
+    min_inter = np.inf
+
+    for i, ci in enumerate(unique):
+        idx_i = np.where(labels == ci)[0]
+        if len(idx_i) > 1:
+            intra = dist[np.ix_(idx_i, idx_i)].max()
+        else:
+            intra = 0.0
+        intra_diam.append(intra)
+
+        for cj in unique[i + 1 :]:
+            idx_j = np.where(labels == cj)[0]
+            inter = dist[np.ix_(idx_i, idx_j)].min()
+            if inter < min_inter:
+                min_inter = inter
+
+    max_intra = max(intra_diam)
+    if max_intra == 0:
+        return float("nan")
+    return float(min_inter / max_intra)
+
+
 def tune_kmeans_clusters(
     X: np.ndarray, k_range: Iterable[int] = range(2, 16)
 ) -> Tuple[np.ndarray, int]:
@@ -1536,7 +1634,7 @@ def tune_kmeans_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1563,7 +1661,7 @@ def tune_agglomerative_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1591,7 +1689,7 @@ def tune_dbscan_clusters(
         if n_clusters < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1617,7 +1715,7 @@ def tune_gmm_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1644,7 +1742,7 @@ def tune_spectral_clusters(
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
-            score = silhouette_score(X, labels)
+            score = silhouette_score_safe(X, labels)
         if score > best_score:
             best_score = score
             best_labels = labels
@@ -1664,51 +1762,6 @@ def auto_cluster_labels(
     labels, best_k = tune_kmeans_clusters(X, k_range)
     return labels, best_k, "kmeans"
 
-
-def dunn_index(X: np.ndarray, labels: np.ndarray) -> float:
-    """Compute the Dunn index of a clustering.
-
-    Parameters
-    ----------
-    X:
-        Coordinates of the points.
-    labels:
-        Cluster labels for each point.
-
-    Returns
-    -------
-    float
-        Dunn index (higher is better). ``NaN`` if undefined.
-    """
-    from scipy.spatial.distance import pdist, squareform
-
-    if len(np.unique(labels)) < 2:
-        return float("nan")
-
-    dist = squareform(pdist(X))
-    unique = np.unique(labels)
-
-    intra_diam = []
-    min_inter = np.inf
-
-    for i, ci in enumerate(unique):
-        idx_i = np.where(labels == ci)[0]
-        if len(idx_i) > 1:
-            intra = dist[np.ix_(idx_i, idx_i)].max()
-        else:
-            intra = 0.0
-        intra_diam.append(intra)
-
-        for cj in unique[i + 1 :]:
-            idx_j = np.where(labels == cj)[0]
-            inter = dist[np.ix_(idx_i, idx_j)].min()
-            if inter < min_inter:
-                min_inter = inter
-
-    max_intra = max(intra_diam)
-    if max_intra == 0:
-        return float("nan")
-    return float(min_inter / max_intra)
 
 
 def cluster_evaluation_metrics(
@@ -1774,10 +1827,10 @@ def cluster_evaluation_metrics(
                 float("nan"),
             )
 
-        samples = silhouette_samples(X, labels)
+        samples = silhouette_samples_safe(X, labels, sample_size=1000)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-        dunn = dunn_index(X, labels)
+        dunn = dunn_index(X, labels, sample_size=1000)
         ch = calinski_harabasz_score(X, labels)
         db = davies_bouldin_score(X, labels)
         inv_db = 1.0 / db if db > 0 else float("nan")
@@ -1887,10 +1940,10 @@ def dbscan_evaluation_metrics(
                 float("nan"),
                 n_clusters,
             )
-        samples = silhouette_samples(X, labels)
+        samples = silhouette_samples_safe(X, labels, sample_size=1000)
         sil_mean = float(samples.mean())
         sil_err = 1.96 * samples.std(ddof=1) / np.sqrt(len(samples))
-        dunn = dunn_index(X, labels)
+        dunn = dunn_index(X, labels, sample_size=1000)
         return eps, sil_mean, sil_mean - sil_err, sil_mean + sil_err, dunn, n_clusters
 
     with Parallel(n_jobs=-1) as parallel:
