@@ -2020,10 +2020,13 @@ def plot_cluster_evaluation(
             norm[m] = np.full(len(col), np.nan)
         else:
             norm[m] = (col - cmin) / (cmax - cmin)
+    import seaborn as sns
+
     width = 0.2
     offsets = np.linspace(-1.5 * width, 1.5 * width, len(metrics))
-    for off, m in zip(offsets, metrics):
-        ax.bar(df[xcol] + off, norm[m], width=width, label=m)
+    colors = sns.color_palette("deep", len(metrics))
+    for off, m, c in zip(offsets, metrics, colors):
+        ax.bar(df[xcol] + off, norm[m], width=width, label=m, color=c)
 
     if xcol == "k" and k_opt is not None and k_opt in df[xcol].values:
         ax.axvline(k_opt, color="grey", linestyle="--", linewidth=1)
@@ -2065,10 +2068,13 @@ def plot_cluster_metrics_grid(
                 norm[m] = np.full(len(col), np.nan)
             else:
                 norm[m] = (col - cmin) / (cmax - cmin)
+        import seaborn as sns
+
         width = 0.2
         offsets = np.linspace(-1.5 * width, 1.5 * width, len(metrics))
-        for off, m in zip(offsets, metrics):
-            ax.bar(df[xcol] + off, norm[m], width=width, label=m)
+        colors = sns.color_palette("deep", len(metrics))
+        for off, m, c in zip(offsets, metrics, colors):
+            ax.bar(df[xcol] + off, norm[m], width=width, label=m, color=c)
         k_opt = optimal.get(method)
         if k_opt is not None and k_opt in df[xcol].values:
             ax.axvline(k_opt, color="grey", ls="--", lw=1)
