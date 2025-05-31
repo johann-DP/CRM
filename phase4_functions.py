@@ -1521,6 +1521,19 @@ from sklearn.mixture import GaussianMixture
 from sklearn.metrics import calinski_harabasz_score, davies_bouldin_score
 
 
+def spectral_cluster_labels(
+    X: np.ndarray, n_clusters: int, *, n_neighbors: int = 10
+) -> np.ndarray:
+    """Return Spectral Clustering labels using nearest neighbors affinity."""
+
+    return SpectralClustering(
+        n_clusters=n_clusters,
+        assign_labels="kmeans",
+        affinity="nearest_neighbors",
+        n_neighbors=min(n_neighbors, len(X) - 1),
+    ).fit_predict(X)
+
+
 def silhouette_score_safe(X: np.ndarray, labels: np.ndarray) -> float:
     """Return silhouette score or ``-1`` if it cannot be computed."""
 
@@ -1716,7 +1729,7 @@ def tune_spectral_clusters(
     for k in k_range:
         if k >= len(X) or k < 2:
             continue
-        labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
+        labels = spectral_cluster_labels(X, k)
         if len(np.unique(labels)) < 2:
             score = -1.0
         else:
@@ -1727,7 +1740,7 @@ def tune_spectral_clusters(
             best_k = k
     if best_labels is None:
         k = max(2, min(len(X), 2))
-        best_labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
+        best_labels = spectral_cluster_labels(X, k)
         best_k = k
     return best_labels, best_k
 
@@ -1790,7 +1803,7 @@ def cluster_evaluation_metrics(
                 n_components=k, covariance_type="full"
             ).fit_predict(X)
         elif method == "spectral":
-            labels = SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(X)
+            labels = spectral_cluster_labels(X, k)
         else:
             raise ValueError(f"Unknown method '{method}'")
 
@@ -1888,7 +1901,7 @@ def optimize_clusters(
             n_components=best_k, covariance_type="full"
         ).fit_predict(X)
     elif method == "spectral":
-        labels = SpectralClustering(n_clusters=best_k, assign_labels="kmeans").fit_predict(X)
+        labels = spectral_cluster_labels(X, best_k)
     else:  # pragma: no cover - defensive
         raise ValueError(f"Unknown method '{method}'")
 
@@ -2881,9 +2894,7 @@ def plot_clusters_by_k(
                 emb_df.values
             )
         if algorithm == "spectral":
-            return SpectralClustering(n_clusters=k, assign_labels="kmeans").fit_predict(
-                emb_df.values
-            )
+            return spectral_cluster_labels(emb_df.values, k)
         raise ValueError(f"Unknown algorithm '{algorithm}'")
 
     for ax, k in zip(axes, valid_k):
@@ -3299,9 +3310,7 @@ def _factor_method_figures(
             gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
                 emb.iloc[:, :2].values
             )
-            spec_labels = SpectralClustering(n_clusters=cluster_k, assign_labels="kmeans").fit_predict(
-                emb.iloc[:, :2].values
-            )
+            spec_labels = spectral_cluster_labels(emb.iloc[:, :2].values, cluster_k)
             km_k = ag_k = gmm_k = cluster_k
             spec_k = cluster_k
         else:
@@ -3514,9 +3523,7 @@ def _nonlin_method_figures(
             gmm_labels = GaussianMixture(n_components=cluster_k, covariance_type="full").fit_predict(
                 emb.iloc[:, :2].values
             )
-            spec_labels = SpectralClustering(n_clusters=cluster_k, assign_labels="kmeans").fit_predict(
-                emb.iloc[:, :2].values
-            )
+            spec_labels = spectral_cluster_labels(emb.iloc[:, :2].values, cluster_k)
             km_k = ag_k = gmm_k = cluster_k
             spec_k = cluster_k
         else:
