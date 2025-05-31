@@ -2370,18 +2370,20 @@ def plot_methods_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
 
     # keep the original numeric values for annotations before normalization
     annot = df_metrics[df_norm.columns].copy()
-    if "variance_cumulee_%" in annot:
-        annot["variance_cumulee_%"] = (
-            annot["variance_cumulee_%"].round().astype("Int64")
-        )
-    if "nb_axes_kaiser" in annot:
-        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
+
+    def _format_numbers(series: pd.Series) -> pd.Series:
+        if pd.api.types.is_integer_dtype(series) or (
+            pd.api.types.is_numeric_dtype(series)
+            and np.allclose(series.dropna() % 1, 0)
+        ):
+            return series.astype("Int64")
+        return series.map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
     for col in annot.columns:
-        if col not in {
-            "variance_cumulee_%",
-            "nb_axes_kaiser",
-        } and pd.api.types.is_numeric_dtype(annot[col]):
-            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        if col in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].round().astype("Int64")
+        elif pd.api.types.is_numeric_dtype(annot[col]):
+            annot[col] = _format_numbers(annot[col])
 
     fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
     sns.heatmap(
@@ -2427,15 +2429,20 @@ def plot_general_heatmap(df_metrics: pd.DataFrame, output_path: str | Path) -> N
             norm[col] = (norm[col] - cmin) / (cmax - cmin)
 
     annot = df_numeric.copy()
-    if "variance_cumulee_%" in annot:
-        annot["variance_cumulee_%"] = (
-            annot["variance_cumulee_%"].round().astype("Int64")
-        )
-    if "nb_axes_kaiser" in annot:
-        annot["nb_axes_kaiser"] = annot["nb_axes_kaiser"].astype("Int64")
+
+    def _format_numbers(series: pd.Series) -> pd.Series:
+        if pd.api.types.is_integer_dtype(series) or (
+            pd.api.types.is_numeric_dtype(series)
+            and np.allclose(series.dropna() % 1, 0)
+        ):
+            return series.astype("Int64")
+        return series.map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+
     for col in annot.columns:
-        if col not in {"variance_cumulee_%", "nb_axes_kaiser"}:
-            annot[col] = annot[col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "")
+        if col in {"variance_cumulee_%", "nb_axes_kaiser"}:
+            annot[col] = annot[col].round().astype("Int64")
+        else:
+            annot[col] = _format_numbers(annot[col])
 
     fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
     sns.heatmap(
