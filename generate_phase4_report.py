@@ -17,7 +17,8 @@ OUTPUT_PDF = BASE_DIR / "RapportAnalyse_fixed.pdf"
 
 # Ordre exact des jeux de données et méthodes factorielles
 DATASETS = ["raw", "cleaned_1", "cleaned_3_univ", "cleaned_3_multi"]
-METHODS  = ["famd", "mca", "mfa", "pacmap", "pca", "phate", "umap"]
+METHODS = ["famd", "mca", "mfa", "pacmap", "pca", "phate", "umap"]
+
 
 def add_image_page(pdf, img_path: Path, title: str):
     """Ajoute une page pleine image au PDF, avec titre en haut."""
@@ -28,6 +29,7 @@ def add_image_page(pdf, img_path: Path, title: str):
     ax.axis("off")
     pdf.savefig(fig, dpi=300)
     plt.close(fig)
+
 
 def main():
     BASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,7 +62,7 @@ def main():
                         plt.close(fig)
                     else:
                         img = p2 if p2.exists() else p3
-                        add_image_page(pdf, img, f"{ds} – {m.upper()} – Nuage { '2D' if p2.exists() else '3D'} brut")
+                        add_image_page(pdf, img, f"{ds} – {m.upper()} – Nuage {'2D' if p2.exists() else '3D'} brut")
 
                 # Page 2 : nuages clusterisés (cluster_grid)
                 grid = folder / f"{m}_cluster_grid.png"
@@ -110,6 +112,7 @@ def main():
         plt.close(fig)
 
     print(f"PDF généré dans : {OUTPUT_PDF}")
+
 
 if __name__ == "__main__":
     main()
