@@ -860,6 +860,18 @@ def run_pca(
     result["runtime"] = runtime
     return result
 
+def pca_variable_contributions(loadings: pd.DataFrame) -> pd.DataFrame:
+    """Return variable contributions (%) for each PCA axis."""
+    loads_sq = loadings ** 2
+    return loads_sq.div(loads_sq.sum(axis=0), axis=1) * 100
+
+
+def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return individual cos² (%) for each PCA axis."""
+    coords_sq = embeddings ** 2
+    total = coords_sq.sum(axis=1)
+    return coords_sq.div(total, axis=0) * 100
+
 
 def run_mca(
     df_active: pd.DataFrame,
