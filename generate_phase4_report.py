@@ -246,6 +246,48 @@ def export_report_to_pdf(
     for k in segment_figs:
         del remaining[k]
 
+    tmp_paths: list[str] = []
+    pages: list[tuple[str, str]] = []
+    toc: list[tuple[str, int]] = []
+
+    for dataset in sorted(grouped):
+        for method in sorted(grouped[dataset]):
+            items = grouped[dataset][method]
+            figs = [
+                (
+                    _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                    "Nuages de points bruts",
+                )
+            ]
+            for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                key = f"{algo}_kgrid"
+                if key in items:
+                    figs.append((items[key], f"Clusters {algo}"))
+            figs += [
+                (items.get("cluster_grid"), "Nuages clusterisés"),
+                (items.get("analysis_summary"), "Analyse détaillée"),
+            ]
+
+            first = True
+            for fig, label in figs:
+                img = _fig_to_path(fig, tmp_paths)
+                if img:
+                    if first:
+                        toc.append((f"{dataset} – {method.upper()}", len(pages) + 3))
+                        first = False
+                    pages.append((f"{dataset} – {method.upper()} – {label}", img))
+
+    for name, fig in segment_figs.items():
+        img = _fig_to_path(fig, tmp_paths)
+        if img:
+            ds = name.rsplit("_segment_summary_2", 1)[0]
+            pages.append((f"% NA par segment – {ds}", img))
+
+    for name, fig in remaining.items():
+        img = _fig_to_path(fig, tmp_paths)
+        if img:
+            pages.append((name, img))
+
     try:
         from fpdf import FPDF  # type: ignore
 

@@ -201,6 +201,13 @@ For each dataset and factor method, the combined PDF includes exactly three page
 
 Additional pages such as heatmaps or segment summaries are appended after the per-method sections.
 
+The report now groups these figures into four main sections with dedicated title pages:
+
+1. **Analyses Factorielles (ACP, FAMD, AFM)** – heatmaps of cos² and inertia tables.
+2. **Méthodes de Projection Non-Linéaires** – t-SNE, UMAP, PaCMAP and PHATE visualisations.
+3. **Analyse de Clustering** – silhouette curves and clustering quality indices.
+4. **Comparaisons Croisées** – synthesis figures across methods and datasets.
+
 ## Standalone report builder
 
 generate_phase4_report.py collects the images exported by `phase4.py` and merges them into a single PDF with the same layout as `export_report_to_pdf`.
@@ -225,3 +232,15 @@ python export_pca_coordinates.py --config config.yaml --dataset raw \
 
 The `--components` option controls how many axes are saved while `--sep`
 selects the CSV separator.
+
+## PCA vs UMAP comparison
+
+The script `compare_pca_umap.py` generates a side-by-side scatter plot
+contrasting the organisation of the data under linear PCA and non-linear
+UMAP. The two projections share the same cluster colouring obtained from
+an optimal K-means partition. Example usage:
+
+```bash
+python compare_pca_umap.py --config config.yaml --dataset raw \
+    --n_neighbors 15 --output pca_vs_umap.png
+```
