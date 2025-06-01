@@ -226,13 +226,12 @@ python export_pca_coordinates.py --config config.yaml --dataset raw \
 The `--components` option controls how many axes are saved while `--sep`
 selects the CSV separator.
 
-## Heatmap des cos² individuels (PCA)
+## FAMD cos² heatmap
 
-`pca_cos2_heatmap.py` génère une carte thermique des cos² des individus sur les
-axes principaux. Le script limite automatiquement le nombre d'observations
-affichées (50 par défaut) en conservant celles qui contribuent le plus aux axes.
+`famd_cos2_heatmap.py` visualises the representation quality (cos²) of each
+individual on the FAMD axes. The script produces a PNG heatmap using the
+`coolwarm` palette:
 
 ```bash
-python pca_cos2_heatmap.py --config config.yaml --dataset raw \
-    --components 2 --max-obs 50 --output ACP_cos2_individus.png
+python famd_cos2_heatmap.py data.csv --output FAMD_cos2_heatmap.png
 ```

@@ -873,6 +873,13 @@ def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
     return coords_sq.div(total, axis=0) * 100
 
 
+def famd_individual_cos2(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return cos² (%) of individuals for each FAMD axis."""
+    coords_sq = embeddings ** 2
+    total = coords_sq.sum(axis=1)
+    return coords_sq.div(total, axis=0) * 100
+
+
 def run_mca(
     df_active: pd.DataFrame,
     qual_vars: List[str],
@@ -3063,6 +3070,23 @@ def plot_cluster_segment_heatmap(table: pd.DataFrame, title: str) -> plt.Figure:
     ax.set_ylabel("Cluster")
     fig.tight_layout()
     return fig
+
+
+def plot_famd_cos2_heatmap(cos2: pd.DataFrame, title: str, output_path: str | Path) -> Path:
+    """Save a heatmap of FAMD cos² per individual and axis."""
+    import seaborn as sns
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    sns.heatmap(cos2, cmap="coolwarm", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Axe")
+    ax.set_ylabel("Individu")
+    fig.tight_layout()
+    fig.savefig(output, dpi=300)
+    plt.close(fig)
+    return output
 
 
 def segment_profile_table(
