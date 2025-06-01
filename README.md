@@ -232,3 +232,15 @@ python export_pca_coordinates.py --config config.yaml --dataset raw \
 
 The `--components` option controls how many axes are saved while `--sep`
 selects the CSV separator.
+
+## PCA vs UMAP comparison
+
+The script `compare_pca_umap.py` generates a side-by-side scatter plot
+contrasting the organisation of the data under linear PCA and non-linear
+UMAP. The two projections share the same cluster colouring obtained from
+an optimal K-means partition. Example usage:
+
+```bash
+python compare_pca_umap.py --config config.yaml --dataset raw \
+    --n_neighbors 15 --output pca_vs_umap.png
+```

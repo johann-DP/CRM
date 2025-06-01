@@ -70,6 +70,15 @@ def test_cluster_segment_table_and_heatmap():
     assert hasattr(fig, "savefig")
 
 
+def test_cluster_confusion_table_and_heatmap():
+    a = np.array([0, 0, 1, 1])
+    b = np.array([1, 0, 1, 0])
+    tab = pf.cluster_confusion_table(a, b)
+    assert tab.loc[0, 0] == 1
+    fig = pf.plot_cluster_confusion_heatmap(tab, "test")
+    assert hasattr(fig, "savefig")
+
+
 def test_plot_clusters_by_k():
     rng = np.random.default_rng(0)
     X = pd.DataFrame(rng.normal(size=(20, 2)), columns=["F1", "F2"])
@@ -103,3 +112,11 @@ def test_cluster_evaluation_and_stability_plots():
     figs = pf.plot_pca_stability_bars(metrics)
     for fig in figs.values():
         assert hasattr(fig, "savefig")
+
+
+def test_plot_scatter_ellipses(tmp_path):
+    coords = pd.DataFrame({"X": [0, 1, 0, 1], "Y": [0, 0, 1, 1]})
+    labels = pd.Series([0, 0, 1, 1])
+    out = tmp_path / "ell.png"
+    pf.plot_scatter_ellipses(coords, labels, output_path=out)
+    assert out.exists() and out.stat().st_size > 0
