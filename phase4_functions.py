@@ -2470,6 +2470,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from matplotlib.lines import Line2D
+from matplotlib.patches import Ellipse
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -3157,6 +3158,96 @@ def plot_scree(
     return output
 
 
+def plot_pca_individuals(
+    pca_res: Mapping[str, Any],
+    groups: Sequence[Any] | None = None,
+    *,
+    output_path: str | Path = "pca_individus.png",
+    csv_path: str | Path | None = None,
+) -> Path:
+    """Plot PCA individuals on axes 1-2 with optional group colouring.
+
+    Parameters
+    ----------
+    pca_res:
+        Result dictionary returned by :func:`run_pca` containing
+        ``"embeddings"`` and ``"inertia"``.
+    groups:
+        Optional labels used to colour the points and draw ellipses.
+    output_path:
+        Destination PNG file.
+    csv_path:
+        Optional path to save the coordinates as CSV.
+    """
+
+    emb = pca_res.get("embeddings")
+    inertia = pca_res.get("inertia")
+    if not isinstance(emb, pd.DataFrame) or emb.empty:
+        raise ValueError("PCA result must contain non-empty 'embeddings'")
+
+    coords = emb.iloc[:, :2].copy()
+    var = (inertia.iloc[:2] * 100).round(1) if isinstance(inertia, pd.Series) else [np.nan, np.nan]
+
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    if groups is None:
+        ax.scatter(coords.iloc[:, 0], coords.iloc[:, 1], s=10, alpha=0.6, color="tab:blue")
+    else:
+        labels = pd.Series(groups, index=coords.index, name=getattr(groups, "name", "group"))
+        cats = labels.astype("category")
+        palette = sns.color_palette("deep", len(cats.cat.categories))
+        for color, cat in zip(palette, cats.cat.categories):
+            mask = cats == cat
+            ax.scatter(
+                coords.loc[mask, coords.columns[0]],
+                coords.loc[mask, coords.columns[1]],
+                s=10,
+                alpha=0.6,
+                color=color,
+                label=str(cat),
+            )
+            sub = coords.loc[mask].values
+            if sub.shape[0] > 2:
+                cov = np.cov(sub, rowvar=False)
+                if np.all(np.isfinite(cov)):
+                    vals, vecs = np.linalg.eigh(cov)
+                    order = vals.argsort()[::-1]
+                    vals, vecs = vals[order], vecs[:, order]
+                    angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+                    chi2_val = 5.991  # 95% for 2 dof
+                    width, height = 2 * np.sqrt(vals * chi2_val)
+                    ell = Ellipse(
+                        xy=sub.mean(axis=0),
+                        width=width,
+                        height=height,
+                        angle=angle,
+                        edgecolor=color,
+                        facecolor="none",
+                        lw=1.5,
+                    )
+                    ax.add_patch(ell)
+    if groups is not None:
+        ax.legend(title=labels.name, bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    ax.set_xlabel(
+        f"Dim1 ({var[0]:.1f}%)" if not np.isnan(var[0]) else "Dim1"
+    )
+    ax.set_ylabel(
+        f"Dim2 ({var[1]:.1f}%)" if not np.isnan(var[1]) else "Dim2"
+    )
+    ax.set_title("ACP – Projection des individus (Axes 1-2)")
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300)
+    plt.close(fig)
+
+    if csv_path is not None:
+        coords.to_csv(csv_path)
+
+    return output
+
+
 def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     """Return a bar plot of variable contributions to F1 and F2.
 
@@ -3753,6 +3844,7 @@ __all__ = [
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
     "plot_pca_stability_bars",
+    "plot_pca_individuals",
 ]
 
 
