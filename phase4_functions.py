@@ -4373,6 +4373,14 @@ def export_report_to_pdf(
     for k in segment_figs:
         del remaining[k]
 
+    cluster_imgs = {
+        k: v
+        for k, v in remaining.items()
+        if any(x in k for x in ["silhouette", "dunn", "stability"])
+    }
+    for k in cluster_imgs:
+        del remaining[k]
+
     try:
         from fpdf import FPDF  # type: ignore
 
@@ -4389,6 +4397,16 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
+        factor_methods = {"pca", "mca", "famd", "mfa"}
+        nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
+        added_sections: set[str] = set()
+
+        def _ensure_section(key: str, title: str) -> None:
+            if key not in added_sections:
+                added_sections.add(key)
+                pdf.add_page()
+                _add_title(title, 16)
+
 
         # Tables were previously inserted here, but they are now skipped to
         # keep the report focused on the figures and heatmaps.
@@ -4397,6 +4415,17 @@ def export_report_to_pdf(
 
         for dataset in sorted(grouped):
             for method in sorted(grouped[dataset]):
+                if method in factor_methods:
+                    _ensure_section(
+                        "factor",
+                        "Section 1 : Analyses Factorielles (ACP, FAMD, AFM)",
+                    )
+                elif method in nonlin_methods:
+                    _ensure_section(
+                        "nonlin",
+                        "Section 2 : Méthodes de Projection Non-Linéaires",
+                    )
+
                 items = grouped[dataset][method]
                 pages = [
                     (
@@ -4418,6 +4447,18 @@ def export_report_to_pdf(
                         pdf.add_page()
                         _add_title(f"{dataset} – {method.upper()} – {label}")
                         pdf.image(img, w=180)
+
+        if cluster_imgs:
+            _ensure_section("cluster", "Section 3 : Analyse de Clustering")
+            for name, fig in cluster_imgs.items():
+                img = _fig_to_path(fig, tmp_paths)
+                if img:
+                    pdf.add_page()
+                    _add_title(name)
+                    pdf.image(img, w=180)
+
+        if segment_figs or remaining:
+            _ensure_section("compare", "Section 4 : Comparaisons Croisées")
 
         for name, fig in segment_figs.items():
             img = _fig_to_path(fig, tmp_paths)
@@ -4454,6 +4495,19 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
+            factor_methods = {"pca", "mca", "famd", "mfa"}
+            nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
+            added_sections: set[str] = set()
+
+            def _ensure_section(key: str, title: str) -> None:
+                if key not in added_sections:
+                    added_sections.add(key)
+                    f, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, title, ha="center", va="center", fontsize=14, weight="bold")
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+
             def _save_page(title: str, fig: plt.Figure | Path | str | None) -> None:
                 if fig is None:
                     return
@@ -4472,6 +4526,17 @@ def export_report_to_pdf(
 
             for dataset in sorted(grouped):
                 for method in sorted(grouped[dataset]):
+                    if method in factor_methods:
+                        _ensure_section(
+                            "factor",
+                            "Section 1 : Analyses Factorielles (ACP, FAMD, AFM)",
+                        )
+                    elif method in nonlin_methods:
+                        _ensure_section(
+                            "nonlin",
+                            "Section 2 : Méthodes de Projection Non-Linéaires",
+                        )
+
                     items = grouped[dataset][method]
                     pages = [
                         (
@@ -4489,6 +4554,14 @@ def export_report_to_pdf(
                     ]
                     for fig, label in pages:
                         _save_page(f"{dataset} – {method.upper()} – {label}", fig)
+
+            if cluster_imgs:
+                _ensure_section("cluster", "Section 3 : Analyse de Clustering")
+                for name, fig in cluster_imgs.items():
+                    _save_page(name, fig)
+
+            if segment_figs or remaining:
+                _ensure_section("compare", "Section 4 : Comparaisons Croisées")
 
             for name, fig in segment_figs.items():
                 ds = name.rsplit("_segment_summary_2", 1)[0]
