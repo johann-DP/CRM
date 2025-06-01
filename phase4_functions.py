@@ -873,6 +873,13 @@ def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
     return coords_sq.div(total, axis=0) * 100
 
 
+def famd_individual_cos2(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return cos² (%) of individuals for each FAMD axis."""
+    coords_sq = embeddings ** 2
+    total = coords_sq.sum(axis=1)
+    return coords_sq.div(total, axis=0) * 100
+
+
 def run_mca(
     df_active: pd.DataFrame,
     qual_vars: List[str],
