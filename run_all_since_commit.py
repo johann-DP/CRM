@@ -24,7 +24,7 @@ from pathlib import Path
 
 
 def run(cmd: list[str]) -> bool:
-    """Run ``cmd`` and return ``True`` if it succeeded."""
+    """Run ``cmd`` and return ``True`` on success."""
     print("$", " ".join(cmd))
     try:
         subprocess.run(cmd, check=True)
@@ -106,18 +106,17 @@ def main(argv: list[str] | None = None) -> None:
         print("No new scripts since", args.since)
         return
 
-    results: list[bool]
     if args.jobs > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as exe:
             results = list(exe.map(run, scripts))
     else:
         results = [run(cmd) for cmd in scripts]
 
-    failed = len([r for r in results if not r])
-    if failed:
-        print(f"{failed} script(s) failed")
+    failures = len([r for r in results if not r])
+    if failures:
+        print(f"{failures} script(s) failed")
     else:
-        print("All scripts succeeded")
+        print("All scripts completed successfully")
 
     print("Results are available either in the current directory or under" " the 'output_dir' configured in config.yaml.")
 

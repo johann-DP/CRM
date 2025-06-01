@@ -257,15 +257,16 @@ python simple_pca.py CRM_data.csv
 
 This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
 
-## Running scripts added since a commit
+## Running recently added scripts
 
-The helper `run_all_since_commit.py` locates Python scripts introduced after a
-given commit and executes them. Use the optional `--jobs` flag to run several
-scripts in parallel:
+The helper `run_all_since_commit.py` automatically executes every Python file
+introduced after a given commit. Use it to test new utilities without calling
+each script manually:
 
 ```bash
 python run_all_since_commit.py --since b362e454 --jobs 4
 ```
 
-Outputs produced by those scripts are written either in the current directory or
-under the `output_dir` defined in `config.yaml`.
+Increase `--jobs` to run several scripts in parallel. The outputs of these
+utilities are written either in the working directory or under the
+`output_dir` specified in `config.yaml`.
