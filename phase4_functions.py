@@ -4546,48 +4546,13 @@ def export_report_to_pdf(
     for k in segment_figs:
         del remaining[k]
 
-
-    tmp_paths: list[str] = []
-    pages: list[tuple[str, str]] = []
-    toc: list[tuple[str, int]] = []
-
-    for dataset in sorted(grouped):
-        for method in sorted(grouped[dataset]):
-            items = grouped[dataset][method]
-            figs = [
-                (
-                    _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
-                    "Nuages de points bruts",
-                )
-            ]
-            for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
-                key = f"{algo}_kgrid"
-                if key in items:
-                    figs.append((items[key], f"Clusters {algo}"))
-            figs += [
-                (items.get("cluster_grid"), "Nuages clusterisés"),
-                (items.get("analysis_summary"), "Analyse détaillée"),
-            ]
-
-            first = True
-            for fig, label in figs:
-                img = _fig_to_path(fig, tmp_paths)
-                if img:
-                    if first:
-                        toc.append((f"{dataset} – {method.upper()}", len(pages) + 3))
-                        first = False
-                    pages.append((f"{dataset} – {method.upper()} – {label}", img))
-
-    for name, fig in segment_figs.items():
-        img = _fig_to_path(fig, tmp_paths)
-        if img:
-            ds = name.rsplit("_segment_summary_2", 1)[0]
-            pages.append((f"% NA par segment – {ds}", img))
-
-    for name, fig in remaining.items():
-        img = _fig_to_path(fig, tmp_paths)
-        if img:
-            pages.append((name, img))
+    cluster_imgs = {
+        k: v
+        for k, v in remaining.items()
+        if any(x in k for x in ["silhouette", "dunn", "stability"])
+    }
+    for k in cluster_imgs:
+        del remaining[k]
 
     try:
         from fpdf import FPDF  # type: ignore
@@ -4605,18 +4570,83 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, "Table des matières", ln=1, align="C")
-        pdf.ln(4)
-        pdf.set_font("Helvetica", size=12)
-        for title, pg in toc:
-            pdf.cell(0, 8, f"{title} ...... {pg}", ln=1)
+        factor_methods = {"pca", "mca", "famd", "mfa"}
+        nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
+        added_sections: set[str] = set()
 
-        for title, img in pages:
-            pdf.add_page()
-            _add_title(title)
-            pdf.image(img, w=180)
+        def _ensure_section(key: str, title: str) -> None:
+            if key not in added_sections:
+                added_sections.add(key)
+                pdf.add_page()
+                _add_title(title, 16)
+
+
+        # Tables were previously inserted here, but they are now skipped to
+        # keep the report focused on the figures and heatmaps.
+
+        tmp_paths: list[str] = []
+
+        for dataset in sorted(grouped):
+            for method in sorted(grouped[dataset]):
+                if method in factor_methods:
+                    _ensure_section(
+                        "factor",
+                        "Section 1 : Analyses Factorielles (ACP, FAMD, AFM)",
+                    )
+                elif method in nonlin_methods:
+                    _ensure_section(
+                        "nonlin",
+                        "Section 2 : Méthodes de Projection Non-Linéaires",
+                    )
+
+                items = grouped[dataset][method]
+                pages = [
+                    (
+                        _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                        "Nuages de points bruts",
+                    )
+                ]
+                for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                    key = f"{algo}_kgrid"
+                    if key in items:
+                        pages.append((items[key], f"Clusters {algo}"))
+                pages += [
+                    (items.get("cluster_grid"), "Nuages clusterisés"),
+                    (items.get("analysis_summary"), "Analyse détaillée"),
+                ]
+                for fig, label in pages:
+                    img = _fig_to_path(fig, tmp_paths)
+                    if img:
+                        pdf.add_page()
+                        _add_title(f"{dataset} – {method.upper()} – {label}")
+                        pdf.image(img, w=180)
+
+        if cluster_imgs:
+            _ensure_section("cluster", "Section 3 : Analyse de Clustering")
+            for name, fig in cluster_imgs.items():
+                img = _fig_to_path(fig, tmp_paths)
+                if img:
+                    pdf.add_page()
+                    _add_title(name)
+                    pdf.image(img, w=180)
+
+        if segment_figs or remaining:
+            _ensure_section("compare", "Section 4 : Comparaisons Croisées")
+
+        for name, fig in segment_figs.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _add_title(f"% NA par segment – {ds}")
+                pdf.image(img, w=180)
+
+        for name, fig in remaining.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                _add_title(name)
+                pdf.image(img, w=180)
 
         pdf.output(str(out))
 
@@ -4638,28 +4668,80 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
-            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
-            ax.axis("off")
-            ax.text(0.5, 0.9, "Table des matières", fontsize=16, ha="center", va="top")
-            y = 0.8
-            for title, pg in toc:
-                ax.text(0.05, y, title, ha="left", va="top", fontsize=12)
-                ax.text(0.95, y, str(pg), ha="right", va="top", fontsize=12)
-                y -= 0.04
-            pdf_backend.savefig(fig, dpi=300)
-            plt.close(fig)
+            factor_methods = {"pca", "mca", "famd", "mfa"}
+            nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
+            added_sections: set[str] = set()
 
-            def _save_page(title: str, path: str) -> None:
-                img = plt.imread(path)
-                f, ax = plt.subplots()
-                ax.imshow(img)
-                ax.axis("off")
-                f.suptitle(title, fontsize=12)
-                pdf_backend.savefig(f, dpi=300)
-                plt.close(f)
+            def _ensure_section(key: str, title: str) -> None:
+                if key not in added_sections:
+                    added_sections.add(key)
+                    f, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, title, ha="center", va="center", fontsize=14, weight="bold")
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
 
-            for title, img in pages:
-                _save_page(title, img)
+            def _save_page(title: str, fig: plt.Figure | Path | str | None) -> None:
+                if fig is None:
+                    return
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(title, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                else:
+                    fig.suptitle(title, fontsize=12)
+                    pdf_backend.savefig(fig, dpi=300)
+                    plt.close(fig)
+
+            for dataset in sorted(grouped):
+                for method in sorted(grouped[dataset]):
+                    if method in factor_methods:
+                        _ensure_section(
+                            "factor",
+                            "Section 1 : Analyses Factorielles (ACP, FAMD, AFM)",
+                        )
+                    elif method in nonlin_methods:
+                        _ensure_section(
+                            "nonlin",
+                            "Section 2 : Méthodes de Projection Non-Linéaires",
+                        )
+
+                    items = grouped[dataset][method]
+                    pages = [
+                        (
+                            _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                            "Nuages de points bruts",
+                        )
+                    ]
+                    for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                        key = f"{algo}_kgrid"
+                        if key in items:
+                            pages.append((items[key], f"Clusters {algo}"))
+                    pages += [
+                        (items.get("cluster_grid"), "Nuages clusterisés"),
+                        (items.get("analysis_summary"), "Analyse détaillée"),
+                    ]
+                    for fig, label in pages:
+                        _save_page(f"{dataset} – {method.upper()} – {label}", fig)
+
+            if cluster_imgs:
+                _ensure_section("cluster", "Section 3 : Analyse de Clustering")
+                for name, fig in cluster_imgs.items():
+                    _save_page(name, fig)
+
+            if segment_figs or remaining:
+                _ensure_section("compare", "Section 4 : Comparaisons Croisées")
+
+            for name, fig in segment_figs.items():
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _save_page(f"% NA par segment – {ds}", fig)
+
+            for name, fig in remaining.items():
+                _save_page(name, fig)
 
 
             # Tables were previously appended to the fallback PDF here. This

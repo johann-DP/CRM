@@ -201,6 +201,13 @@ For each dataset and factor method, the combined PDF includes exactly three page
 
 Additional pages such as heatmaps or segment summaries are appended after the per-method sections.
 
+The report now groups these figures into four main sections with dedicated title pages:
+
+1. **Analyses Factorielles (ACP, FAMD, AFM)** – heatmaps of cos² and inertia tables.
+2. **Méthodes de Projection Non-Linéaires** – t-SNE, UMAP, PaCMAP and PHATE visualisations.
+3. **Analyse de Clustering** – silhouette curves and clustering quality indices.
+4. **Comparaisons Croisées** – synthesis figures across methods and datasets.
+
 ## Standalone report builder
 
 generate_phase4_report.py collects the images exported by `phase4.py` and merges them into a single PDF with the same layout as `export_report_to_pdf`.
