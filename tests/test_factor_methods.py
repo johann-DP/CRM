@@ -61,3 +61,11 @@ def test_pca_contributions():
     ind_contrib = pf.pca_individual_contributions(res["embeddings"])
     total = ind_contrib.sum(axis=1, skipna=False).dropna()
     assert np.allclose(total.values, 100.0)
+
+
+def test_famd_individual_cos2():
+    df = sample_df()
+    res = pf.run_famd(df, ["num1", "num2"], ["cat1", "cat2"], n_components=3)
+    cos2 = pf.famd_individual_cos2(res["embeddings"])
+    total = cos2.sum(axis=1, skipna=False).dropna()
+    assert np.allclose(total.values, 100.0)
