@@ -73,19 +73,26 @@ def main(argv: list[str] | None = None) -> None:
     corr.to_csv(csv_path, index=True)
     logger.info("Correlation matrix saved to %s", csv_path)
 
-    plt.figure(figsize=(12, 10))
+    n_vars = len(corr.columns)
+    cell_size = 0.4
+    fig_width = cell_size * n_vars + 3
+    fig_height = cell_size * n_vars + 2
+    plt.figure(figsize=(fig_width, fig_height))
+    plt.figure(figsize=(12, 6))
     sns.heatmap(
         corr,
         annot=True,
         fmt=".2f",
-        cmap="coolwarm",
-        vmin=-1,
+        cmap="YlGnBu",
+        vmin=0,
         vmax=1,
         linewidths=0.5,
-        cbar_kws={"shrink": 0.7, "label": "Coefficient de corrélation"},
+        cbar_kws={"shrink": 0.8, "label": "Coefficient de corrélation"},
+        square=True,
     )
     plt.title("Matrice de corrélation des variables quantitatives (cleaned_3_univ)")
     plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
     plt.tight_layout()
     png_path = out_dir / "cleaned_3_univ_correlation_heatmap.png"
     plt.savefig(png_path)
