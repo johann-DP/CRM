@@ -1232,6 +1232,8 @@ try:  # pragma: no cover - optional dependency may not be present
 except Exception:
     umap = None
 
+from sklearn.manifold import TSNE
+
 # ``phate`` and ``pacmap`` are set to ``None`` and will only be imported when
 # the corresponding functions are called.  This prevents slow start-up during
 # test collection when those heavy libraries are available.
@@ -1477,6 +1479,47 @@ def run_pacmap(
     }
 
 
+def run_tsne(
+    df_active: pd.DataFrame,
+    n_components: int = 2,
+    perplexity: float = 30.0,
+    learning_rate: float = 200.0,
+    *,
+    metric: str = "euclidean",
+    n_iter: int = 1000,
+) -> Dict[str, Any]:
+    """Run t-SNE on ``df_active`` and return embeddings."""
+
+    start = time.perf_counter()
+    X = _encode_mixed(df_active)
+
+    # perplexity must be < n_samples
+    perplexity = min(perplexity, max(1.0, len(df_active) - 1))
+
+    tsne = TSNE(
+        n_components=n_components,
+        perplexity=perplexity,
+        learning_rate=learning_rate,
+        metric=metric,
+        n_iter=n_iter,
+        init="pca",
+    )
+    embedding = tsne.fit_transform(X)
+    runtime = time.perf_counter() - start
+
+    cols = [f"T{i + 1}" for i in range(n_components)]
+    emb_df = pd.DataFrame(embedding, index=df_active.index, columns=cols)
+
+    params = {
+        "n_components": n_components,
+        "perplexity": perplexity,
+        "learning_rate": learning_rate,
+        "metric": metric,
+        "n_iter": n_iter,
+    }
+    return {"model": tsne, "embeddings": emb_df, "params": params, "runtime_s": runtime}
+
+
 def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     """Execute all non-linear methods on ``df_active`` and collect the results."""
     results: Dict[str, Dict[str, Any]] = {}
@@ -1492,6 +1535,12 @@ def run_all_nonlinear(df_active: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     except Exception as exc:  # pragma: no cover - unexpected runtime failure
         logger.warning("PHATE failed: %s", exc)
         results["phate"] = {"error": str(exc)}
+
+    try:
+        results["tsne"] = run_tsne(df_active)
+    except Exception as exc:  # pragma: no cover - unexpected runtime failure
+        logger.warning("t-SNE failed: %s", exc)
+        results["tsne"] = {"error": str(exc)}
 
     if pacmap is not None:
         try:
