@@ -2528,36 +2528,37 @@ def plot_correlation_circle(
         raise AttributeError("factor_model lacks components")
 
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
-    scale = float(norms.max()) if len(norms) else 1.0
 
-    # Use a single reference circle centred at the origin with a radius scaled
-    # to the longest vector. This keeps all arrows inside the square while
-    # preserving their relative lengths.
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
+    # ------------------------------------------------------------------
+    # Draw the correlation circle with a fixed unit radius as customary
+    # for PCA correlation plots.
+    # ------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
 
-    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
-        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
+        circle = plt.Circle((0, 0), 1.0, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
 
-    palette = sns.color_palette("husl", len(coords))
+    palette = sns.color_palette("deep", len(coords))
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
+        alpha = 0.3 + 0.7 * norm
         ax.arrow(
             0,
             0,
             x,
             y,
-            head_width=0.02 * scale,
+            head_width=0.02,
             length_includes_head=True,
-            width=0.002 * scale,
+            width=0.002,
             linewidth=0.8,
             color=color,
             alpha=alpha,
         )
+        ax.text(x * 1.05, y * 1.05, str(var), ha="center", va="center", fontsize="small")
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
     ax.legend(
@@ -2567,12 +2568,8 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    limit = scale * 1.1 if scale > 0 else 1.1
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
-    ax.set_xlabel("F1")
-    ax.set_ylabel("F2")
-
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
     method_name = factor_model.__class__.__name__.upper()
     if hasattr(factor_model, "explained_variance_ratio_"):
         inertia = np.asarray(
@@ -2580,9 +2577,15 @@ def plot_correlation_circle(
         )
     else:
         inertia = np.asarray(_get_explained_inertia(factor_model), dtype=float)
+    ax.set_xlabel(f"Dim1 ({inertia[0] * 100:.1f} %)")
+    if inertia.size > 1:
+        ax.set_ylabel(f"Dim2 ({inertia[1] * 100:.1f} %)")
+    else:
+        ax.set_ylabel("Dim2")
+
     var2 = float(np.sum(inertia[:2]) * 100) if inertia.size else 0.0
     ax.set_title(
-        f"Cercle des corrélations – {method_name} (F1+F2 = {var2:.1f} % de variance)"
+        f"ACP – Cercle des corrélations (Axes 1-2)\n{method_name} – F1+F2 = {var2:.1f} % de variance"
     )
     ax.set_aspect("equal")
     fig.tight_layout()
@@ -2591,6 +2594,41 @@ def plot_correlation_circle(
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight")
     plt.close(fig)
+    return output
+
+
+def export_pca_contributions(
+    pca: Any,
+    variables: Sequence[str],
+    output_path: str | Path,
+) -> Path:
+    """Save contributions and cos² of ``variables`` to the first two axes.
+
+    Parameters
+    ----------
+    pca : fitted PCA object
+        Model exposing ``components_`` and ``explained_variance_``.
+    variables : sequence of str
+        Names of variables matching the PCA input order.
+    output_path : str or Path
+        Destination CSV path.
+    """
+
+    comps = np.asarray(pca.components_[:2], dtype=float).T
+    eig = np.asarray(pca.explained_variance_[:2], dtype=float)
+    loadings = comps * np.sqrt(eig)
+    sq = loadings**2
+    contrib = sq / sq.sum(axis=0)
+
+    contrib_df = pd.DataFrame(contrib * 100, columns=["contrib_dim1", "contrib_dim2"], index=variables)
+    cos2_df = pd.DataFrame(sq, columns=["cos2_dim1", "cos2_dim2"], index=variables)
+    df = pd.concat([contrib_df, cos2_df], axis=1)
+    df = df.loc[variables]
+    df = df.sort_values("contrib_dim1", ascending=False)
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output)
     return output
 
 
