@@ -105,10 +105,9 @@ def test_cluster_evaluation_and_stability_plots():
         assert hasattr(fig, "savefig")
 
 
-def test_plot_silhouette_diagram(tmp_path):
-    rng = np.random.default_rng(0)
-    X = rng.normal(size=(30, 2))
-    labels = np.repeat([0, 1, 2], 10)
-    out = tmp_path / "sil.png"
-    pf.plot_silhouette_diagram(X, labels, out)
+def test_plot_scatter_ellipses(tmp_path):
+    coords = pd.DataFrame({"X": [0, 1, 0, 1], "Y": [0, 0, 1, 1]})
+    labels = pd.Series([0, 0, 1, 1])
+    out = tmp_path / "ell.png"
+    pf.plot_scatter_ellipses(coords, labels, output_path=out)
     assert out.exists() and out.stat().st_size > 0
