@@ -873,6 +873,54 @@ def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
     return coords_sq.div(total, axis=0) * 100
 
 
+def mfa_group_contributions(model: Any) -> pd.DataFrame:
+    """Return MFA group contributions per axis as percentages.
+
+    Parameters
+    ----------
+    model:
+        Fitted ``prince.MFA`` instance.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with axes as rows (``F1``, ``F2``\, ...) and group names as
+        columns.  The values express the contribution percentage of each group
+        to the corresponding axis.  An additional ``Inertie`` column reports the
+        inertia of each axis when available.
+    """
+
+    contrib = getattr(model, "column_contributions_", None)
+    if contrib is None and hasattr(model, "column_coordinates_"):
+        coords = model.column_coordinates_
+        contrib = (coords ** 2).div((coords ** 2).sum(axis=0), axis=1)
+    if contrib is None:
+        raise ValueError("MFA model lacks contribution information")
+
+    if contrib.max().max() <= 1.0:
+        contrib = contrib * 100
+
+    groups = getattr(model, "groups_", None)
+    if not isinstance(groups, Mapping):
+        raise ValueError("MFA model lacks groups_ mapping")
+
+    table = {
+        name: contrib.loc[[c for c in cols if c in contrib.index]].sum(axis=0)
+        for name, cols in groups.items()
+    }
+    df = pd.DataFrame(table)
+    df.index = [f"F{i+1}" for i in range(df.shape[0])]
+
+    inertia = getattr(model, "explained_inertia_", None)
+    if inertia is not None:
+        inertia = np.asarray(inertia, dtype=float)
+        if inertia.max() <= 1.0:
+            inertia = inertia * 100
+        df["Inertie"] = inertia[: df.shape[0]]
+
+    return df
+
+
 def run_mca(
     df_active: pd.DataFrame,
     qual_vars: List[str],
