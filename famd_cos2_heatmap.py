@@ -49,7 +49,7 @@ def main() -> None:
 
     df = load_dataset(args.input_file)
     plot_cos2_heatmap(df, args.output, args.max_rows)
-
+    
 
 if __name__ == "__main__":  # pragma: no cover
     main()
