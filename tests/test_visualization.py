@@ -70,6 +70,15 @@ def test_cluster_segment_table_and_heatmap():
     assert hasattr(fig, "savefig")
 
 
+def test_cluster_confusion_table_and_heatmap():
+    a = np.array([0, 0, 1, 1])
+    b = np.array([1, 0, 1, 0])
+    tab = pf.cluster_confusion_table(a, b)
+    assert tab.loc[0, 0] == 1
+    fig = pf.plot_cluster_confusion_heatmap(tab, "test")
+    assert hasattr(fig, "savefig")
+
+
 def test_plot_clusters_by_k():
     rng = np.random.default_rng(0)
     X = pd.DataFrame(rng.normal(size=(20, 2)), columns=["F1", "F2"])

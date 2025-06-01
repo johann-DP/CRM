@@ -3065,6 +3065,44 @@ def plot_cluster_segment_heatmap(table: pd.DataFrame, title: str) -> plt.Figure:
     return fig
 
 
+def cluster_confusion_table(
+    labels_a: Sequence[int] | pd.Series,
+    labels_b: Sequence[int] | pd.Series,
+) -> pd.DataFrame:
+    """Return a cross-tabulation of clusters between two solutions."""
+
+    if len(labels_a) != len(labels_b):
+        raise ValueError("labels_a and labels_b must have same length")
+    ser_a = pd.Series(labels_a, name="A")
+    ser_b = pd.Series(labels_b, name="B")
+    return pd.crosstab(ser_a, ser_b)
+
+
+def plot_cluster_confusion_heatmap(
+    table: pd.DataFrame,
+    title: str,
+    *,
+    normalize: bool = False,
+) -> plt.Figure:
+    """Return a heatmap visualising ``table`` counts or percentages."""
+
+    import seaborn as sns
+
+    data = table
+    fmt = "d"
+    if normalize:
+        data = table / table.values.sum()
+        fmt = ".2f"
+
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=200)
+    sns.heatmap(data, annot=True, fmt=fmt, cmap="coolwarm", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Clusters B")
+    ax.set_ylabel("Clusters A")
+    fig.tight_layout()
+    return fig
+
+
 def segment_profile_table(
     df: pd.DataFrame,
     segment_col: str,
