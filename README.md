@@ -212,15 +212,16 @@ python generate_phase4_report.py --config config.yaml --datasets raw cleaned_1
 
 When omitted, ``--config`` defaults to ``config.yaml`` and ``--datasets`` processes `raw`, `cleaned_1`, `cleaned_3_multi` and `cleaned_3_univ` in order.
 
-## Simple PCA script
+## Export PCA coordinates
 
-Use `simple_pca.py` to perform a quick Principal Component Analysis on a CSV export of the CRM data.
-The command below generates a scree plot and a table of explained variance:
+The script `export_pca_coordinates.py` extracts the PCA factor scores for each
+row of a dataset defined in `config.yaml`. The resulting CSV lists the
+identifier and the first principal components. Example usage:
 
 ```bash
-python simple_pca.py CRM_data.csv
+python export_pca_coordinates.py --config config.yaml --dataset raw \
+    --components 3 --output ACP_coordonnees_individus.csv --sep ';'
 ```
 
-The script removes the `Code Analytique` column, standardises numerical variables and saves
-`pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the working directory.
-
+The `--components` option controls how many axes are saved while `--sep`
+selects the CSV separator.
