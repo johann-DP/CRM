@@ -225,3 +225,13 @@ python export_pca_coordinates.py --config config.yaml --dataset raw \
 
 The `--components` option controls how many axes are saved while `--sep`
 selects the CSV separator.
+
+## FAMD cos² heatmap
+
+`famd_cos2_heatmap.py` visualises the representation quality (cos²) of each
+individual on the FAMD axes. The script produces a PNG heatmap using the
+`coolwarm` palette:
+
+```bash
+python famd_cos2_heatmap.py data.csv --output FAMD_cos2_heatmap.png
+```
