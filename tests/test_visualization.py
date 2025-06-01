@@ -112,3 +112,11 @@ def test_cluster_evaluation_and_stability_plots():
     figs = pf.plot_pca_stability_bars(metrics)
     for fig in figs.values():
         assert hasattr(fig, "savefig")
+
+
+def test_plot_scatter_ellipses(tmp_path):
+    coords = pd.DataFrame({"X": [0, 1, 0, 1], "Y": [0, 0, 1, 1]})
+    labels = pd.Series([0, 0, 1, 1])
+    out = tmp_path / "ell.png"
+    pf.plot_scatter_ellipses(coords, labels, output_path=out)
+    assert out.exists() and out.stat().st_size > 0

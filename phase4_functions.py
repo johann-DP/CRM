@@ -873,6 +873,13 @@ def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
     return coords_sq.div(total, axis=0) * 100
 
 
+def famd_individual_cos2(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return cos² (%) of individuals for each FAMD axis."""
+    coords_sq = embeddings ** 2
+    total = coords_sq.sum(axis=1)
+    return coords_sq.div(total, axis=0) * 100
+
+
 def run_mca(
     df_active: pd.DataFrame,
     qual_vars: List[str],
@@ -2535,6 +2542,7 @@ from matplotlib.patches import Ellipse
 import pandas as pd
 import seaborn as sns
 import numpy as np
+from scipy.stats import chi2
 import io
 from typing import Dict, Any, List, Optional, Sequence
 from sklearn.cluster import KMeans
@@ -3385,6 +3393,90 @@ def plot_pca_individuals(
     return output
 
 
+def plot_scatter_ellipses(
+    coords_df: pd.DataFrame,
+    labels: Sequence[Any] | None = None,
+    *,
+    coverage: float = 0.9,
+    palette: str = "deep",
+    title: str = "",
+    output_path: str | Path = "ellipses.png",
+) -> Path:
+    """Scatter plot with cluster ellipses covering ``coverage`` fraction.
+
+    Parameters
+    ----------
+    coords_df:
+        DataFrame with at least two columns representing the 2D embedding.
+    labels:
+        Optional cluster labels used to colour the points and compute ellipses.
+    coverage:
+        Target coverage fraction for the ellipses assuming a Gaussian model.
+    palette:
+        Name of the seaborn colour palette used for the clusters.
+    title:
+        Title of the figure.
+    output_path:
+        Destination PNG file.
+    """
+
+    if coords_df.shape[1] < 2:
+        raise ValueError("coords_df must have at least two columns")
+
+    x_col, y_col = coords_df.columns[:2]
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=200)
+
+    if labels is None:
+        ax.scatter(coords_df[x_col], coords_df[y_col], s=10, alpha=0.6, color="tab:blue")
+    else:
+        ser = pd.Series(labels, index=coords_df.index, name=getattr(labels, "name", "cluster"))
+        cats = ser.astype("category")
+        colors = sns.color_palette(palette, len(cats.cat.categories))
+        chi2_val = chi2.ppf(coverage, df=2)
+        for color, cat in zip(colors, cats.cat.categories):
+            mask = cats == cat
+            ax.scatter(
+                coords_df.loc[mask, x_col],
+                coords_df.loc[mask, y_col],
+                s=10,
+                alpha=0.6,
+                color=color,
+                label=str(cat),
+            )
+            sub = coords_df.loc[mask, [x_col, y_col]].values
+            if sub.shape[0] > 2:
+                cov = np.cov(sub, rowvar=False)
+                if np.all(np.isfinite(cov)):
+                    vals, vecs = np.linalg.eigh(cov)
+                    order = vals.argsort()[::-1]
+                    vals, vecs = vals[order], vecs[:, order]
+                    angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+                    width, height = 2 * np.sqrt(vals * chi2_val)
+                    ell = Ellipse(
+                        xy=sub.mean(axis=0),
+                        width=width,
+                        height=height,
+                        angle=angle,
+                        edgecolor=color,
+                        facecolor="none",
+                        lw=1.5,
+                        alpha=0.7,
+                    )
+                    ax.add_patch(ell)
+        ax.legend(title=ser.name, bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    ax.set_title(title)
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300)
+    plt.close(fig)
+    return output
+
+
 def plot_famd_contributions(contrib: pd.DataFrame, n: int = 10) -> plt.Figure:
     """Return a bar plot of variable contributions to F1 and F2.
 
@@ -3980,8 +4072,10 @@ __all__ = [
     "dbscan_evaluation_metrics",
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
+    "plot_silhouette_diagram",
     "plot_pca_stability_bars",
     "plot_pca_individuals",
+    "plot_scatter_ellipses",
 ]
 
 
