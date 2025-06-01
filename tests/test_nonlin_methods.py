@@ -80,3 +80,9 @@ def test_run_pacmap_missing(monkeypatch):
     res = pf.run_pacmap(df)
     assert res["model"] is None
     assert res["embeddings"].empty
+
+
+def test_run_tsne_basic():
+    df = sample_df()
+    res = pf.run_tsne(df)
+    assert res["embeddings"].shape == (len(df), 2)
