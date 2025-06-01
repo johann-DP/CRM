@@ -103,3 +103,12 @@ def test_cluster_evaluation_and_stability_plots():
     figs = pf.plot_pca_stability_bars(metrics)
     for fig in figs.values():
         assert hasattr(fig, "savefig")
+
+
+def test_plot_silhouette_diagram(tmp_path):
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(30, 2))
+    labels = np.repeat([0, 1, 2], 10)
+    out = tmp_path / "sil.png"
+    pf.plot_silhouette_diagram(X, labels, out)
+    assert out.exists() and out.stat().st_size > 0

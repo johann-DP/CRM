@@ -3072,18 +3072,49 @@ def plot_cluster_segment_heatmap(table: pd.DataFrame, title: str) -> plt.Figure:
     return fig
 
 
-def plot_famd_cos2_heatmap(cos2: pd.DataFrame, title: str, output_path: str | Path) -> Path:
-    """Save a heatmap of FAMD cos² per individual and axis."""
-    import seaborn as sns
+def plot_silhouette_diagram(
+    X: np.ndarray | pd.DataFrame,
+    labels: Sequence[int] | np.ndarray,
+    output_path: str | Path,
+) -> Path:
+    """Save a silhouette diagram for ``labels`` computed on ``X``.
+
+    Each cluster is represented by a horizontal bar showing individual
+    silhouette scores sorted from largest to smallest.  A dashed line marks
+    the overall mean silhouette.
+    """
+
+    scores = silhouette_samples_safe(np.asarray(X), np.asarray(labels))
+    mean_score = float(np.nanmean(scores))
+
+    unique = [lab for lab in sorted(set(labels)) if lab != -1]
+    colors = sns.color_palette("deep", len(unique))
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+
+    y_lower = 0
+    for lab, color in zip(unique, colors):
+        vals = scores[np.asarray(labels) == lab]
+        vals = np.sort(vals)
+        n = len(vals)
+        ax.barh(
+            np.arange(y_lower, y_lower + n),
+            vals,
+            color=color,
+            edgecolor="none",
+            height=1.0,
+        )
+        ax.text(-0.02, y_lower + n / 2, str(lab), va="center", ha="right")
+        y_lower += n
+
+    ax.axvline(mean_score, color="k", linestyle="--")
+    ax.set_yticks([])
+    ax.set_xlabel("Silhouette")
+    ax.set_title("Diagramme de silhouette")
+    fig.tight_layout()
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
-    sns.heatmap(cos2, cmap="coolwarm", ax=ax)
-    ax.set_title(title)
-    ax.set_xlabel("Axe")
-    ax.set_ylabel("Individu")
-    fig.tight_layout()
     fig.savefig(output, dpi=300)
     plt.close(fig)
     return output
@@ -3966,6 +3997,7 @@ __all__ = [
     "dbscan_evaluation_metrics",
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
+    "plot_silhouette_diagram",
     "plot_pca_stability_bars",
     "plot_pca_individuals",
 ]
