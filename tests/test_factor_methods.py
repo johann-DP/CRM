@@ -62,10 +62,12 @@ def test_pca_contributions():
     total = ind_contrib.sum(axis=1, skipna=False).dropna()
     assert np.allclose(total.values, 100.0)
 
-
-def test_famd_individual_cos2():
+def test_mfa_group_contributions():
     df = sample_df()
-    res = pf.run_famd(df, ["num1", "num2"], ["cat1", "cat2"], n_components=3)
-    cos2 = pf.famd_individual_cos2(res["embeddings"])
-    total = cos2.sum(axis=1, skipna=False).dropna()
-    assert np.allclose(total.values, 100.0)
+    groups = {"Num": ["num1", "num2"], "Cat": ["cat1", "cat2"]}
+    res = pf.run_mfa(df, groups, n_components=2)
+    contrib = pf.mfa_group_contributions(res["model"])
+    assert set(groups).issubset(contrib.columns)
+    sums = contrib[list(groups.keys())].sum(axis=1)
+    assert np.allclose(sums.values, 100.0)
+    assert list(contrib.index)[0] == "F1"
