@@ -26,10 +26,9 @@ from pathlib import Path
 def run(cmd: list[str]) -> bool:
     """Run ``cmd`` and return ``True`` on success."""
     print("$", " ".join(cmd))
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as exc:
-        print(f"Command failed with exit code {exc.returncode}")
+    completed = subprocess.run(cmd)
+    if completed.returncode != 0:
+        print(f"Command failed with exit code {completed.returncode}")
         return False
     return True
 
@@ -106,19 +105,21 @@ def main(argv: list[str] | None = None) -> None:
         print("No new scripts since", args.since)
         return
 
+    results: list[bool]
     if args.jobs > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as exe:
             results = list(exe.map(run, scripts))
     else:
         results = [run(cmd) for cmd in scripts]
 
-    failures = len([r for r in results if not r])
-    if failures:
-        print(f"{failures} script(s) failed")
-    else:
-        print("All scripts completed successfully")
+    successes = sum(results)
+    failures = len(results) - successes
+    print(f"{successes} script(s) succeeded, {failures} failed")
 
-    print("Results are available either in the current directory or under" " the 'output_dir' configured in config.yaml.")
+    print(
+        "Results are available either in the current directory or under "
+        "the 'output_dir' configured in config.yaml."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper
