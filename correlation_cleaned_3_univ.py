@@ -78,6 +78,7 @@ def main(argv: list[str] | None = None) -> None:
     fig_width = cell_size * n_vars + 3
     fig_height = cell_size * n_vars + 2
     plt.figure(figsize=(fig_width, fig_height))
+    plt.figure(figsize=(12, 6))
     sns.heatmap(
         corr,
         annot=True,
