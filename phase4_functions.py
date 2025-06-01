@@ -3073,52 +3073,42 @@ def plot_cluster_segment_heatmap(table: pd.DataFrame, title: str) -> plt.Figure:
     return fig
 
 
-def plot_silhouette_diagram(
-    X: np.ndarray | pd.DataFrame,
-    labels: Sequence[int] | np.ndarray,
-    output_path: str | Path,
-) -> Path:
-    """Save a silhouette diagram for ``labels`` computed on ``X``.
+def cluster_confusion_table(
+    labels_a: Sequence[int] | pd.Series,
+    labels_b: Sequence[int] | pd.Series,
+) -> pd.DataFrame:
+    """Return a cross-tabulation of clusters between two solutions."""
 
-    Each cluster is represented by a horizontal bar showing individual
-    silhouette scores sorted from largest to smallest.  A dashed line marks
-    the overall mean silhouette.
-    """
+    if len(labels_a) != len(labels_b):
+        raise ValueError("labels_a and labels_b must have same length")
+    ser_a = pd.Series(labels_a, name="A")
+    ser_b = pd.Series(labels_b, name="B")
+    return pd.crosstab(ser_a, ser_b)
 
-    scores = silhouette_samples_safe(np.asarray(X), np.asarray(labels))
-    mean_score = float(np.nanmean(scores))
 
-    unique = [lab for lab in sorted(set(labels)) if lab != -1]
-    colors = sns.color_palette("deep", len(unique))
+def plot_cluster_confusion_heatmap(
+    table: pd.DataFrame,
+    title: str,
+    *,
+    normalize: bool = False,
+) -> plt.Figure:
+    """Return a heatmap visualising ``table`` counts or percentages."""
 
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+    import seaborn as sns
 
-    y_lower = 0
-    for lab, color in zip(unique, colors):
-        vals = scores[np.asarray(labels) == lab]
-        vals = np.sort(vals)
-        n = len(vals)
-        ax.barh(
-            np.arange(y_lower, y_lower + n),
-            vals,
-            color=color,
-            edgecolor="none",
-            height=1.0,
-        )
-        ax.text(-0.02, y_lower + n / 2, str(lab), va="center", ha="right")
-        y_lower += n
+    data = table
+    fmt = "d"
+    if normalize:
+        data = table / table.values.sum()
+        fmt = ".2f"
 
-    ax.axvline(mean_score, color="k", linestyle="--")
-    ax.set_yticks([])
-    ax.set_xlabel("Silhouette")
-    ax.set_title("Diagramme de silhouette")
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=200)
+    sns.heatmap(data, annot=True, fmt=fmt, cmap="coolwarm", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Clusters B")
+    ax.set_ylabel("Clusters A")
     fig.tight_layout()
-
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=300)
-    plt.close(fig)
-    return output
+    return fig
 
 
 def segment_profile_table(
