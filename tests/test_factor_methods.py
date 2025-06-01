@@ -51,3 +51,13 @@ def test_run_mfa_with_weights():
     groups = {"Num": ["num1", "num2"], "Cat": ["cat1", "cat2"]}
     res = pf.run_mfa(df, groups, optimize=True, weights={"Num": 2.0, "Cat": 1.0})
     assert res["embeddings"].shape[0] == len(df)
+
+
+def test_pca_contributions():
+    df = sample_df()
+    res = pf.run_pca(df, ["num1", "num2"], n_components=2)
+    var_contrib = pf.pca_variable_contributions(res["loadings"])
+    assert np.allclose(var_contrib[["F1", "F2"]].sum().values, [100.0, 100.0])
+    ind_contrib = pf.pca_individual_contributions(res["embeddings"])
+    total = ind_contrib.sum(axis=1, skipna=False).dropna()
+    assert np.allclose(total.values, 100.0)

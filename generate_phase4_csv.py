@@ -34,6 +34,8 @@ from phase4_functions import (
     run_phate,
     run_pacmap,
     evaluate_methods,
+    pca_variable_contributions,
+    pca_individual_contributions,
 )
 
 # ---------------------------------------------------------------------------
@@ -227,6 +229,22 @@ def run(config: Mapping[str, Any]) -> None:
     dist_df = pd.DataFrame(records).set_index("method")
     dist_df.to_csv(output_dir / "cluster_distance_metrics.csv")
     logging.info("Saved cluster distance metrics")
+
+    # PCA contributions ----------------------------------------------------
+    pca_res = factor_results.get("pca")
+    if pca_res:
+        loads = pca_res.get("loadings")
+        emb = pca_res.get("embeddings")
+        if isinstance(loads, pd.DataFrame):
+            contrib = pca_variable_contributions(loads)
+            cols = [c for c in ["F1", "F2"] if c in contrib.columns]
+            contrib[cols].to_csv(output_dir / "ACP_contributions_variables.csv")
+            logging.info("Saved PCA variable contributions")
+        if isinstance(emb, pd.DataFrame):
+            ic = pca_individual_contributions(emb)
+            cols = [c for c in ["F1", "F2"] if c in ic.columns]
+            ic[cols].to_csv(output_dir / "ACP_contributions_individus.csv")
+            logging.info("Saved PCA individual contributions")
 
     # Method parameters -----------------------------------------------------
     params = {m: method_params(m, config) for m in methods}
