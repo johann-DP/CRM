@@ -244,3 +244,15 @@ an optimal K-means partition. Example usage:
 python compare_pca_umap.py --config config.yaml --dataset raw \
     --n_neighbors 15 --output pca_vs_umap.png
 ```
+
+## Simple PCA analysis
+
+Use `simple_pca.py` to quickly compute a Principal Component Analysis on a CSV export of the CRM data.
+It removes the `Code Analytique` column, standardises the numerical variables and saves a scree plot
+and a table of explained variance.
+
+```bash
+python simple_pca.py CRM_data.csv
+```
+
+This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
