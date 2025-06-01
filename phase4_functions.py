@@ -860,6 +860,18 @@ def run_pca(
     result["runtime"] = runtime
     return result
 
+def pca_variable_contributions(loadings: pd.DataFrame) -> pd.DataFrame:
+    """Return variable contributions (%) for each PCA axis."""
+    loads_sq = loadings ** 2
+    return loads_sq.div(loads_sq.sum(axis=0), axis=1) * 100
+
+
+def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return individual cos² (%) for each PCA axis."""
+    coords_sq = embeddings ** 2
+    total = coords_sq.sum(axis=1)
+    return coords_sq.div(total, axis=0) * 100
+
 
 def run_mca(
     df_active: pd.DataFrame,
@@ -2470,6 +2482,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from matplotlib.lines import Line2D
+from matplotlib.patches import Ellipse
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -2527,36 +2540,37 @@ def plot_correlation_circle(
         raise AttributeError("factor_model lacks components")
 
     norms = np.sqrt(np.square(coords["F1"]) + np.square(coords["F2"]))
-    scale = float(norms.max()) if len(norms) else 1.0
 
-    # Use a single reference circle centred at the origin with a radius scaled
-    # to the longest vector. This keeps all arrows inside the square while
-    # preserving their relative lengths.
-    fig, ax = plt.subplots(figsize=(6, 6), dpi=200)
+    # ------------------------------------------------------------------
+    # Draw the correlation circle with a fixed unit radius as customary
+    # for PCA correlation plots.
+    # ------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
 
-    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, scale) for p in ax.patches):
-        circle = plt.Circle((0, 0), scale, color="grey", fill=False, linestyle="dashed")
+    if not any(isinstance(p, plt.Circle) and np.isclose(p.radius, 1.0) for p in ax.patches):
+        circle = plt.Circle((0, 0), 1.0, color="grey", fill=False, linestyle="dashed")
         ax.add_patch(circle)
     ax.axhline(0, color="grey", lw=0.5)
     ax.axvline(0, color="grey", lw=0.5)
 
-    palette = sns.color_palette("husl", len(coords))
+    palette = sns.color_palette("deep", len(coords))
     handles: list[Line2D] = []
     for var, color, norm in zip(coords.index, palette, norms):
         x, y = coords.loc[var, ["F1", "F2"]]
-        alpha = 0.3 + 0.7 * (norm / scale) if scale else 1.0
+        alpha = 0.3 + 0.7 * norm
         ax.arrow(
             0,
             0,
             x,
             y,
-            head_width=0.02 * scale,
+            head_width=0.02,
             length_includes_head=True,
-            width=0.002 * scale,
+            width=0.002,
             linewidth=0.8,
             color=color,
             alpha=alpha,
         )
+        ax.text(x * 1.05, y * 1.05, str(var), ha="center", va="center", fontsize="small")
         handles.append(Line2D([0], [0], color=color, lw=1.0, label=str(var)))
 
     ax.legend(
@@ -2566,12 +2580,8 @@ def plot_correlation_circle(
         frameon=False,
         fontsize="small",
     )
-    limit = scale * 1.1 if scale > 0 else 1.1
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
-    ax.set_xlabel("F1")
-    ax.set_ylabel("F2")
-
+    ax.set_xlim(-1.1, 1.1)
+    ax.set_ylim(-1.1, 1.1)
     method_name = factor_model.__class__.__name__.upper()
     if hasattr(factor_model, "explained_variance_ratio_"):
         inertia = np.asarray(
@@ -2579,9 +2589,15 @@ def plot_correlation_circle(
         )
     else:
         inertia = np.asarray(_get_explained_inertia(factor_model), dtype=float)
+    ax.set_xlabel(f"Dim1 ({inertia[0] * 100:.1f} %)")
+    if inertia.size > 1:
+        ax.set_ylabel(f"Dim2 ({inertia[1] * 100:.1f} %)")
+    else:
+        ax.set_ylabel("Dim2")
+
     var2 = float(np.sum(inertia[:2]) * 100) if inertia.size else 0.0
     ax.set_title(
-        f"Cercle des corrélations – {method_name} (F1+F2 = {var2:.1f} % de variance)"
+        f"ACP – Cercle des corrélations (Axes 1-2)\n{method_name} – F1+F2 = {var2:.1f} % de variance"
     )
     ax.set_aspect("equal")
     fig.tight_layout()
@@ -2590,6 +2606,41 @@ def plot_correlation_circle(
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight")
     plt.close(fig)
+    return output
+
+
+def export_pca_contributions(
+    pca: Any,
+    variables: Sequence[str],
+    output_path: str | Path,
+) -> Path:
+    """Save contributions and cos² of ``variables`` to the first two axes.
+
+    Parameters
+    ----------
+    pca : fitted PCA object
+        Model exposing ``components_`` and ``explained_variance_``.
+    variables : sequence of str
+        Names of variables matching the PCA input order.
+    output_path : str or Path
+        Destination CSV path.
+    """
+
+    comps = np.asarray(pca.components_[:2], dtype=float).T
+    eig = np.asarray(pca.explained_variance_[:2], dtype=float)
+    loadings = comps * np.sqrt(eig)
+    sq = loadings**2
+    contrib = sq / sq.sum(axis=0)
+
+    contrib_df = pd.DataFrame(contrib * 100, columns=["contrib_dim1", "contrib_dim2"], index=variables)
+    cos2_df = pd.DataFrame(sq, columns=["cos2_dim1", "cos2_dim2"], index=variables)
+    df = pd.concat([contrib_df, cos2_df], axis=1)
+    df = df.loc[variables]
+    df = df.sort_values("contrib_dim1", ascending=False)
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output)
     return output
 
 
@@ -3154,6 +3205,96 @@ def plot_scree(
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300)
     plt.close(fig)
+    return output
+
+
+def plot_pca_individuals(
+    pca_res: Mapping[str, Any],
+    groups: Sequence[Any] | None = None,
+    *,
+    output_path: str | Path = "pca_individus.png",
+    csv_path: str | Path | None = None,
+) -> Path:
+    """Plot PCA individuals on axes 1-2 with optional group colouring.
+
+    Parameters
+    ----------
+    pca_res:
+        Result dictionary returned by :func:`run_pca` containing
+        ``"embeddings"`` and ``"inertia"``.
+    groups:
+        Optional labels used to colour the points and draw ellipses.
+    output_path:
+        Destination PNG file.
+    csv_path:
+        Optional path to save the coordinates as CSV.
+    """
+
+    emb = pca_res.get("embeddings")
+    inertia = pca_res.get("inertia")
+    if not isinstance(emb, pd.DataFrame) or emb.empty:
+        raise ValueError("PCA result must contain non-empty 'embeddings'")
+
+    coords = emb.iloc[:, :2].copy()
+    var = (inertia.iloc[:2] * 100).round(1) if isinstance(inertia, pd.Series) else [np.nan, np.nan]
+
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=200)
+    if groups is None:
+        ax.scatter(coords.iloc[:, 0], coords.iloc[:, 1], s=10, alpha=0.6, color="tab:blue")
+    else:
+        labels = pd.Series(groups, index=coords.index, name=getattr(groups, "name", "group"))
+        cats = labels.astype("category")
+        palette = sns.color_palette("deep", len(cats.cat.categories))
+        for color, cat in zip(palette, cats.cat.categories):
+            mask = cats == cat
+            ax.scatter(
+                coords.loc[mask, coords.columns[0]],
+                coords.loc[mask, coords.columns[1]],
+                s=10,
+                alpha=0.6,
+                color=color,
+                label=str(cat),
+            )
+            sub = coords.loc[mask].values
+            if sub.shape[0] > 2:
+                cov = np.cov(sub, rowvar=False)
+                if np.all(np.isfinite(cov)):
+                    vals, vecs = np.linalg.eigh(cov)
+                    order = vals.argsort()[::-1]
+                    vals, vecs = vals[order], vecs[:, order]
+                    angle = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+                    chi2_val = 5.991  # 95% for 2 dof
+                    width, height = 2 * np.sqrt(vals * chi2_val)
+                    ell = Ellipse(
+                        xy=sub.mean(axis=0),
+                        width=width,
+                        height=height,
+                        angle=angle,
+                        edgecolor=color,
+                        facecolor="none",
+                        lw=1.5,
+                    )
+                    ax.add_patch(ell)
+    if groups is not None:
+        ax.legend(title=labels.name, bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    ax.set_xlabel(
+        f"Dim1 ({var[0]:.1f}%)" if not np.isnan(var[0]) else "Dim1"
+    )
+    ax.set_ylabel(
+        f"Dim2 ({var[1]:.1f}%)" if not np.isnan(var[1]) else "Dim2"
+    )
+    ax.set_title("ACP – Projection des individus (Axes 1-2)")
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300)
+    plt.close(fig)
+
+    if csv_path is not None:
+        coords.to_csv(csv_path)
+
     return output
 
 
@@ -3753,6 +3894,7 @@ __all__ = [
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
     "plot_pca_stability_bars",
+    "plot_pca_individuals",
 ]
 
 
