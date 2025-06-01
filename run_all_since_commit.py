@@ -23,10 +23,71 @@ import subprocess
 from pathlib import Path
 
 
-def run(cmd: list[str]) -> None:
-    """Run ``cmd`` and forward output."""
+def run(cmd: list[str]) -> bool:
+    """Run ``cmd`` and return ``True`` if it succeeds."""
     print("$", " ".join(cmd))
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"Command failed with exit code {exc.returncode}")
+        return False
+    return True
+
+
+def _new_scripts(base: str) -> list[Path]:
+    """Return Python files added after ``base``."""
+    out = subprocess.check_output(
+        ["git", "diff", "--name-status", "--diff-filter=A", f"{base}..HEAD"],
+        text=True,
+    )
+    paths: list[Path] = []
+    for line in out.splitlines():
+        _status, name = line.split("\t", 1)
+        if not name.endswith(".py"):
+            continue
+        if name.startswith("tests/"):
+            continue
+        if name == Path(__file__).name:
+            continue
+        paths.append(Path(name))
+    return paths
+
+
+def _needs_config(path: Path) -> bool:
+    """Return True if ``path`` CLI accepts a ``--config`` option."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "--config" in text
+
+
+_SAMPLE = Path("sample_dataset.csv")
+
+_EXTRA_ARGS: dict[str, list[str]] = {
+    "clustering_quality_indices.py": [str(_SAMPLE)],
+    "export_pca_inertias.py": [str(_SAMPLE)],
+    "famd_full_analysis.py": [str(_SAMPLE)],
+    "famd_cos2_heatmap.py": [str(_SAMPLE)],
+    "famd_individuals.py": [str(_SAMPLE)],
+    "compare_umap_clusters.py": ["--raw", str(_SAMPLE), "--prepared", str(_SAMPLE)],
+}
+
+
+def _command(path: Path, config: Path) -> list[str] | None:
+    """Return command list to execute ``path`` or ``None`` to skip."""
+    if path.name == "cluster_confusion_heatmap.py":
+        # This script expects two clustering label files which are not
+        # available in the repository; skip automatic execution.
+        return None
+
+    cmd = ["python", str(path)]
+    if _needs_config(path):
+        cmd += ["--config", str(config)]
+    extra = _EXTRA_ARGS.get(path.name)
+    if extra:
+        cmd += extra
+    return cmd
 
 
 def _new_scripts(base: str) -> list[Path]:
@@ -103,10 +164,15 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.jobs > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as exe:
-            list(exe.map(run, scripts))
+            results = list(exe.map(run, scripts))
     else:
-        for cmd in scripts:
-            run(cmd)
+        results = [run(cmd) for cmd in scripts]
+
+    failures = sum(not ok for ok in results)
+    if failures:
+        print(f"{failures} script(s) failed")
+    else:
+        print("All scripts executed successfully")
 
     print("Results are available either in the current directory or under" " the 'output_dir' configured in config.yaml.")
 
