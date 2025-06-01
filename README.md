@@ -256,3 +256,16 @@ python simple_pca.py CRM_data.csv
 ```
 
 This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
+
+## Executing recent scripts
+
+The helper `run_all_since_commit.py` automatically discovers Python files that
+were added after a given Git commit and executes them sequentially or in
+parallel depending on the `--jobs` argument:
+
+```bash
+python run_all_since_commit.py --since b362e454 --jobs 4
+```
+
+Outputs are written either next to the executed scripts or in the
+`output_dir` configured in `config.yaml`.
