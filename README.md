@@ -211,3 +211,17 @@ python generate_phase4_report.py --config config.yaml --datasets raw cleaned_1
 ```
 
 When omitted, ``--config`` defaults to ``config.yaml`` and ``--datasets`` processes `raw`, `cleaned_1`, `cleaned_3_multi` and `cleaned_3_univ` in order.
+
+## Export PCA coordinates
+
+The script `export_pca_coordinates.py` extracts the PCA factor scores for each
+row of a dataset defined in `config.yaml`. The resulting CSV lists the
+identifier and the first principal components. Example usage:
+
+```bash
+python export_pca_coordinates.py --config config.yaml --dataset raw \
+    --components 3 --output ACP_coordonnees_individus.csv --sep ';'
+```
+
+The `--components` option controls how many axes are saved while `--sep`
+selects the CSV separator.
