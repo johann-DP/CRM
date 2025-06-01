@@ -405,6 +405,7 @@ def select_variables(
         "Client",
         "Contact principal",
         "Titre",
+        "Code Analytique",
         "texte",
         "commentaire",
         "Commentaires",
