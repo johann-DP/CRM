@@ -11,7 +11,7 @@ from sklearn.metrics import (
     mean_squared_error,
     mean_absolute_percentage_error,
 )
-from pmdarima import auto_arima
+from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
 
@@ -42,15 +42,10 @@ def _evaluate_arima(series: pd.Series, test_size: int, *, seasonal: bool, m: int
     history = train.copy()
     preds: List[float] = []
     for t, val in enumerate(test):
-        model = auto_arima(
-            history,
-            seasonal=seasonal,
-            m=m,
-            error_action="ignore",
-            suppress_warnings=True,
-            stepwise=True,
-        )
-        pred = model.predict()[0]
+        season_length = m if seasonal else 1
+        model = AutoARIMA(season_length=season_length)
+        model.fit(history.values)
+        pred = float(model.predict(h=1)[0])
         preds.append(pred)
         history.loc[test.index[t]] = val
     return _compute_metrics(test.values, preds)

@@ -5,9 +5,9 @@ from __future__ import annotations
 import pandas as pd
 
 try:  # Optional dependency
-    from pmdarima.arima import ARIMA
+    from statsforecast.models import AutoARIMA
 except Exception as _exc_arima:  # pragma: no cover - optional
-    ARIMA = None
+    AutoARIMA = None
 try:  # Optional dependency
     from prophet import Prophet
 except Exception as _exc_prophet:  # pragma: no cover - optional
@@ -26,24 +26,27 @@ from .train_xgboost import _to_supervised
 # ---------------------------------------------------------------------------
 
 
-def forecast_arima(model: ARIMA, series: pd.Series, periods: int) -> pd.DataFrame:
+def forecast_arima(model: AutoARIMA, series: pd.Series, periods: int) -> pd.DataFrame:
     """Return ARIMA predictions with confidence intervals."""
-    if ARIMA is None:
-        raise ImportError("pmdarima is required for forecast_arima") from _exc_arima
+    if AutoARIMA is None:
+        raise ImportError("statsforecast is required for forecast_arima") from _exc_arima
     freq = series.index.freq or pd.infer_freq(series.index)
     if freq is None:
         raise ValueError("Series index must have a frequency")
     start = series.index[-1] + pd.tseries.frequencies.to_offset(freq)
     idx = pd.date_range(start=start, periods=periods, freq=freq)
 
-    preds, conf = model.predict(n_periods=periods, return_conf_int=True)
+    res = model.predict(h=periods, level=[95])
+    if isinstance(res, pd.DataFrame):
+        preds = res["mean"].to_numpy()
+        lower = res.get("lo-95", pd.Series([float("nan")] * periods)).to_numpy()
+        upper = res.get("hi-95", pd.Series([float("nan")] * periods)).to_numpy()
+    else:  # pragma: no cover - fallback when predict does not return DataFrame
+        preds = res
+        lower = [float("nan")] * periods
+        upper = [float("nan")] * periods
     return pd.DataFrame(
-        {
-            "forecast": preds,
-            "lower_ci": conf[:, 0],
-            "upper_ci": conf[:, 1],
-        },
-        index=idx,
+        {"forecast": preds, "lower_ci": lower, "upper_ci": upper}, index=idx
     )
 
 

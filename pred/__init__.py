@@ -29,7 +29,7 @@ try:  # Optional dependency
 except Exception as _exc_arima:  # pragma: no cover - optional
 
     def fit_all_arima(*_a, **_k):
-        raise ImportError("pmdarima is required for fit_all_arima") from _exc_arima
+        raise ImportError("statsforecast is required for fit_all_arima") from _exc_arima
 
 
 from .train_xgboost import train_xgb_model, train_all_granularities
