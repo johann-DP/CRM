@@ -4111,12 +4111,13 @@ __all__ = [
     "cluster_evaluation_metrics",
     "optimize_clusters",
     "dbscan_evaluation_metrics",
+    "load_datasets",
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
-    "plot_silhouette_diagram",
     "plot_pca_stability_bars",
     "plot_pca_individuals",
     "plot_scatter_ellipses",
+    "export_report_to_pdf",
 ]
 
 
