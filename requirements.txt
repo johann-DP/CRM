@@ -23,11 +23,10 @@ flake8
 pathlib~=1.0.1
 joblib~=1.5.1
 
-fpdf
+fpdf2
 prophet
 statsforecast
-xgboost
-catboost
-statsforecast
+
+catboost==1.2.8
 tensorflow_cpu
 keras
