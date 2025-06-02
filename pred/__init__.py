@@ -34,9 +34,16 @@ except Exception as _exc_arima:  # pragma: no cover - optional
 
 from .train_xgboost import train_xgb_model, train_all_granularities
 from .compare_granularities import build_performance_table, plot_metric_comparison
+
+# Prophet-related helpers are optional to avoid hard dependency during tests
+try:  # pragma: no cover - import may fail when Prophet is missing
+    from .prophet_models import fit_prophet_models
+    from .future_forecast import forecast_prophet
+except Exception:  # pragma: no cover - keep usable without Prophet
+    fit_prophet_models = None
+    forecast_prophet = None
 from .future_forecast import (
     forecast_arima,
-    forecast_prophet,
     forecast_xgb,
     forecast_lstm,
 )
@@ -47,7 +54,6 @@ __all__ = [
     "build_timeseries",
     "preprocess_series",
     "preprocess_all",
-    "fit_prophet_models",
     "fit_all_arima",
     "train_xgb_model",
     "train_all_granularities",
@@ -59,7 +65,12 @@ __all__ = [
     "build_performance_table",
     "plot_metric_comparison",
     "forecast_arima",
-    "forecast_prophet",
     "forecast_xgb",
     "forecast_lstm",
 ]
+
+if fit_prophet_models is not None:
+    __all__.insert(6, "fit_prophet_models")
+
+if forecast_prophet is not None:
+    __all__.insert(-3, "forecast_prophet")

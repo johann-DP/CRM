@@ -24,3 +24,6 @@ pathlib~=1.0.1
 joblib~=1.5.1
 
 fpdf
+prophet
+pmdarima
+xgboost

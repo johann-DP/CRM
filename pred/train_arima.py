@@ -16,7 +16,10 @@ except Exception as _exc_arima:  # pragma: no cover - optional
 
 # Optionally imported so that ``summary()`` outputs the standard statsmodels
 # results table.
-import statsmodels.api as sm  # noqa: F401  # used indirectly by auto_arima
+try:  # pragma: no cover - optional dependency
+    import statsmodels.api as sm  # noqa: F401  # used indirectly by auto_arima
+except Exception:  # pragma: no cover - ignore if not installed
+    sm = None
 
 
 # ---------------------------------------------------------------------------
