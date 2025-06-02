@@ -47,6 +47,11 @@ from .future_forecast import (
     forecast_xgb,
     forecast_lstm,
 )
+from .catboost_forecast import (
+    prepare_supervised,
+    rolling_forecast_catboost,
+    forecast_future_catboost,
+)
 
 __all__ = [
     "load_won_opportunities",
@@ -67,6 +72,9 @@ __all__ = [
     "forecast_arima",
     "forecast_xgb",
     "forecast_lstm",
+    "prepare_supervised",
+    "rolling_forecast_catboost",
+    "forecast_future_catboost",
 ]
 
 if fit_prophet_models is not None:

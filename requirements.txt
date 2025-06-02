@@ -27,3 +27,4 @@ fpdf
 prophet
 pmdarima
 xgboost
+catboost
