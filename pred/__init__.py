@@ -13,6 +13,7 @@ from .lstm_forecast import (
     train_lstm_model,
     quick_predict_check,
 )
+from .evaluate_models import evaluate_all_models
 
 __all__ = [
     "load_won_opportunities",
@@ -25,4 +26,5 @@ __all__ = [
     "build_lstm_model",
     "train_lstm_model",
     "quick_predict_check",
+    "evaluate_all_models",
 ]
