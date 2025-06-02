@@ -9,6 +9,12 @@ import numpy as np
 
 import pandas as pd
 import yaml
+from joblib import dump, load
+
+try:  # optional dependency for large datasets
+    import dask.dataframe as dd
+except Exception:  # pragma: no cover - dask not installed
+    dd = None
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 
@@ -17,9 +23,30 @@ from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 # Data loading and filtering
 # ---------------------------------------------------------------------------
 
+
 def _load_data(path: Path) -> pd.DataFrame:
-    """Read the CSV file and parse the closing date."""
-    df = pd.read_csv(path)
+    """Read the CSV file and parse the closing date.
+
+    If the file contains several hundred thousand rows and :mod:`dask` is
+    available, ``dask.dataframe`` is used to limit memory usage.
+    """
+    if dd is not None:
+        try:
+            # Rough heuristic based on line count
+            with open(path, "r", encoding="utf-8") as fh:
+                for i, _ in enumerate(fh):
+                    if i > 300_000:
+                        break
+            big = i > 300_000
+        except Exception:  # pragma: no cover - file read issues
+            big = False
+    else:
+        big = False
+
+    if dd is not None and big:
+        df = dd.read_csv(path).compute()
+    else:
+        df = pd.read_csv(path)
     if "Date de clôture" not in df.columns:
         raise ValueError("'Date de clôture' column missing")
     df["Date de clôture"] = pd.to_datetime(
@@ -40,6 +67,7 @@ def _filter_status(df: pd.DataFrame) -> pd.DataFrame:
 # Dataset splitting
 # ---------------------------------------------------------------------------
 
+
 def _split_sets(
     df: pd.DataFrame, test_start: str, test_end: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -56,6 +84,7 @@ def _split_sets(
 # ---------------------------------------------------------------------------
 # Feature encoding
 # ---------------------------------------------------------------------------
+
 
 def _encode_features(
     train: pd.DataFrame,
@@ -104,6 +133,7 @@ def _encode_features(
 # Conversion rate time series
 # ---------------------------------------------------------------------------
 
+
 def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
     df_closed = df[df["Statut_final"].notna()].copy()
     df_closed = df_closed.set_index("Date de clôture")
@@ -116,26 +146,33 @@ def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
 # Main preprocessing routine
 # ---------------------------------------------------------------------------
 
+
 def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
+    """Preprocess the lead scoring dataset and cache intermediate files."""
+
     lead_cfg = cfg["lead_scoring"]
     csv_path = Path(lead_cfg["input_path"])
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    data_dir = out_dir / "data_cache"
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     df = _load_data(csv_path)
     df = _filter_status(df)
 
-    train, val, test = _split_sets(
-        df, lead_cfg["test_start"], lead_cfg["test_end"]
-    )
+    train, val, test = _split_sets(df, lead_cfg["test_start"], lead_cfg["test_end"])
 
-    X_train, X_val, X_test = _encode_features(
-        train,
-        val,
-        test,
-        lead_cfg["cat_features"],
-        lead_cfg["numeric_features"],
-    )
+    cache_file = data_dir / "encoded_features.joblib"
+    if cache_file.exists():
+        X_train, X_val, X_test = load(cache_file)
+    else:
+        X_train, X_val, X_test = _encode_features(
+            train,
+            val,
+            test,
+            lead_cfg["cat_features"],
+            lead_cfg["numeric_features"],
+        )
+        dump((X_train, X_val, X_test), cache_file)
     y_train = train["is_won"]
     y_val = val["is_won"]
     y_test = test["is_won"]
@@ -146,20 +183,22 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     ts_conv_rate_train = ts_conv[:start]
     ts_conv_rate_test = ts_conv[start:]
 
-    df_prophet_train = ts_conv_rate_train[["conv_rate"]].rename(columns={"conv_rate": "y"})
+    df_prophet_train = ts_conv_rate_train[["conv_rate"]].rename(
+        columns={"conv_rate": "y"}
+    )
     df_prophet_train = df_prophet_train.rename_axis("ds").reset_index()
 
-    # Export datasets
-    X_train.to_csv(out_dir / "X_train.csv", index=False)
-    y_train.to_csv(out_dir / "y_train.csv", index=False)
-    X_val.to_csv(out_dir / "X_val.csv", index=False)
-    y_val.to_csv(out_dir / "y_val.csv", index=False)
-    X_test.to_csv(out_dir / "X_test.csv", index=False)
-    y_test.to_csv(out_dir / "y_test.csv", index=False)
+    # Export datasets for potential reuse
+    X_train.to_csv(data_dir / "X_train.csv", index=False)
+    y_train.to_csv(data_dir / "y_train.csv", index=False)
+    X_val.to_csv(data_dir / "X_val.csv", index=False)
+    y_val.to_csv(data_dir / "y_val.csv", index=False)
+    X_test.to_csv(data_dir / "X_test.csv", index=False)
+    y_test.to_csv(data_dir / "y_test.csv", index=False)
 
-    ts_conv_rate_train.to_csv(out_dir / "ts_conv_rate_train.csv")
-    ts_conv_rate_test.to_csv(out_dir / "ts_conv_rate_test.csv")
-    df_prophet_train.to_csv(out_dir / "df_prophet_train.csv", index=False)
+    ts_conv_rate_train.to_csv(data_dir / "ts_conv_rate_train.csv")
+    ts_conv_rate_test.to_csv(data_dir / "ts_conv_rate_test.csv")
+    df_prophet_train.to_csv(data_dir / "df_prophet_train.csv", index=False)
 
 
 def preprocess(cfg: Dict[str, Dict]):
@@ -187,21 +226,24 @@ def preprocess(cfg: Dict[str, Dict]):
 
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
 
-    X_train = pd.read_csv(out_dir / "X_train.csv")
-    y_train = pd.read_csv(out_dir / "y_train.csv").squeeze()
-    X_val = pd.read_csv(out_dir / "X_val.csv")
-    y_val = pd.read_csv(out_dir / "y_val.csv").squeeze()
-    X_test = pd.read_csv(out_dir / "X_test.csv")
-    y_test = pd.read_csv(out_dir / "y_test.csv").squeeze()
+    X_train = pd.read_csv(data_dir / "X_train.csv")
+    y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
+    X_val = pd.read_csv(data_dir / "X_val.csv")
+    y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+    X_test = pd.read_csv(data_dir / "X_test.csv")
+    y_test = pd.read_csv(data_dir / "y_test.csv").squeeze()
 
     ts_conv_train = pd.read_csv(
-        out_dir / "ts_conv_rate_train.csv", index_col=0, parse_dates=True
+        data_dir / "ts_conv_rate_train.csv", index_col=0, parse_dates=True
     )
     ts_conv_test = pd.read_csv(
-        out_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
+        data_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
     )
-    df_prophet_train = pd.read_csv(out_dir / "df_prophet_train.csv", parse_dates=["ds"])
+    df_prophet_train = pd.read_csv(
+        data_dir / "df_prophet_train.csv", parse_dates=["ds"]
+    )
 
     return (
         X_train,
@@ -219,6 +261,7 @@ def preprocess(cfg: Dict[str, Dict]):
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Preprocess lead scoring dataset")

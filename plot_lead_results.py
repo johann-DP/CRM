@@ -18,6 +18,7 @@ from sklearn.calibration import calibration_curve
 # Plotting utilities
 # ---------------------------------------------------------------------------
 
+
 def _plot_roc(ax, y_true, probas, labels):
     """Plot ROC curves for several models on ``ax``."""
     for proba, label in zip(probas, labels):
@@ -92,6 +93,7 @@ def _plot_metrics_bar(ax, metrics):
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Generate lead scoring plots")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
@@ -102,19 +104,26 @@ def main(argv: list[str] | None = None) -> None:
 
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
     fig_dir = out_dir / "figures"
     os.makedirs(fig_dir, exist_ok=True)
 
-    X_test = pd.read_csv(out_dir / "X_test.csv")
-    y_test = pd.read_csv(out_dir / "y_test.csv").squeeze()
-    ts_conv_rate_test = pd.read_csv(out_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True)["conv_rate"]
-    pred_arima = pd.read_csv(out_dir / "pred_arima.csv", index_col=0, parse_dates=True).squeeze()
-    pred_prophet = pd.read_csv(out_dir / "pred_prophet.csv", index_col=0, parse_dates=True).squeeze()
-    metrics = pd.read_csv(out_dir / "lead_metrics_summary.csv")
+    X_test = pd.read_csv(data_dir / "X_test.csv")
+    y_test = pd.read_csv(data_dir / "y_test.csv").squeeze()
+    ts_conv_rate_test = pd.read_csv(
+        data_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
+    )["conv_rate"]
+    pred_arima = pd.read_csv(
+        data_dir / "pred_arima.csv", index_col=0, parse_dates=True
+    ).squeeze()
+    pred_prophet = pd.read_csv(
+        data_dir / "pred_prophet.csv", index_col=0, parse_dates=True
+    ).squeeze()
+    metrics = pd.read_csv(data_dir / "lead_metrics_summary.csv")
 
-    proba_xgb = pd.read_csv(out_dir / "proba_xgboost.csv").squeeze()
-    proba_cat = pd.read_csv(out_dir / "proba_catboost.csv").squeeze()
-    proba_lstm = pd.read_csv(out_dir / "proba_lstm.csv").squeeze()
+    proba_xgb = pd.read_csv(data_dir / "proba_xgboost.csv").squeeze()
+    proba_cat = pd.read_csv(data_dir / "proba_catboost.csv").squeeze()
+    proba_lstm = pd.read_csv(data_dir / "proba_lstm.csv").squeeze()
 
     labels = ["XGBoost", "CatBoost", "LSTM"]
     probas = [proba_xgb, proba_cat, proba_lstm]

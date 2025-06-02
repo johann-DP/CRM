@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import multiprocessing as mp
 from pathlib import Path
 import yaml
 
@@ -32,7 +33,7 @@ from train_lead_models import (
     train_arima_conv_rate,
     train_prophet_conv_rate,
 )
-from evaluate_lead_models import evaluate_all
+from evaluate_lead_models import evaluate_lead_models
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -42,6 +43,8 @@ def main(argv: list[str] | None = None) -> None:
 
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
+
+    mp.set_start_method("forkserver", force=True)
 
     (
         X_train,
@@ -59,9 +62,9 @@ def main(argv: list[str] | None = None) -> None:
     # Classification models
     # ------------------------------------------------------------------
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-        fut_xgb = ex.submit(train_xgboost_lead, cfg)
-        fut_cat = ex.submit(train_catboost_lead, cfg)
-        fut_lstm = ex.submit(train_lstm_lead, cfg)
+        fut_xgb = ex.submit(train_xgboost_lead, cfg, X_train, y_train, X_val, y_val)
+        fut_cat = ex.submit(train_catboost_lead, cfg, X_train, y_train, X_val, y_val)
+        fut_lstm = ex.submit(train_lstm_lead, cfg, X_train, y_train, X_val, y_val)
 
         model_xgb, metrics_xgb = fut_xgb.result()
         model_cat, metrics_cat = fut_cat.result()
@@ -71,13 +74,20 @@ def main(argv: list[str] | None = None) -> None:
     # Forecast models
     # ------------------------------------------------------------------
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        fut_arima = ex.submit(train_arima_conv_rate, cfg)
-        fut_prophet = ex.submit(train_prophet_conv_rate, cfg)
+        fut_arima = ex.submit(
+            train_arima_conv_rate,
+            cfg,
+            ts_conv_train["conv_rate"],
+            ts_conv_test["conv_rate"],
+        )
+        fut_prophet = ex.submit(
+            train_prophet_conv_rate, cfg, df_prophet_train, ts_conv_test["conv_rate"]
+        )
 
         model_arima, metrics_arima = fut_arima.result()
         model_prophet, metrics_prophet = fut_prophet.result()
 
-    df_metrics = evaluate_all(cfg)
+    df_metrics = evaluate_lead_models(cfg, X_test, y_test, ts_conv_test["conv_rate"])
     print(df_metrics.to_string(index=False))
 
     lead_cfg = cfg.get("lead_scoring", {})

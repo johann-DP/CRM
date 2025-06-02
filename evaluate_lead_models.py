@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 import pickle
 
 import joblib
@@ -29,22 +29,28 @@ def _safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return np.mean(np.abs((y_pred[mask] - y_true[mask]) / y_true[mask])) * 100
 
 
-def evaluate_lead_models(cfg: Dict[str, Dict]) -> pd.DataFrame:
+def evaluate_lead_models(
+    cfg: Dict[str, Dict],
+    X_test: Optional[pd.DataFrame] = None,
+    y_test: Optional[pd.Series] = None,
+    ts_conv_rate_test: Optional[pd.Series] = None,
+) -> pd.DataFrame:
     """Return metrics for lead scoring classification and forecast models."""
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
     models_dir = out_dir / "models"
 
     # ------------------------------------------------------------------
     # Load datasets
     # ------------------------------------------------------------------
-    X_test = pd.read_csv(out_dir / "X_test.csv")
-    y_test = pd.read_csv(out_dir / "y_test.csv").squeeze()
-    ts_conv_rate_test = (
-        pd.read_csv(out_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True)[
-            "conv_rate"
-        ]
-    )
+    if X_test is None or y_test is None:
+        X_test = pd.read_csv(data_dir / "X_test.csv")
+        y_test = pd.read_csv(data_dir / "y_test.csv").squeeze()
+    if ts_conv_rate_test is None:
+        ts_conv_rate_test = pd.read_csv(
+            data_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
+        )["conv_rate"]
 
     # ------------------------------------------------------------------
     # Load models
@@ -68,6 +74,7 @@ def evaluate_lead_models(cfg: Dict[str, Dict]) -> pd.DataFrame:
     # Classification models
     # ------------------------------------------------------------------
     def _add_clf(name: str, proba: np.ndarray) -> None:
+        pd.Series(proba).to_csv(data_dir / f"proba_{name}.csv", index=False)
         logloss = log_loss(y_test, proba)
         auc = roc_auc_score(y_test, proba)
         prec, rec, f1, _ = precision_recall_fscore_support(
@@ -94,6 +101,9 @@ def evaluate_lead_models(cfg: Dict[str, Dict]) -> pd.DataFrame:
     # ------------------------------------------------------------------
     h = len(ts_conv_rate_test)
     pred_arima = arima_model.forecast(steps=h)
+    pd.Series(pred_arima, index=ts_conv_rate_test.index).to_csv(
+        data_dir / "pred_arima.csv"
+    )
     metrics.append(
         {
             "model": "arima",
@@ -107,6 +117,7 @@ def evaluate_lead_models(cfg: Dict[str, Dict]) -> pd.DataFrame:
     future = prophet_model.make_future_dataframe(periods=h, freq="M")
     forecast = prophet_model.predict(future)
     pred_prophet = forecast.set_index("ds")["yhat"].iloc[-h:]
+    pred_prophet.to_csv(data_dir / "pred_prophet.csv")
     metrics.append(
         {
             "model": "prophet",
@@ -118,7 +129,7 @@ def evaluate_lead_models(cfg: Dict[str, Dict]) -> pd.DataFrame:
     )
 
     df_metrics = pd.DataFrame(metrics)
-    out_file = out_dir / "lead_metrics_summary.csv"
+    out_file = data_dir / "lead_metrics_summary.csv"
     df_metrics.to_csv(out_file, index=False)
     return df_metrics
 
