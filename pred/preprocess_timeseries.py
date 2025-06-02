@@ -25,6 +25,10 @@ def load_and_aggregate(cfg: Dict[str, str]) -> Tuple[pd.Series, pd.Series, pd.Se
     df = df.dropna(subset=[cfg["date_col"]])
     df = df.set_index(cfg["date_col"])
 
+    # Remove any observations beyond 1 March 2025 to avoid using future data
+    cutoff = pd.Timestamp("2025-03-01")
+    df = df.loc[df.index <= cutoff]
+
     ts_monthly = df[cfg["amount_col"]].resample("M").sum().fillna(0)
     ts_quarterly = df[cfg["amount_col"]].resample("Q").sum().fillna(0)
     ts_yearly = df[cfg["amount_col"]].resample("A").sum().fillna(0)
