@@ -14,11 +14,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import json
 from pathlib import Path
-from typing import Any, Dict, Mapping
-
-import yaml
+from typing import Dict
 
 from .aggregate_revenue import build_timeseries
 from .preprocess_timeseries import preprocess_all
@@ -102,31 +99,29 @@ def evaluate_all(m, q, y, *, jobs: int) -> Dict[str, Dict[str, Dict[str, float]]
 # CLI
 # ---------------------------------------------------------------------------
 
-def _load_config(path: Path) -> Mapping[str, Any]:
-    with open(path, "r", encoding="utf-8") as fh:
-        if path.suffix.lower() in {".yaml", ".yml"}:
-            return yaml.safe_load(fh)
-        return json.load(fh)
-
-
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Run forecasting pipeline")
-    p.add_argument("--config", default="config.yaml", help="Chemin du fichier de configuration")
+    p.add_argument("--config", default="config.yaml", help="Chemin du fichier de configuration YAML")
     p.add_argument("--jobs", type=int, default=1, help="Nombre de processus paralleles")
     args = p.parse_args(argv)
 
-    cfg = _load_config(Path(args.config))
-    csv = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
-    out_dir = Path(cfg.get("output_dir", "."))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    monthly, quarterly, yearly = build_timeseries(csv)
+    import yaml
+
+    with open(args.config, "r", encoding="utf-8") as fh:
+        cfg = yaml.safe_load(fh)
+
+    csv_path = Path(cfg["input_file_cleaned_3_multi"])
+    output_dir = Path(cfg["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    monthly, quarterly, yearly = build_timeseries(csv_path)
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
     table = build_performance_table(results)
 
     print(table.to_string())
-    table.to_csv(out_dir / "model_performance.csv")
+    table.to_csv(output_dir / "model_performance.csv")
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper

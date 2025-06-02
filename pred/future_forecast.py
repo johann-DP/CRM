@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import pandas as pd
-from pmdarima.arima import ARIMA
-from prophet import Prophet
+try:  # pragma: no cover - optional dependency
+    from pmdarima.arima import ARIMA
+except Exception:  # pragma: no cover - handle missing lib
+    ARIMA = None
+try:  # pragma: no cover - optional dependency
+    from prophet import Prophet
+except Exception:  # pragma: no cover - handle missing lib
+    Prophet = None
 from xgboost import XGBRegressor
 from sklearn.preprocessing import MinMaxScaler
 
@@ -17,6 +23,8 @@ from .train_xgboost import _to_supervised
 
 def forecast_arima(model: ARIMA, series: pd.Series, periods: int) -> pd.DataFrame:
     """Return ARIMA predictions with confidence intervals."""
+    if ARIMA is None:
+        raise ImportError("pmdarima is required for ARIMA forecasts")
     freq = series.index.freq or pd.infer_freq(series.index)
     if freq is None:
         raise ValueError("Series index must have a frequency")
@@ -40,6 +48,8 @@ def forecast_arima(model: ARIMA, series: pd.Series, periods: int) -> pd.DataFram
 
 def forecast_prophet(model: Prophet, series: pd.Series, periods: int) -> pd.DataFrame:
     """Return Prophet predictions with confidence intervals."""
+    if Prophet is None:
+        raise ImportError("prophet is required for Prophet forecasts")
     freq = series.index.freq or pd.infer_freq(series.index) or "M"
     future = model.make_future_dataframe(periods=periods, freq=freq)
     forecast = model.predict(future)
