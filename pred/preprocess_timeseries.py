@@ -70,9 +70,9 @@ def preprocess_all(
     yearly: pd.Series,
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """Clean monthly, quarterly and yearly time series."""
-    monthly_clean = preprocess_series(monthly, freq="M")
-    quarterly_clean = preprocess_series(quarterly, freq="Q")
-    yearly_clean = preprocess_series(yearly, freq="A")
+    monthly_clean = preprocess_series(monthly, freq="ME")
+    quarterly_clean = preprocess_series(quarterly, freq="QE")
+    yearly_clean = preprocess_series(yearly, freq="YE")
     return monthly_clean, quarterly_clean, yearly_clean
 
 
