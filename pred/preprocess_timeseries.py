@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+def load_and_aggregate(cfg: Dict[str, str]) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """Return aggregated revenue series filtered on won opportunities."""
+
+    df = pd.read_csv(
+        cfg["csv_path"],
+        parse_dates=[cfg["date_col"]],
+        dayfirst=True,
+        dtype={cfg["amount_col"]: float},
+    )
+
+    df = df[df[cfg["status_col"]] == cfg["won_value"]].copy()
+    df[cfg["date_col"]] = pd.to_datetime(
+        df[cfg["date_col"]], dayfirst=True, errors="coerce"
+    )
+    df = df.dropna(subset=[cfg["date_col"]])
+    df = df.set_index(cfg["date_col"])
+
+    ts_monthly = df[cfg["amount_col"]].resample("M").sum().fillna(0)
+    ts_quarterly = df[cfg["amount_col"]].resample("Q").sum().fillna(0)
+    ts_yearly = df[cfg["amount_col"]].resample("A").sum().fillna(0)
+
+    return ts_monthly, ts_quarterly, ts_yearly
 
 
 # ---------------------------------------------------------------------------
@@ -92,9 +116,20 @@ def main() -> None:  # pragma: no cover - CLI helper
 
     parser = argparse.ArgumentParser(description="Preprocess aggregated time series")
     parser.add_argument("csv", help="Path to cleaned CRM CSV file")
+    parser.add_argument("--date-col", default="Date de fin actualisée")
+    parser.add_argument("--status-col", default="Statut commercial")
+    parser.add_argument("--won-value", default="Gagné")
+    parser.add_argument("--amount-col", default="Total recette réalisé")
     args = parser.parse_args()
 
-    monthly, quarterly, yearly = aggregate_revenue.build_timeseries(Path(args.csv))
+    cfg = {
+        "csv_path": Path(args.csv),
+        "date_col": args.date_col,
+        "status_col": args.status_col,
+        "won_value": args.won_value,
+        "amount_col": args.amount_col,
+    }
+    monthly, quarterly, yearly = load_and_aggregate(cfg)
     m_c, q_c, y_c = preprocess_all(monthly, quarterly, yearly)
 
     _summarize(monthly, m_c, "monthly")
@@ -102,8 +137,8 @@ def main() -> None:  # pragma: no cover - CLI helper
     _summarize(yearly, y_c, "yearly")
 
 
-if __name__ == "__main__":
-    # Only executed when running as a script
-    from . import aggregate_revenue
+__all__ = ["load_and_aggregate", "preprocess_series", "preprocess_all"]
 
+
+if __name__ == "__main__":
     main()

@@ -5,7 +5,11 @@ from .aggregate_revenue import (
     aggregate_revenue,
     build_timeseries,
 )
-from .preprocess_timeseries import preprocess_series, preprocess_all
+from .preprocess_timeseries import (
+    load_and_aggregate,
+    preprocess_series,
+    preprocess_all,
+)
 from .lstm_forecast import (
     create_lstm_sequences,
     scale_lstm_data,
@@ -57,6 +61,7 @@ __all__ = [
     "load_won_opportunities",
     "aggregate_revenue",
     "build_timeseries",
+    "load_and_aggregate",
     "preprocess_series",
     "preprocess_all",
     "fit_all_arima",
