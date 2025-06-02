@@ -248,25 +248,25 @@ python compare_pca_umap.py --config config.yaml --dataset raw \
 
 ## Simple PCA analysis
 
-Use `simple_pca.py` to quickly compute a Principal Component Analysis on a CSV export of the CRM data.
+Use `phase4bis/simple_pca.py` to quickly compute a Principal Component Analysis on a CSV export of the CRM data.
 It removes the `Code Analytique` column, standardises the numerical variables and saves a scree plot
 and a table of explained variance.
 
 ```bash
-python simple_pca.py CRM_data.csv
+python phase4bis/simple_pca.py
 ```
 
 This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
 
 ## Running newly added scripts
 
-`run_all_since_commit.py` helps execute every Python script introduced after a
-given commit. Use it to test utilities added since `b362e454`::
+`run_all_since_commit.py` executes every Python script present in the
+`phase4bis` directory. Use it to run all helper utilities in one go::
 
 ```bash
-python run_all_since_commit.py --since b362e454 --jobs 4
+python phase4bis/run_all_since_commit.py --jobs 4
 ```
 
 When `--jobs` is greater than one, scripts run in parallel; otherwise they are
-executed sequentially. Outputs are written either in the working directory or in
-the directory set by `output_dir` in `config.yaml`.
+executed sequentially. Outputs are written in the directory set by
+`output_dir` in `config.yaml`.

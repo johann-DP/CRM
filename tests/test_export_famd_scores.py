@@ -1,6 +1,6 @@
 import pandas as pd
 from pathlib import Path
-from export_famd_scores import export_famd_scores
+from phase4bis.export_famd_scores import export_famd_scores
 
 
 def test_export_famd_scores(tmp_path: Path):

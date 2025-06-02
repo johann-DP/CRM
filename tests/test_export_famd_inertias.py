@@ -1,6 +1,6 @@
 import pandas as pd
 from pathlib import Path
-from export_famd_inertias import export_famd_inertias
+from phase4bis.export_famd_inertias import export_famd_inertias
 
 
 def test_export_famd_inertias(tmp_path: Path):
