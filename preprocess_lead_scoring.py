@@ -162,6 +162,60 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     df_prophet_train.to_csv(out_dir / "df_prophet_train.csv", index=False)
 
 
+def preprocess(cfg: Dict[str, Dict]):
+    """Return the datasets produced by :func:`preprocess_lead_scoring`.
+
+    This convenience wrapper simply calls :func:`preprocess_lead_scoring` and
+    loads the generated CSV files back into memory.  It is used by the main
+    pipeline so that downstream functions can directly consume the data without
+    dealing with intermediate files.
+
+    Parameters
+    ----------
+    cfg : dict
+        Configuration dictionary containing a ``lead_scoring`` section.
+
+    Returns
+    -------
+    tuple
+        ``(X_train, y_train, X_val, y_val, X_test, y_test, ts_conv_train,
+        ts_conv_test, df_prophet_train)`` where each element is a
+        :class:`pandas.DataFrame` or :class:`pandas.Series`.
+    """
+
+    preprocess_lead_scoring(cfg)
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+
+    X_train = pd.read_csv(out_dir / "X_train.csv")
+    y_train = pd.read_csv(out_dir / "y_train.csv").squeeze()
+    X_val = pd.read_csv(out_dir / "X_val.csv")
+    y_val = pd.read_csv(out_dir / "y_val.csv").squeeze()
+    X_test = pd.read_csv(out_dir / "X_test.csv")
+    y_test = pd.read_csv(out_dir / "y_test.csv").squeeze()
+
+    ts_conv_train = pd.read_csv(
+        out_dir / "ts_conv_rate_train.csv", index_col=0, parse_dates=True
+    )
+    ts_conv_test = pd.read_csv(
+        out_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
+    )
+    df_prophet_train = pd.read_csv(out_dir / "df_prophet_train.csv", parse_dates=["ds"])
+
+    return (
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        X_test,
+        y_test,
+        ts_conv_train,
+        ts_conv_test,
+        df_prophet_train,
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
