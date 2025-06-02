@@ -164,8 +164,11 @@ def main(argv: list[str] | None = None) -> None:
     print(table.to_string())
     table.to_csv(out_file)
 
-    # Generate illustrative figures in the same output directory
-    make_plots_main(str(output_dir), csv_path=str(csv_path))
+    make_plots_main(
+        output_dir=str(output_dir),
+        csv_path=str(csv_path),
+        metrics=table,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper

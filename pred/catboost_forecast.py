@@ -198,11 +198,11 @@ def forecast_future_catboost(
 
         features = {f"lag{i+1}": last_vals.iloc[-(i + 1)] for i in range(k)}
         if freq == "M":
-            features["month"] = dt.month
+            features["month"] = str(dt.month)
         elif freq == "Q":
-            features["quarter"] = dt.quarter
+            features["quarter"] = str(dt.quarter)
         else:
-            features["year"] = dt.year
+            features["year"] = str(dt.year)
 
         X_future = pd.DataFrame(features, index=[dt])
         yhat = float(model_full.predict(X_future)[0])

@@ -113,7 +113,7 @@ def plot_metrics(metrics: pd.DataFrame, out: Path) -> None:
     plt.close()
 
 
-def main(output_dir: str = "output_dir", *, csv_path: str = "phase3_cleaned_multivariate.csv") -> None:
+def main(output_dir: str = "output_dir", *, csv_path: str, metrics: pd.DataFrame | None = None) -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -130,14 +130,8 @@ def main(output_dir: str = "output_dir", *, csv_path: str = "phase3_cleaned_mult
     plot_with_forecasts(quarterly, "Q", out_path / "recette_quarterly_with_forecasts.png")
     plot_with_forecasts(yearly, "A", out_path / "recette_yearly_with_forecasts.png")
 
-    # Placeholder metrics example
-    data = {
-        "MAE_monthly": [1, 2, 3, 4, 5],
-        "RMSE_monthly": [1, 2, 3, 4, 5],
-        "MAPE_monthly": [1, 2, 3, 4, 5],
-    }
-    metrics = pd.DataFrame(data, index=["catboost", "xgboost", "arima", "lstm", "prophet"])
-    plot_metrics(metrics, out_path / "metrics_comparison.png")
+    if metrics is not None:
+        plot_metrics(metrics, out_path / "metrics_comparison.png")
 
 
 if __name__ == "__main__":  # pragma: no cover - simple CLI
