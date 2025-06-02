@@ -21,6 +21,7 @@ import argparse
 import concurrent.futures
 import subprocess
 from pathlib import Path
+import sys
 
 
 def run(cmd: list[str]) -> bool:
@@ -80,7 +81,7 @@ def _command(path: Path, config: Path) -> list[str] | None:
         # available in the repository; skip automatic execution.
         return None
 
-    cmd = ["python", str(path)]
+    cmd = [sys.executable, str(path)]
     if _needs_config(path):
         cmd += ["--config", str(config)]
     extra = _EXTRA_ARGS.get(path.name)
@@ -93,7 +94,7 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Run scripts added since a commit")
     p.add_argument("--since", default="b362e454", help="Base commit")
     p.add_argument("--config", default="config.yaml", help="Configuration file")
-    p.add_argument("--jobs", type=int, default=1, help="Number of parallel scripts")
+    p.add_argument("--jobs", type=int, default=12, help="Number of parallel scripts")
     args = p.parse_args(argv)
 
     cfg = Path(args.config)
