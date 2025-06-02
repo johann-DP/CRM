@@ -176,6 +176,9 @@ def forecast_future_catboost(
     )
     model_full.fit(X_full, y_full, cat_features=cat_feat)
 
+    # Preserve the training column order so prediction data is consistent
+    feature_order = list(X_full.columns)
+
     last_date = series_clean.index[-1]
     future_dates = pd.date_range(
         start=last_date + pd.tseries.frequencies.to_offset(freq),
@@ -196,15 +199,17 @@ def forecast_future_catboost(
             )
             last_vals = reindexed.ffill().iloc[-k:]
 
-        features = {f"lag{i+1}": last_vals.iloc[-(i + 1)] for i in range(k)}
+        # Build feature dictionary in the same column order as training
         if freq == "M":
-            features["month"] = str(dt.month)
+            features = {"month": str(dt.month)}
         elif freq == "Q":
-            features["quarter"] = str(dt.quarter)
+            features = {"quarter": str(dt.quarter)}
         else:
-            features["year"] = str(dt.year)
+            features = {"year": str(dt.year)}
+        for i in range(1, k + 1):
+            features[f"lag{i}"] = last_vals.iloc[-i]
 
-        X_future = pd.DataFrame(features, index=[dt])
+        X_future = pd.DataFrame(features, index=[dt])[feature_order]
         # Ensure categorical columns are strings as required by CatBoost
         for col in cat_feat:
             X_future[col] = X_future[col].astype(str)
