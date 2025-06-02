@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import List, Tuple
+import os
 
 import numpy as np
 import pandas as pd
@@ -34,18 +35,23 @@ def prepare_supervised(series: pd.Series, freq: str) -> pd.DataFrame:
 
     if freq == "M":
         k = 12
-        df["month"] = df.index.month.astype(str)
+        df["month"] = df.index.month
     elif freq == "Q":
         k = 4
-        df["quarter"] = df.index.quarter.astype(str)
+        df["quarter"] = df.index.quarter
     elif freq == "A":
         k = 3
-        df["year"] = df.index.year.astype(str)
+        df["year"] = df.index.year
     else:  # pragma: no cover - invalid frequency
         raise ValueError("freq must be 'M', 'Q' or 'A'")
 
     for lag in range(1, k + 1):
         df[f"lag{lag}"] = df["y"].shift(lag)
+
+    # Convert categorical columns to string before dropping NaNs
+    for col in ("month", "quarter", "year"):
+        if col in df.columns:
+            df[col] = df[col].astype(str)
 
     # Drop initial rows with incomplete lag information
     df = df.dropna().copy()
@@ -58,7 +64,9 @@ def prepare_supervised(series: pd.Series, freq: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def rolling_forecast_catboost(
-    df_sup: pd.DataFrame, freq: str
+    df_sup: pd.DataFrame,
+    freq: str,
+    test_size: int | None = None,
 ) -> Tuple[List[float], List[float]]:
     """Evaluate CatBoost model with a rolling forecast.
 
@@ -69,14 +77,16 @@ def rolling_forecast_catboost(
     """
 
     if freq == "M":
-        n_test = 12
+        default_test = 12
         cat_feat = ["month"]
     elif freq == "Q":
-        n_test = 4
+        default_test = 4
         cat_feat = ["quarter"]
     else:
-        n_test = 2
+        default_test = 2
         cat_feat = ["year"]
+
+    n_test = test_size or default_test
 
     df_train = df_sup.iloc[:-n_test].copy()
     df_test = df_sup.iloc[-n_test:].copy()
@@ -88,8 +98,10 @@ def rolling_forecast_catboost(
         raise ImportError("catboost is required for CatBoost forecasting")
 
     for i in range(n_test):
-        X_train = df_train.drop(columns=["y"])
+        X_train = df_train.drop(columns=["y"]).copy()
         y_train = df_train["y"]
+        for col in cat_feat:
+            X_train[col] = X_train[col].astype(str)
 
         model = CatBoostRegressor(
             iterations=500,
@@ -97,11 +109,14 @@ def rolling_forecast_catboost(
             depth=6,
             random_seed=42,
             verbose=False,
+            thread_count=os.cpu_count(),
         )
         model.fit(X_train, y_train, cat_features=cat_feat)
 
         row_test = df_test.iloc[i]
         X_next = row_test.drop(labels=["y"]).to_frame().T
+        for col in cat_feat:
+            X_next[col] = X_next[col].astype(str)
         y_pred = float(model.predict(X_next)[0])
         y_true = float(row_test["y"])
 
@@ -157,6 +172,7 @@ def forecast_future_catboost(
         depth=6,
         random_seed=42,
         verbose=False,
+        thread_count=os.cpu_count(),
     )
     model_full.fit(X_full, y_full, cat_features=cat_feat)
 
@@ -182,13 +198,16 @@ def forecast_future_catboost(
 
         features = {f"lag{i+1}": last_vals.iloc[-(i + 1)] for i in range(k)}
         if freq == "M":
-            features["month"] = dt.month
+            features["month"] = str(dt.month)
         elif freq == "Q":
-            features["quarter"] = dt.quarter
+            features["quarter"] = str(dt.quarter)
         else:
-            features["year"] = dt.year
+            features["year"] = str(dt.year)
 
         X_future = pd.DataFrame(features, index=[dt])
+        # Ensure categorical columns are strings as required by CatBoost
+        for col in cat_feat:
+            X_future[col] = X_future[col].astype(str)
         yhat = float(model_full.predict(X_future)[0])
         forecasts.append((dt, yhat))
         history.loc[dt] = yhat
