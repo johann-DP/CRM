@@ -34,13 +34,13 @@ def prepare_supervised(series: pd.Series, freq: str) -> pd.DataFrame:
 
     if freq == "M":
         k = 12
-        df["month"] = df.index.month
+        df["month"] = df.index.month.astype(str)
     elif freq == "Q":
         k = 4
-        df["quarter"] = df.index.quarter
+        df["quarter"] = df.index.quarter.astype(str)
     elif freq == "A":
         k = 3
-        df["year"] = df.index.year
+        df["year"] = df.index.year.astype(str)
     else:  # pragma: no cover - invalid frequency
         raise ValueError("freq must be 'M', 'Q' or 'A'")
 
