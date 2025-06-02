@@ -36,7 +36,6 @@ catboost==1.2.8
 # ------------------ Séries temporelles avancées ------------------
 statsforecast==2.0.1
 prophet==1.1.7
-pystan==2.19.1.1
 cmdstanpy==1.2.5
 
 # ------------------ Deep Learning ------------------
