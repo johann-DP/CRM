@@ -13,7 +13,25 @@ from .lstm_forecast import (
     train_lstm_model,
     quick_predict_check,
 )
-from .train_arima import fit_all_arima
+
+try:  # Optional dependency
+    from .prophet_models import fit_prophet_models  # type: ignore
+except Exception as _exc_prophet:  # pragma: no cover - optional
+
+    def fit_prophet_models(*_a, **_k):
+        raise ImportError(
+            "prophet is required for fit_prophet_models"  # noqa: B904
+        ) from _exc_prophet
+
+
+try:  # Optional dependency
+    from .train_arima import fit_all_arima  # type: ignore
+except Exception as _exc_arima:  # pragma: no cover - optional
+
+    def fit_all_arima(*_a, **_k):
+        raise ImportError("pmdarima is required for fit_all_arima") from _exc_arima
+
+
 from .train_xgboost import train_xgb_model, train_all_granularities
 from .compare_granularities import build_performance_table, plot_metric_comparison
 

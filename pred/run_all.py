@@ -17,6 +17,8 @@ import concurrent.futures
 from pathlib import Path
 from typing import Dict
 
+import yaml
+
 from .aggregate_revenue import build_timeseries
 from .preprocess_timeseries import preprocess_all
 from .evaluate_models import (
@@ -31,6 +33,7 @@ from .compare_granularities import build_performance_table
 # ---------------------------------------------------------------------------
 # Evaluation helpers
 # ---------------------------------------------------------------------------
+
 
 def _eval_arima(m, q, y) -> Dict[str, Dict[str, float]]:
     return {
@@ -99,20 +102,20 @@ def evaluate_all(m, q, y, *, jobs: int) -> Dict[str, Dict[str, Dict[str, float]]
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Run forecasting pipeline")
-    p.add_argument("--config", default="config.yaml", help="Chemin du fichier de configuration YAML")
+    p.add_argument(
+        "--config", default="config.yaml", help="Fichier de configuration YAML"
+    )
     p.add_argument("--jobs", type=int, default=1, help="Nombre de processus paralleles")
     args = p.parse_args(argv)
-
-    import yaml
 
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
 
-    csv_path = Path(cfg["input_file_cleaned_3_multi"])
-    output_dir = Path(cfg["output_dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
+    output_dir = Path(cfg.get("output_dir", "."))
 
     monthly, quarterly, yearly = build_timeseries(csv_path)
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
@@ -120,8 +123,10 @@ def main(argv: list[str] | None = None) -> None:
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
     table = build_performance_table(results)
 
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_file = output_dir / "model_performance.csv"
     print(table.to_string())
-    table.to_csv(output_dir / "model_performance.csv")
+    table.to_csv(out_file)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper
