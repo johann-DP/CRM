@@ -17,6 +17,12 @@ from .prophet_models import fit_prophet_models
 from .train_arima import fit_all_arima
 from .train_xgboost import train_xgb_model, train_all_granularities
 from .compare_granularities import build_performance_table, plot_metric_comparison
+from .future_forecast import (
+    forecast_arima,
+    forecast_prophet,
+    forecast_xgb,
+    forecast_lstm,
+)
 
 __all__ = [
     "load_won_opportunities",
@@ -35,4 +41,8 @@ __all__ = [
     "quick_predict_check",
     "build_performance_table",
     "plot_metric_comparison",
+    "forecast_arima",
+    "forecast_prophet",
+    "forecast_xgb",
+    "forecast_lstm",
 ]
