@@ -6,7 +6,7 @@ from .aggregate_revenue import (
     build_timeseries,
 )
 from .preprocess_timeseries import preprocess_series, preprocess_all
-from .train_arima import fit_all_arima
+from .prophet_models import fit_prophet_models
 
 __all__ = [
     "load_won_opportunities",
@@ -14,5 +14,5 @@ __all__ = [
     "build_timeseries",
     "preprocess_series",
     "preprocess_all",
-    "fit_all_arima",
+    "fit_prophet_models",
 ]
