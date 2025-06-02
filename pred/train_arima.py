@@ -9,11 +9,17 @@ import pandas as pd
 # ``auto_arima`` performs a grid-search over different (p, d, q) orders and
 # optionally seasonal (P, D, Q, m) orders to minimise the AIC.  It returns an
 # already fitted model.
-from pmdarima import auto_arima
+try:  # pragma: no cover - optional dependency
+    from pmdarima import auto_arima
+except Exception:  # pragma: no cover - gracefully handle missing lib
+    auto_arima = None
 
 # Optionally imported so that ``summary()`` outputs the standard statsmodels
 # results table.
-import statsmodels.api as sm  # noqa: F401  # used indirectly by auto_arima
+try:  # pragma: no cover - optional dependency
+    import statsmodels.api as sm  # noqa: F401  # used indirectly by auto_arima
+except Exception:  # pragma: no cover - ignore if not installed
+    sm = None
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +40,9 @@ def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> auto_arima:
     m : int
         Number of observations per cycle for the seasonal component.
     """
+    if auto_arima is None:
+        raise ImportError("pmdarima is required for ARIMA models")
+
     model = auto_arima(
         series,
         seasonal=seasonal,

@@ -270,3 +270,20 @@ python phase4bis/run_all_since_commit.py --jobs 4
 When `--jobs` is greater than one, scripts run in parallel; otherwise they are
 executed sequentially. Outputs are written in the directory set by
 `output_dir` in `config.yaml`.
+
+## Exécution des modules de prédiction
+
+Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
+`pred`. Il construit les séries temporelles de revenu à partir du dataset
+``cleaned_3_multi`` fourni par la phase 3 (chemin défini dans ``config.yaml``),
+les prétraite puis évalue tous les modèles (ARIMA, Prophet, XGBoost et
+LSTM). Le tableau résumant les performances est sauvegardé dans
+``model_performance.csv`` dans ``output_dir``.
+
+Lancement du pipeline :
+
+```bash
+python -m pred.run_all --config config.yaml --jobs 4
+```
+
+Lorsque `--jobs` est supérieur à un, chaque modèle est évalué en parallèle.
