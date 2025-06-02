@@ -33,6 +33,7 @@ from .catboost_forecast import (
     rolling_forecast_catboost,
 )
 from .compare_granularities import build_performance_table
+from .make_plots import main as make_plots_main
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +163,9 @@ def main(argv: list[str] | None = None) -> None:
     out_file = output_dir / "model_performance.csv"
     print(table.to_string())
     table.to_csv(out_file)
+
+    # Generate illustrative figures in the same output directory
+    make_plots_main(str(output_dir), csv_path=str(csv_path))
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper

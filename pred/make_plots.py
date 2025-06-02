@@ -113,12 +113,11 @@ def plot_metrics(metrics: pd.DataFrame, out: Path) -> None:
     plt.close()
 
 
-def main(output_dir: str = "output_dir") -> None:
+def main(output_dir: str = "output_dir", *, csv_path: str = "phase3_cleaned_multivariate.csv") -> None:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    csv_path = Path("phase3_cleaned_multivariate.csv")
-    df = load_original(csv_path)
+    df = load_original(Path(csv_path))
     plot_scatter(df, out_path / "recette_vs_date.png", sort_dates=False)
     plot_scatter(df, out_path / "recette_vs_date_sorted.png", sort_dates=True)
 
