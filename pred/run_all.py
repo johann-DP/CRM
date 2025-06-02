@@ -6,9 +6,6 @@ computes evaluation metrics for all available models.  Training and
 evaluation of each model run in parallel when several ``--jobs`` are
 specified.
 
-The path to the cleaned dataset is read from ``config.yaml`` so that the
-forecasting pipeline uses the same files as the rest of the project.
-
 Usage::
 
     python -m pred.run_all --config config.yaml [--jobs N]
@@ -19,7 +16,7 @@ import argparse
 import concurrent.futures
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 import yaml
 
@@ -105,7 +102,7 @@ def evaluate_all(m, q, y, *, jobs: int) -> Dict[str, Dict[str, Dict[str, float]]
 # CLI
 # ---------------------------------------------------------------------------
 
-def _load_config(path: Path) -> dict[str, Any]:
+def _load_config(path: Path) -> Mapping[str, Any]:
     with open(path, "r", encoding="utf-8") as fh:
         if path.suffix.lower() in {".yaml", ".yml"}:
             return yaml.safe_load(fh)
@@ -115,28 +112,21 @@ def _load_config(path: Path) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Run forecasting pipeline")
     p.add_argument("--config", default="config.yaml", help="Chemin du fichier de configuration")
-    p.add_argument("--jobs", type=int, help="Nombre de processus paralleles")
+    p.add_argument("--jobs", type=int, default=1, help="Nombre de processus paralleles")
     args = p.parse_args(argv)
 
     cfg = _load_config(Path(args.config))
-    csv_path = cfg.get("input_file_cleaned_3_multi")
-    if not csv_path:
-        p.error("'input_file_cleaned_3_multi' manquant dans la configuration")
-
-    jobs = args.jobs if args.jobs is not None else int(cfg.get("n_jobs", 1))
-
-    monthly, quarterly, yearly = build_timeseries(Path(csv_path))
-    monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
-
-    results = evaluate_all(monthly, quarterly, yearly, jobs=jobs)
-    table = build_performance_table(results)
-
+    csv = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
     out_dir = Path(cfg.get("output_dir", "."))
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / "model_performance.csv"
+    monthly, quarterly, yearly = build_timeseries(csv)
+    monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
+
+    results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
+    table = build_performance_table(results)
 
     print(table.to_string())
-    table.to_csv(out_file)
+    table.to_csv(out_dir / "model_performance.csv")
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper

@@ -274,10 +274,11 @@ executed sequentially. Outputs are written in the directory set by
 ## Exécution des modules de prédiction
 
 Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
-`pred`. Il construit les séries temporelles de revenu à partir d'un export
-CRM, les prétraite puis évalue tous les modèles (ARIMA, Prophet, XGBoost et
-LSTM). Le tableau résumant les performances est sauvegardé dans
-`model_performance.csv`.
+`pred`. Il charge automatiquement le fichier CSV nettoyé produit en phase 3
+(cleared_3_multi) à partir du `config.yaml`, construit les séries temporelles
+de revenu, les prétraite puis évalue tous les modèles (ARIMA, Prophet,
+XGBoost et LSTM). Le tableau résumant les performances est sauvegardé dans
+`model_performance.csv` sous le répertoire défini par `output_dir`.
 
 Lancement du pipeline :
 
@@ -285,7 +286,4 @@ Lancement du pipeline :
 python -m pred.run_all --config config.yaml --jobs 4
 ```
 
-Le script lit `input_file_cleaned_3_multi` dans `config.yaml` pour charger
-le jeu de données fourni par la phase 3. Lorsque `--jobs` est supérieur à
-un, chaque modèle est évalué en parallèle et le tableau est enregistré dans
-le répertoire `output_dir` sous le nom `model_performance.csv`.
+Lorsque `--jobs` est supérieur à un, chaque modèle est évalué en parallèle.
