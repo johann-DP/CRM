@@ -147,10 +147,11 @@ def export_report_to_pdf(
     tables: Mapping[str, Union[pd.DataFrame, str, Path]],
     output_path: str | Path,
 ) -> Path | None:
-    """Create a structured PDF gathering all figures.
+    """Create a structured PDF gathering all figures and tables.
 
-    Tables are accepted for backward compatibility but ignored so that the
-    generated report only contains graphics.
+    Each page receives a numbered caption so that the reader can easily
+    reference the figures and tables. The function mirrors
+    :func:`phase4_functions.export_report_to_pdf`.
     """
     if not isinstance(output_path, (str, Path)):
         raise TypeError("output_path must be a path-like object")
@@ -303,18 +304,84 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, "Table des matières", ln=1, align="C")
-        pdf.ln(4)
-        pdf.set_font("Helvetica", size=12)
-        for title, pg in toc:
-            pdf.cell(0, 8, f"{title} ...... {pg}", ln=1)
+        fig_num = 1
+        table_num = 1
+        tmp_paths: list[str] = []
 
-        for title, img in pages:
-            pdf.add_page()
-            _add_title(title)
-            pdf.image(img, w=180)
+        for name, table in tables.items():
+            if isinstance(table, (str, Path)):
+                try:
+                    table = pd.read_csv(table)
+                except Exception:
+                    continue
+            if not isinstance(table, pd.DataFrame):
+                continue
+            img_path = _fig_to_path(_table_to_figure(table, name), tmp_paths)
+            if img_path:
+                pdf.add_page()
+                _add_title(name)
+                pdf.image(img_path, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Tableau {table_num}: {name}", ln=1, align="C")
+                table_num += 1
+
+        for dataset in sorted(grouped):
+            for method in sorted(grouped[dataset]):
+                items = grouped[dataset][method]
+                pages = [
+                    (
+                        _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                        "Nuages de points bruts",
+                    )
+                ]
+                for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                    key = f"{algo}_kgrid"
+                    if key in items:
+                        pages.append((items[key], f"Clusters {algo}"))
+                pages += [
+                    (items.get("cluster_grid"), "Nuages clusterisés"),
+                    (items.get("analysis_summary"), "Analyse détaillée"),
+                ]
+                for fig, label in pages:
+                    img = _fig_to_path(fig, tmp_paths)
+                    if img:
+                        pdf.add_page()
+                        _add_title(f"{dataset} – {method.upper()} – {label}")
+                        pdf.image(img, w=180)
+                        pdf.ln(2)
+                        pdf.set_font("Helvetica", size=10)
+                        pdf.cell(
+                            0,
+                            6,
+                            f"Figure {fig_num}: {dataset} – {method.upper()} – {label}",
+                            ln=1,
+                            align="C",
+                        )
+                        fig_num += 1
+
+        for name, fig in segment_figs.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _add_title(f"% NA par segment – {ds}")
+                pdf.image(img, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Figure {fig_num}: % NA par segment – {ds}", ln=1, align="C")
+                fig_num += 1
+
+        for name, fig in remaining.items():
+            img = _fig_to_path(fig, tmp_paths)
+            if img:
+                pdf.add_page()
+                _add_title(name)
+                pdf.image(img, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Figure {fig_num}: {name}", ln=1, align="C")
+                fig_num += 1
 
         pdf.output(str(out))
 
@@ -336,32 +403,70 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
-            fig, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
-            ax.axis("off")
-            ax.text(0.5, 0.9, "Table des matières", fontsize=16, ha="center", va="top")
-            y = 0.8
-            for title, pg in toc:
-                ax.text(0.05, y, title, ha="left", va="top", fontsize=12)
-                ax.text(0.95, y, str(pg), ha="right", va="top", fontsize=12)
-                y -= 0.04
-            pdf_backend.savefig(fig, dpi=300)
-            plt.close(fig)
+            def _save_page(caption: str, fig: plt.Figure | Path | str | None) -> None:
+                if fig is None:
+                    return
+                if isinstance(fig, (str, Path)):
+                    img = plt.imread(fig)
+                    f, ax = plt.subplots()
+                    ax.imshow(img)
+                    ax.axis("off")
+                    f.suptitle(caption, fontsize=12)
+                    pdf_backend.savefig(f, dpi=300)
+                    plt.close(f)
+                else:
+                    fig.suptitle(caption, fontsize=12)
+                    pdf_backend.savefig(fig, dpi=300)
+                    plt.close(fig)
 
-            def _save_page(title: str, path: str) -> None:
-                img = plt.imread(path)
-                f, ax = plt.subplots()
-                ax.imshow(img)
-                ax.axis("off")
-                f.suptitle(title, fontsize=12)
-                pdf_backend.savefig(f, dpi=300)
-                plt.close(f)
+            fig_num = 1
+            table_num = 1
 
-            for title, img in pages:
-                _save_page(title, img)
+            for name, table in tables.items():
+                if isinstance(table, (str, Path)):
+                    try:
+                        table = pd.read_csv(table)
+                    except Exception:
+                        continue
+                if not isinstance(table, pd.DataFrame):
+                    continue
+                img = _table_to_figure(table, name)
+                _save_page(f"Tableau {table_num}: {name}", img)
+                table_num += 1
 
+            for dataset in sorted(grouped):
+                for method in sorted(grouped[dataset]):
+                    items = grouped[dataset][method]
+                    pages = [
+                        (
+                            _combine_scatter(items.get("scatter_2d"), items.get("scatter_3d")),
+                            "Nuages de points bruts",
+                        )
+                    ]
+                    for algo in ["kmeans", "agglomerative", "gmm", "spectral"]:
+                        key = f"{algo}_kgrid"
+                        if key in items:
+                            pages.append((items[key], f"Clusters {algo}"))
+                    pages += [
+                        (items.get("cluster_grid"), "Nuages clusterisés"),
+                        (items.get("analysis_summary"), "Analyse détaillée"),
+                    ]
+                    for fig, label in pages:
+                        _save_page(
+                            f"Figure {fig_num}: {dataset} – {method.upper()} – {label}",
+                            fig,
+                        )
+                        fig_num += 1
 
-            # Tables used to be converted to figures and appended here, but
-            # they are skipped in the streamlined report.
+            for name, fig in segment_figs.items():
+                ds = name.rsplit("_segment_summary_2", 1)[0]
+                _save_page(f"Figure {fig_num}: % NA par segment – {ds}", fig)
+                fig_num += 1
+
+            for name, fig in remaining.items():
+                _save_page(f"Figure {fig_num}: {name}", fig)
+                fig_num += 1
+
 
         plt.close("all")
 

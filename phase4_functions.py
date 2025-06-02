@@ -4453,8 +4453,10 @@ def export_report_to_pdf(
 ) -> Path | None:
     """Create a structured PDF gathering all figures from phase 4.
 
-    Tables are no longer inserted into the final report. The ``tables``
-    argument is accepted for backward compatibility but ignored.
+    All figures and tables are inserted with a numbered caption so that
+    the report can be read independently of the filenames. When
+    ``fpdf`` is available a landscape layout is used; otherwise the
+    function falls back to :class:`matplotlib.backends.backend_pdf.PdfPages`.
 
     The function tries to use :mod:`fpdf` for advanced layout. If ``fpdf`` is not
     available, it falls back to :class:`matplotlib.backends.backend_pdf.PdfPages`
@@ -4591,21 +4593,29 @@ def export_report_to_pdf(
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         pdf.cell(0, 10, f"Généré le {today}", ln=1, align="C")
 
-        factor_methods = {"pca", "mca", "famd", "mfa"}
-        nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
-        added_sections: set[str] = set()
-
-        def _ensure_section(key: str, title: str) -> None:
-            if key not in added_sections:
-                added_sections.add(key)
-                pdf.add_page()
-                _add_title(title, 16)
-
-
-        # Tables were previously inserted here, but they are now skipped to
-        # keep the report focused on the figures and heatmaps.
-
+        fig_num = 1
+        table_num = 1
         tmp_paths: list[str] = []
+
+        # Insert tables first so they appear after the title page
+        for name, table in tables.items():
+            if isinstance(table, (str, Path)):
+                try:
+                    table = pd.read_csv(table)
+                except Exception:
+                    continue
+            if not isinstance(table, pd.DataFrame):
+                continue
+            img_path = _fig_to_path(_table_to_figure(table, name), tmp_paths)
+            if img_path:
+                pdf.add_page()
+                _add_title(name)
+                pdf.image(img_path, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Tableau {table_num}: {name}", ln=1, align="C")
+                table_num += 1
+
 
         for dataset in sorted(grouped):
             for method in sorted(grouped[dataset]):
@@ -4641,6 +4651,16 @@ def export_report_to_pdf(
                         pdf.add_page()
                         _add_title(f"{dataset} – {method.upper()} – {label}")
                         pdf.image(img, w=180)
+                        pdf.ln(2)
+                        pdf.set_font("Helvetica", size=10)
+                        pdf.cell(
+                            0,
+                            6,
+                            f"Figure {fig_num}: {dataset} – {method.upper()} – {label}",
+                            ln=1,
+                            align="C",
+                        )
+                        fig_num += 1
 
         if cluster_imgs:
             _ensure_section("cluster", "Section 3 : Analyse de Clustering")
@@ -4661,6 +4681,10 @@ def export_report_to_pdf(
                 ds = name.rsplit("_segment_summary_2", 1)[0]
                 _add_title(f"% NA par segment – {ds}")
                 pdf.image(img, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Figure {fig_num}: % NA par segment – {ds}", ln=1, align="C")
+                fig_num += 1
 
         for name, fig in remaining.items():
             img = _fig_to_path(fig, tmp_paths)
@@ -4668,6 +4692,10 @@ def export_report_to_pdf(
                 pdf.add_page()
                 _add_title(name)
                 pdf.image(img, w=180)
+                pdf.ln(2)
+                pdf.set_font("Helvetica", size=10)
+                pdf.cell(0, 6, f"Figure {fig_num}: {name}", ln=1, align="C")
+                fig_num += 1
 
         pdf.output(str(out))
 
@@ -4689,20 +4717,7 @@ def export_report_to_pdf(
             pdf_backend.savefig(fig, dpi=300)
             plt.close(fig)
 
-            factor_methods = {"pca", "mca", "famd", "mfa"}
-            nonlin_methods = {"umap", "pacmap", "phate", "tsne", "trimap"}
-            added_sections: set[str] = set()
-
-            def _ensure_section(key: str, title: str) -> None:
-                if key not in added_sections:
-                    added_sections.add(key)
-                    f, ax = plt.subplots(figsize=(11.69, 8.27), dpi=200)
-                    ax.axis("off")
-                    ax.text(0.5, 0.5, title, ha="center", va="center", fontsize=14, weight="bold")
-                    pdf_backend.savefig(f, dpi=300)
-                    plt.close(f)
-
-            def _save_page(title: str, fig: plt.Figure | Path | str | None) -> None:
+            def _save_page(caption: str, fig: plt.Figure | Path | str | None) -> None:
                 if fig is None:
                     return
                 if isinstance(fig, (str, Path)):
@@ -4710,13 +4725,28 @@ def export_report_to_pdf(
                     f, ax = plt.subplots()
                     ax.imshow(img)
                     ax.axis("off")
-                    f.suptitle(title, fontsize=12)
+                    f.suptitle(caption, fontsize=12)
                     pdf_backend.savefig(f, dpi=300)
                     plt.close(f)
                 else:
-                    fig.suptitle(title, fontsize=12)
+                    fig.suptitle(caption, fontsize=12)
                     pdf_backend.savefig(fig, dpi=300)
                     plt.close(fig)
+
+            fig_num = 1
+            table_num = 1
+
+            for name, table in tables.items():
+                if isinstance(table, (str, Path)):
+                    try:
+                        table = pd.read_csv(table)
+                    except Exception:
+                        continue
+                if not isinstance(table, pd.DataFrame):
+                    continue
+                img = _table_to_figure(table, name)
+                _save_page(f"Tableau {table_num}: {name}", img)
+                table_num += 1
 
             for dataset in sorted(grouped):
                 for method in sorted(grouped[dataset]):
@@ -4747,7 +4777,11 @@ def export_report_to_pdf(
                         (items.get("analysis_summary"), "Analyse détaillée"),
                     ]
                     for fig, label in pages:
-                        _save_page(f"{dataset} – {method.upper()} – {label}", fig)
+                        _save_page(
+                            f"Figure {fig_num}: {dataset} – {method.upper()} – {label}",
+                            fig,
+                        )
+                        fig_num += 1
 
             if cluster_imgs:
                 _ensure_section("cluster", "Section 3 : Analyse de Clustering")
@@ -4759,15 +4793,13 @@ def export_report_to_pdf(
 
             for name, fig in segment_figs.items():
                 ds = name.rsplit("_segment_summary_2", 1)[0]
-                _save_page(f"% NA par segment – {ds}", fig)
+                _save_page(f"Figure {fig_num}: % NA par segment – {ds}", fig)
+                fig_num += 1
 
             for name, fig in remaining.items():
-                _save_page(name, fig)
+                _save_page(f"Figure {fig_num}: {name}", fig)
+                fig_num += 1
 
-
-            # Tables were previously appended to the fallback PDF here. This
-            # step is skipped to avoid including redundant tables in the final
-            # report.
 
         plt.close("all")
 
