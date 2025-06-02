@@ -13,6 +13,7 @@ from .lstm_forecast import (
     train_lstm_model,
     quick_predict_check,
 )
+from .compare_granularities import build_performance_table, plot_metric_comparison
 
 __all__ = [
     "load_won_opportunities",
@@ -25,4 +26,6 @@ __all__ = [
     "build_lstm_model",
     "train_lstm_model",
     "quick_predict_check",
+    "build_performance_table",
+    "plot_metric_comparison",
 ]
