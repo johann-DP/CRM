@@ -19,15 +19,22 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import json
 import subprocess
 from pathlib import Path
+from typing import Any, Mapping
 import sys
+
+import yaml
+
+
+OUTPUT_DIR = Path.cwd()
 
 
 def run(cmd: list[str]) -> bool:
-    """Run ``cmd`` and return ``True`` on success."""
+    """Run ``cmd`` in :data:`OUTPUT_DIR` and return ``True`` on success."""
     print("$", " ".join(cmd))
-    completed = subprocess.run(cmd)
+    completed = subprocess.run(cmd, cwd=OUTPUT_DIR)
     if completed.returncode != 0:
         print(f"Command failed with exit code {completed.returncode}")
         return False
@@ -97,14 +104,26 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--jobs", type=int, default=12, help="Number of parallel scripts")
     args = p.parse_args(argv)
 
-    cfg = Path(args.config)
+    cfg_path = Path(args.config)
 
-    scripts = [_command(pth, cfg) for pth in _new_scripts(args.since)]
+    scripts = [_command(pth, cfg_path) for pth in _new_scripts(args.since)]
     scripts = [cmd for cmd in scripts if cmd]
 
     if not scripts:
         print("No new scripts since", args.since)
         return
+
+    global OUTPUT_DIR
+
+    def _load_config(path: Path) -> Mapping[str, Any]:
+        with open(path, "r", encoding="utf-8") as fh:
+            if path.suffix.lower() in {".yaml", ".yml"}:
+                return yaml.safe_load(fh)
+            return json.load(fh)
+
+    cfg = _load_config(cfg_path)
+    OUTPUT_DIR = Path(cfg.get("output_dir", "."))
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     results: list[bool]
     if args.jobs > 1:

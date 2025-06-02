@@ -873,6 +873,24 @@ def pca_individual_contributions(embeddings: pd.DataFrame) -> pd.DataFrame:
     return coords_sq.div(total, axis=0) * 100
 
 
+def famd_individual_cos2(embeddings: pd.DataFrame) -> pd.DataFrame:
+    """Return cos² of individuals for a FAMD embedding.
+
+    Parameters
+    ----------
+    embeddings:
+        DataFrame returned in the ``embeddings`` key of :func:`run_famd`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Cos² values with individuals as rows and dimensions as columns.
+    """
+    sq = embeddings.pow(2)
+    inertia = sq.sum(axis=1)
+    return sq.div(inertia, axis=0)
+
+
 def mfa_group_contributions(model: Any) -> pd.DataFrame:
     """Return MFA group contributions per axis as percentages.
 
@@ -884,7 +902,7 @@ def mfa_group_contributions(model: Any) -> pd.DataFrame:
     Returns
     -------
     pandas.DataFrame
-        DataFrame with axes as rows (``F1``, ``F2``\, ...) and group names as
+        DataFrame with axes as rows (``F1``, ``F2``\\, ...) and group names as
         columns.  The values express the contribution percentage of each group
         to the corresponding axis.  An additional ``Inertie`` column reports the
         inertia of each axis when available.
@@ -1363,6 +1381,7 @@ def run_umap(
     *,
     metric: str | None = "euclidean",
     n_jobs: int = -1,
+    random_state: int | None = None,
 ) -> Dict[str, Any]:
     """Run UMAP on ``df_active`` and return model and embeddings.
 
@@ -1390,6 +1409,7 @@ def run_umap(
         min_dist=min_dist,
         metric=metric,
         n_jobs=n_jobs,
+        random_state=random_state,
     )
     embedding = reducer.fit_transform(X)
     runtime = time.perf_counter() - start
@@ -1402,6 +1422,7 @@ def run_umap(
         "n_neighbors": n_neighbors,
         "min_dist": min_dist,
         "metric": metric,
+        "random_state": random_state,
     }
     return {
         "model": reducer,
