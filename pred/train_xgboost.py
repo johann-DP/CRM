@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Tuple
+import os
 
 import pandas as pd
 from xgboost import XGBRegressor
@@ -66,6 +67,7 @@ def train_xgb_model(series: pd.Series, n_lags: int, *, add_time_features: bool =
         max_depth=3,
         learning_rate=0.1,
         random_state=42,
+        n_jobs=os.cpu_count(),
         **model_params,
     )
     model.fit(X, y)
