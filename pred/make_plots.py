@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -113,7 +112,19 @@ def plot_metrics(metrics: pd.DataFrame, out: Path) -> None:
     plt.close()
 
 
-def main(output_dir: str = "output_dir", *, csv_path: str, metrics: pd.DataFrame | None = None) -> None:
+def main(output_dir: str = "output_dir", csv_path: str | Path = "phase3_cleaned_multivariate.csv", metrics: pd.DataFrame | None = None) -> None:
+    """Generate all illustrative figures in ``output_dir``.
+
+    Parameters
+    ----------
+    output_dir:
+        Destination folder for the generated PNG files.
+    csv_path:
+        Path to the cleaned multivariate CSV used to load the original data.
+    metrics:
+        Optional metrics table to visualize with ``plot_metrics``.
+    """
+
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -130,8 +141,20 @@ def main(output_dir: str = "output_dir", *, csv_path: str, metrics: pd.DataFrame
     plot_with_forecasts(quarterly, "Q", out_path / "recette_quarterly_with_forecasts.png")
     plot_with_forecasts(yearly, "A", out_path / "recette_yearly_with_forecasts.png")
 
-    if metrics is not None:
-        plot_metrics(metrics, out_path / "metrics_comparison.png")
+    if metrics is None:
+        # Placeholder metrics if none are provided
+        data = {
+            "MAE_monthly": [1, 2, 3, 4, 5],
+            "RMSE_monthly": [1, 2, 3, 4, 5],
+            "MAPE_monthly": [1, 2, 3, 4, 5],
+        }
+        metrics_df = pd.DataFrame(
+            data, index=["catboost", "xgboost", "arima", "lstm", "prophet"]
+        )
+    else:
+        metrics_df = metrics
+
+    plot_metrics(metrics_df, out_path / "metrics_comparison.png")
 
 
 if __name__ == "__main__":  # pragma: no cover - simple CLI

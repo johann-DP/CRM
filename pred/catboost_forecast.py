@@ -205,6 +205,9 @@ def forecast_future_catboost(
             features["year"] = str(dt.year)
 
         X_future = pd.DataFrame(features, index=[dt])
+        # Ensure categorical columns are strings as required by CatBoost
+        for col in cat_feat:
+            X_future[col] = X_future[col].astype(str)
         yhat = float(model_full.predict(X_future)[0])
         forecasts.append((dt, yhat))
         history.loc[dt] = yhat
