@@ -13,7 +13,7 @@ import pandas as pd
 import yaml
 
 import phase4
-from phase4_functions import (
+from phase4.functions import (
     load_datasets,
     prepare_data,
     select_variables,

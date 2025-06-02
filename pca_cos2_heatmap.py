@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import yaml
 
-from phase4_functions import (
+from phase4.functions import (
     load_datasets,
     prepare_data,
     select_variables,

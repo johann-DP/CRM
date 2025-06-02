@@ -2,7 +2,7 @@ import importlib
 import warnings
 
 import phase4
-import phase4_functions as pf
+import phase4.functions as pf
 
 
 def _has_tight_layout_filter():

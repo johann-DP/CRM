@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from pathlib import Path
 from PyPDF2 import PdfReader
-from phase4_functions import export_report_to_pdf
+from phase4.functions import export_report_to_pdf
 from phase4 import concat_pdf_reports
 
 

@@ -4,7 +4,7 @@
 This standalone script loads the raw CRM file, prepares the data and
 runs FAMD on all quantitative and qualitative variables selected by the
 standard helper functions. The "Code Analytique" column is excluded
-through :func:`phase4_functions.select_variables`.
+through :func:`phase4.functions.select_variables`.
 
 The script outputs an "FAMD_scree.png" figure displaying the percentage
 of variance explained by each dimension and optionally exports a
@@ -21,7 +21,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from phase4_functions import (
+from phase4.functions import (
     _read_dataset,
     prepare_data,
     select_variables,
