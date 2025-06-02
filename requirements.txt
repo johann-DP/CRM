@@ -28,3 +28,6 @@ prophet
 statsforecast
 xgboost
 catboost
+statsforecast
+tensorflow_cpu
+keras

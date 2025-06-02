@@ -15,7 +15,7 @@ import pandas as pd
 def load_won_opportunities(
     path: str | Path,
     *,
-    date_col: str = "Date de fin réelle",
+    date_col: str = "Date de fin actualisée",
     status_col: str = "Statut commercial",
     won_values: Iterable[str] | None = None,
     amount_col: str = "Total recette réalisé",
@@ -37,7 +37,7 @@ def load_won_opportunities(
         Column containing the revenue amount.
     """
     if won_values is None:
-        won_values = {"Won", "Gagnée"}
+        won_values = {"Won", "Gagné"}
 
     df = pd.read_csv(path)
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
@@ -67,7 +67,7 @@ def aggregate_revenue(df: pd.DataFrame, amount_col: str) -> Tuple[pd.Series, pd.
 def build_timeseries(
     csv_path: str | Path,
     *,
-    date_col: str = "Date de fin réelle",
+    date_col: str = "Date de fin actualisée",
     status_col: str = "Statut commercial",
     won_values: Iterable[str] | None = None,
     amount_col: str = "Total recette réalisé",
@@ -88,9 +88,9 @@ if __name__ == "__main__":  # pragma: no cover - CLI helper
 
     parser = argparse.ArgumentParser(description="Aggregate revenue per period")
     parser.add_argument("csv", help="Path to cleaned CRM CSV file")
-    parser.add_argument("--date-col", default="Date de fin réelle", help="Closing date column")
+    parser.add_argument("--date-col", default='Date de fin actualisée', help="Closing date column")
     parser.add_argument("--status-col", default="Statut commercial", help="Status column")
-    parser.add_argument("--won", nargs="*", default=["Won", "Gagnée"], help="Values considered as won")
+    parser.add_argument("--won", nargs="*", default=["Gagné"], help="Values considered as won")
     parser.add_argument("--amount-col", default="Total recette réalisé", help="Amount column")
     args = parser.parse_args()
 
