@@ -13,6 +13,9 @@ from .lstm_forecast import (
     train_lstm_model,
     quick_predict_check,
 )
+from .prophet_models import fit_prophet_models
+from .train_arima import fit_all_arima
+from .train_xgboost import train_xgb_model, train_all_granularities
 from .compare_granularities import build_performance_table, plot_metric_comparison
 
 __all__ = [
