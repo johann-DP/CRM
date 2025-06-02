@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict
 import pickle
 from math import sqrt
+import joblib
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,8 @@ import tensorflow as tf
 from tensorflow.keras import layers, Model
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
+from xgboost import XGBClassifier
+from catboost import CatBoostClassifier
 
 try:  # Optional dependency
     from pmdarima import auto_arima as _auto_arima
@@ -111,6 +114,60 @@ def train_lstm_lead(cfg: Dict[str, Dict]):
     print(f"Validation log loss: {logloss_val:.4f}, AUC: {auc_val:.4f}")
 
     return model_lstm
+
+
+def train_xgboost_lead(cfg: Dict[str, Dict]):
+    """Train an XGBoost classifier on the lead scoring dataset."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+
+    X_train = pd.read_csv(out_dir / "X_train.csv")
+    y_train = pd.read_csv(out_dir / "y_train.csv").squeeze()
+    X_val = pd.read_csv(out_dir / "X_val.csv")
+    y_val = pd.read_csv(out_dir / "y_val.csv").squeeze()
+
+    params = lead_cfg.get("xgb_params", {})
+    model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
+    model_xgb.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=params.get("verbose", False))
+
+    model_path = Path(cfg.get("output_dir", ".")) / "models" / "lead_xgb.pkl"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model_xgb, model_path)
+
+    val_pred = model_xgb.predict_proba(X_val)[:, 1]
+    metrics = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    return model_xgb, metrics
+
+
+def train_catboost_lead(cfg: Dict[str, Dict]):
+    """Train a CatBoost classifier on the lead scoring dataset."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+
+    X_train = pd.read_csv(out_dir / "X_train.csv")
+    y_train = pd.read_csv(out_dir / "y_train.csv").squeeze()
+    X_val = pd.read_csv(out_dir / "X_val.csv")
+    y_val = pd.read_csv(out_dir / "y_val.csv").squeeze()
+
+    params = lead_cfg.get("catboost_params", {})
+    model_cat = CatBoostClassifier(**params)
+    model_cat.fit(X_train, y_train, eval_set=(X_val, y_val), verbose=params.get("verbose", False))
+
+    model_path = Path(cfg.get("output_dir", ".")) / "models" / "lead_catboost.cbm"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_cat.save_model(str(model_path))
+
+    val_pred = model_cat.predict_proba(X_val)[:, 1]
+    metrics = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    return model_cat, metrics
 
 
 def train_arima_conv_rate(cfg: Dict[str, Dict]):
@@ -219,5 +276,11 @@ def train_prophet_conv_rate(cfg: Dict[str, Dict]):
     return model_prophet, {"mae": mae, "rmse": rmse, "mape": mape}
 
 
-__all__ = ["train_lstm_lead", "train_arima_conv_rate", "train_prophet_conv_rate"]
+__all__ = [
+    "train_lstm_lead",
+    "train_xgboost_lead",
+    "train_catboost_lead",
+    "train_arima_conv_rate",
+    "train_prophet_conv_rate",
+]
 
