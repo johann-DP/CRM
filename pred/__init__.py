@@ -6,7 +6,13 @@ from .aggregate_revenue import (
     build_timeseries,
 )
 from .preprocess_timeseries import preprocess_series, preprocess_all
-from .train_xgboost import train_xgb_model, train_all_granularities
+from .lstm_forecast import (
+    create_lstm_sequences,
+    scale_lstm_data,
+    build_lstm_model,
+    train_lstm_model,
+    quick_predict_check,
+)
 
 __all__ = [
     "load_won_opportunities",
@@ -14,6 +20,9 @@ __all__ = [
     "build_timeseries",
     "preprocess_series",
     "preprocess_all",
-    "train_xgb_model",
-    "train_all_granularities",
+    "create_lstm_sequences",
+    "scale_lstm_data",
+    "build_lstm_model",
+    "train_lstm_model",
+    "quick_predict_check",
 ]
