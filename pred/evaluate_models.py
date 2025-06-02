@@ -54,7 +54,16 @@ def _evaluate_arima(series: pd.Series, test_size: int, *, seasonal: bool, m: int
         season_length = m if seasonal else 1
         model = AutoARIMA(season_length=season_length)
         model.fit(history.values)
-        pred = float(model.predict(h=1)[0])
+        res = model.predict(h=1)
+        if isinstance(res, dict):
+            pred = float(res["mean"][0])
+        elif hasattr(res, "__getitem__"):
+            try:
+                pred = float(res[0])
+            except Exception:  # pragma: no cover - unexpected format
+                pred = float(res["mean"].iloc[0])
+        else:  # pragma: no cover - fallback
+            pred = float(res)
         preds.append(pred)
         history.loc[test.index[t]] = val
     return _compute_metrics(test.values, preds)

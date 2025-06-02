@@ -25,6 +25,11 @@ from .evaluate_models import (
     _evaluate_prophet,
     _evaluate_xgb,
     _evaluate_lstm,
+    _compute_metrics,
+)
+from .catboost_forecast import (
+    prepare_supervised,
+    rolling_forecast_catboost,
 )
 from .compare_granularities import build_performance_table
 
@@ -66,11 +71,28 @@ def _eval_lstm(m, q, y) -> Dict[str, Dict[str, float]]:
     }
 
 
+def _eval_catboost(m, q, y) -> Dict[str, Dict[str, float]]:
+    dfm = prepare_supervised(m, freq="M")
+    dfq = prepare_supervised(q, freq="Q")
+    dfy = prepare_supervised(y, freq="A")
+
+    preds_m, actuals_m = rolling_forecast_catboost(dfm, freq="M")
+    preds_q, actuals_q = rolling_forecast_catboost(dfq, freq="Q")
+    preds_y, actuals_y = rolling_forecast_catboost(dfy, freq="A")
+
+    return {
+        "monthly": _compute_metrics(actuals_m, preds_m),
+        "quarterly": _compute_metrics(actuals_q, preds_q),
+        "yearly": _compute_metrics(actuals_y, preds_y),
+    }
+
+
 EVAL_FUNCS = {
     "ARIMA": _eval_arima,
     "Prophet": _eval_prophet,
     "XGBoost": _eval_xgb,
     "LSTM": _eval_lstm,
+    "CatBoost": _eval_catboost,
 }
 
 
