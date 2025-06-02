@@ -4113,7 +4113,6 @@ __all__ = [
     "dbscan_evaluation_metrics",
     "plot_cluster_evaluation",
     "plot_combined_silhouette",
-    "plot_silhouette_diagram",
     "plot_pca_stability_bars",
     "plot_pca_individuals",
     "plot_scatter_ellipses",

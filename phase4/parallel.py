@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-from joblib import Parallel, delayed
+import phase4
+from joblib import Parallel as _JoblibParallel, delayed as _joblib_delayed
 
 
 def _run_pipeline_single(config: Dict[str, Any], name: str) -> tuple[str, Dict[str, Any]]:
@@ -35,8 +36,8 @@ def run_pipeline_parallel(
     """Run :func:`phase4.run_pipeline` on several datasets in parallel."""
 
     n_jobs = n_jobs or len(datasets)
-    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+    with phase4.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         results = parallel(
-            delayed(_run_pipeline_single)(config, ds) for ds in datasets
+            phase4.delayed(_run_pipeline_single)(config, ds) for ds in datasets
         )
     return dict(results)
