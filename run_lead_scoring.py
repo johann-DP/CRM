@@ -1,5 +1,21 @@
 #!/usr/bin/env python
-"""Master script orchestrating the lead scoring pipeline."""
+"""Master script orchestrating the lead scoring pipeline.
+
+Pipeline overview
+-----------------
+The preprocessing step from :mod:`preprocess_lead_scoring` must run first as
+it requires the raw CSV export.  Once the datasets are written to disk the
+training routines can be parallelised:
+
+- ``train_xgboost_lead``
+- ``train_catboost_lead``
+- ``train_lstm_lead``
+
+The two forecasting models, ``train_arima_conv_rate`` and
+``train_prophet_conv_rate``, may also run concurrently after preprocessing.
+Finally :mod:`evaluate_lead_models` is executed sequentially once all models
+have been trained and saved.
+"""
 
 from __future__ import annotations
 
