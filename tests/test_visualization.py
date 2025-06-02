@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import phase4_functions as pf
+import phase4.functions as pf
 from sklearn.decomposition import PCA
 
 

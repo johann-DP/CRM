@@ -1,7 +1,7 @@
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import phase4_functions as pf
+import phase4.functions as pf
 
 
 def test_prepare_data_basic():

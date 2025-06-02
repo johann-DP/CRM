@@ -69,14 +69,14 @@ of high-level indicators and figures:
   (Isolation Forest and Local Outlier Factor) illustrated with PCA;
 - summary of all anomalies and export of cleaned datasets.
 
-## Running `phase4.py`
+## Running the Phase 4 pipeline
 
-The main analysis pipeline lives in `phase4.py`. The script requires a
-configuration file in YAML (or JSON) format. A template is provided in
-`config.yaml`. Copy or modify it to suit your dataset and run:
+The main analysis pipeline is implemented in the `phase4` package. It
+requires a configuration file in YAML (or JSON) format. A template is
+provided in `config.yaml`. Copy or modify it to suit your dataset and run:
 
 ```bash
-python phase4.py --config config.yaml
+python -m phase4 --config config.yaml
 ```
 
 To analyse several dataset versions concurrently, list them after the
@@ -84,7 +84,7 @@ To analyse several dataset versions concurrently, list them after the
 of ``output_dir``.
 
 ```bash
-python phase4.py --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
+python -m phase4 --config config.yaml --datasets raw cleaned_1 cleaned_3_multi cleaned_3_univ
 ```
 
 When `output_pdf` is specified in the configuration, this command also
@@ -145,9 +145,10 @@ configuration avoids setting a seed so that all CPU cores can be used.
 ## FAMD scripts removed
 
 The standalone scripts `phase4_famd.py` and `phase4_famd_simple.py` were
-removed on 27/05/2025. Their capabilities are now integrated into
-`phase4.py` and the associated tuning utilities. Use `phase4.py` with a
-configuration file to run FAMD and optionally optimise the number of components.
+removed on 27/05/2025. Their capabilities are now integrated into the
+`phase4` package and the associated tuning utilities. Use `python -m phase4`
+with a configuration file to run FAMD and optionally optimise the number of
+components.
 
 ## Fine tuning MFA
 
@@ -210,11 +211,11 @@ The report now groups these figures into four main sections with dedicated title
 
 ## Standalone report builder
 
-generate_phase4_report.py collects the images exported by `phase4.py` and merges them into a single PDF with the same layout as `export_report_to_pdf`.
+`phase4/generate_report.py` collects the images exported by the main pipeline and merges them into a single PDF with the same layout as `export_report_to_pdf`.
 The script accepts the optional ``--config`` and ``--datasets`` arguments to match your setup.
 
 ```bash
-python generate_phase4_report.py --config config.yaml --datasets raw cleaned_1
+python -m phase4.generate_report --config config.yaml --datasets raw cleaned_1
 ```
 
 When omitted, ``--config`` defaults to ``config.yaml`` and ``--datasets`` processes `raw`, `cleaned_1`, `cleaned_3_multi` and `cleaned_3_univ` in order.

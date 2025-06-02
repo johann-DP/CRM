@@ -1,7 +1,7 @@
 from pathlib import Path
 from PyPDF2 import PdfReader
 
-from create_phase4_cover import create_cover_pdf, TITLE
+from phase4.create_cover import create_cover_pdf, TITLE
 
 
 def test_create_cover_pdf(tmp_path: Path) -> None:
