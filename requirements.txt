@@ -1,32 +1,44 @@
-numpy~=2.2.6
-pandas>=2.2.0
-matplotlib>=3.7
-seaborn~=0.13.2
-Pillow~=11.2.1
-scikit-learn>=1.4
-scipy>=1.10
-diptest~=0.9.0
-matplotlib-venn
-prince==0.16
-openpyxl
-umap-learn~=0.5.7
-phate~=1.0.11
-PyYAML~=6.0.2
-pacmap~=0.8.0
-pypdf2~=3.0.1
-pytest~=8.3.5
+# ------------------ Fondamentaux ------------------
+numpy==2.2.6
+pandas==2.2.3
+matplotlib==3.10.3
+seaborn==0.13.2
+Pillow==11.2.1
+scikit-learn==1.6.1
+scipy==1.15.3
+joblib==1.5.1
+pathlib==1.0.1
 
-xgboost~=2.0
+# ----------------- Visualisation / Analyse -----------------
+matplotlib-venn==1.1.2
+prince==0.16.0
+openpyxl==3.1.5
+umap-learn==0.5.7
+phate==1.0.11
+pacmap==0.8.0
 
-flake8
+# ------------- Manipulation de fichiers PDF / YAML -------------
+PyYAML==6.0.2
+pypdf2==3.0.1
+fpdf2==2.8.3
 
-pathlib~=1.0.1
-joblib~=1.5.1
+# ------------------ Tests / Linting ------------------
+pytest==8.3.5
+flake8==7.2.0
 
-fpdf2
-prophet
-statsforecast
+# ------------------ Méthodes statistiques ------------------
+diptest==0.9.0
 
+# ------------------ Machine Learning & Boosting ------------------
+xgboost==2.1.4
 catboost==1.2.8
-tensorflow_cpu
-keras
+
+# ------------------ Séries temporelles avancées ------------------
+statsforecast==2.0.1
+prophet==1.1.7
+pystan==2.19.1.1
+cmdstanpy==1.2.5
+
+# ------------------ Deep Learning ------------------
+tensorflow_cpu==2.19.0
+keras==3.10.0
