@@ -25,6 +25,6 @@ joblib~=1.5.1
 
 fpdf
 prophet
-pmdarima
+statsforecast
 xgboost
 catboost

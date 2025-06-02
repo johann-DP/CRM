@@ -6,20 +6,13 @@ from typing import Tuple
 
 import pandas as pd
 
-# ``auto_arima`` performs a grid-search over different (p, d, q) orders and
-# optionally seasonal (P, D, Q, m) orders to minimise the AIC.  It returns an
-# already fitted model.
+# ``AutoARIMA`` performs a grid-search over different (p, d, q) orders and
+# optionally seasonal orders to minimise the AIC.  It returns an already fitted
+# model.
 try:  # Optional dependency
-    from pmdarima import auto_arima
+    from statsforecast.models import AutoARIMA
 except Exception as _exc_arima:  # pragma: no cover - optional
-    auto_arima = None
-
-# Optionally imported so that ``summary()`` outputs the standard statsmodels
-# results table.
-try:  # pragma: no cover - optional dependency
-    import statsmodels.api as sm  # noqa: F401  # used indirectly by auto_arima
-except Exception:  # pragma: no cover - ignore if not installed
-    sm = None
+    AutoARIMA = None
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +20,7 @@ except Exception:  # pragma: no cover - ignore if not installed
 # ---------------------------------------------------------------------------
 
 
-def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> auto_arima:
+def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> AutoARIMA:
     """Return the best ARIMA/SARIMA model for ``series``.
 
     Parameters
@@ -41,18 +34,12 @@ def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> auto_arima:
     m : int
         Number of observations per cycle for the seasonal component.
     """
-    if auto_arima is None:
-        raise ImportError("pmdarima is required for ARIMA models") from _exc_arima
+    if AutoARIMA is None:
+        raise ImportError("statsforecast is required for ARIMA models") from _exc_arima
 
-    model = auto_arima(
-        series,
-        seasonal=seasonal,
-        m=m,
-        trace=False,
-        error_action="ignore",
-        suppress_warnings=True,
-        stepwise=True,
-    )
+    season_length = m if seasonal else 1
+    model = AutoARIMA(season_length=season_length)
+    model.fit(series.values)
     return model
 
 
@@ -60,7 +47,7 @@ def fit_all_arima(
     monthly: pd.Series,
     quarterly: pd.Series,
     yearly: pd.Series,
-) -> Tuple[auto_arima, auto_arima, auto_arima]:
+) -> Tuple[AutoARIMA, AutoARIMA, AutoARIMA]:
     """Fit ARIMA/SARIMA models for monthly, quarterly and yearly series."""
     # Monthly data has an obvious yearly cycle -> SARIMA with m=12
     model_monthly = _fit_series(monthly, seasonal=True, m=12)
@@ -71,27 +58,10 @@ def fit_all_arima(
     # Yearly data has too few points for a seasonal component -> plain ARIMA
     model_yearly = _fit_series(yearly, seasonal=False, m=1)
 
-    # Display a summary of each fitted model (orders and AIC)
-    print(
-        "Monthly model:",
-        f"ARIMA{model_monthly.order}x{model_monthly.seasonal_order}",
-        f"AIC={model_monthly.aic():.2f}",
-    )
-    print(model_monthly.summary())
-
-    print(
-        "Quarterly model:",
-        f"ARIMA{model_quarterly.order}x{model_quarterly.seasonal_order}",
-        f"AIC={model_quarterly.aic():.2f}",
-    )
-    print(model_quarterly.summary())
-
-    print(
-        "Yearly model:",
-        f"ARIMA{model_yearly.order}x{model_yearly.seasonal_order}",
-        f"AIC={model_yearly.aic():.2f}",
-    )
-    print(model_yearly.summary())
+    # Display a basic summary of each fitted model
+    print("Monthly model:", model_monthly)
+    print("Quarterly model:", model_quarterly)
+    print("Yearly model:", model_yearly)
 
     return model_monthly, model_quarterly, model_yearly
 
@@ -102,7 +72,7 @@ def fit_all_arima(
 # ARIMA models are defined by the non-seasonal orders (p, d, q) controlling
 # the autoregressive, differencing and moving-average parts.  SARIMA extends
 # this with seasonal orders (P, D, Q, m) where ``m`` is the length of the
-# seasonal cycle.  ``auto_arima`` explores combinations of these parameters and
+# seasonal cycle.  ``AutoARIMA`` explores combinations of these parameters and
 # selects the best model according to the Akaike Information Criterion (AIC).
 #
 # The fitted models returned here are trained on the entire history of each
