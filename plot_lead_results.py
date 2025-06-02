@@ -12,6 +12,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, confusion_matrix
 from sklearn.calibration import calibration_curve
+from xgboost import XGBRegressor
+from statsforecast.models import AutoARIMA
+from prophet import Prophet
+from catboost import CatBoostRegressor
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+
+from pred.train_xgboost import _to_supervised
+from pred.lstm_forecast import create_lstm_sequences
+from pred.catboost_forecast import prepare_supervised, rolling_forecast_catboost
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +99,144 @@ def _plot_metrics_bar(ax, metrics):
     ax.set_ylabel("Value")
     ax.set_title("Classification metrics")
     ax.legend()
+
+
+def _plot_scatter(df: pd.DataFrame, col_date: str, col_val: str, out: Path, *, sort_dates: bool = False) -> None:
+    """Scatter or line plot of ``col_val`` against ``col_date``."""
+    if sort_dates:
+        df = df.sort_values(col_date)
+    plt.figure(figsize=(8, 4))
+    plt.plot(df[col_date], df[col_val], marker=".")
+    plt.xlabel(col_date)
+    plt.ylabel(col_val)
+    plt.tight_layout()
+    plt.savefig(out)
+    plt.close()
+
+
+def _rolling_arima(series: pd.Series, horizon: int, *, seasonal: bool, m: int) -> pd.Series:
+    """Return ARIMA one-step predictions for the last ``horizon`` periods."""
+    history = series.iloc[:-horizon].copy()
+    test = series.iloc[-horizon:]
+    preds = []
+    for t, val in enumerate(test):
+        model = AutoARIMA(season_length=m if seasonal else 1)
+        model.fit(history.values)
+        res = model.predict(h=1)
+        if isinstance(res, pd.DataFrame):
+            pred = float(res["mean"].iloc[0])
+        elif hasattr(res, "__getitem__"):
+            try:
+                pred = float(res[0])
+            except Exception:
+                pred = float(res["mean"].iloc[0])
+        else:
+            pred = float(res)
+        preds.append(pred)
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index)
+
+
+def _rolling_prophet(series: pd.Series, horizon: int, *, yearly: bool) -> pd.Series:
+    """Return Prophet one-step predictions for ``horizon`` periods."""
+    history = series.iloc[:-horizon].copy()
+    test = series.iloc[-horizon:]
+    preds = []
+    freq = series.index.freqstr or "M"
+    for t, val in enumerate(test):
+        model = Prophet(yearly_seasonality=yearly, weekly_seasonality=False, daily_seasonality=False)
+        df_hist = pd.DataFrame({"ds": history.index, "y": history.values})
+        model.fit(df_hist)
+        future = model.make_future_dataframe(periods=1, freq=freq)
+        forecast = model.predict(future)
+        preds.append(float(forecast.iloc[-1]["yhat"]))
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index)
+
+
+def _rolling_xgb(series: pd.Series, horizon: int, *, n_lags: int, add_time_features: bool) -> pd.Series:
+    """Return XGBoost one-step predictions for ``horizon`` periods."""
+    history = series.iloc[:-horizon].copy()
+    test = series.iloc[-horizon:]
+    preds = []
+    freq = series.index.freqstr or pd.infer_freq(series.index)
+    for t, val in enumerate(test):
+        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        model = XGBRegressor(
+            objective="reg:squarederror",
+            n_estimators=100,
+            max_depth=3,
+            learning_rate=0.1,
+            random_state=42,
+        )
+        model.fit(X_train, y_train)
+
+        next_idx = test.index[t]
+        extended = pd.concat([history, pd.Series([pd.NA], index=[next_idx])])
+        extended = extended.asfreq(freq)
+        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
+        X_pred = X_full.iloc[-1:]
+        pred = float(model.predict(X_pred)[0])
+        preds.append(pred)
+        history.loc[next_idx] = val
+    return pd.Series(preds, index=test.index)
+
+
+def _rolling_lstm(series: pd.Series, horizon: int, *, window: int, epochs: int = 20) -> pd.Series:
+    """Return LSTM one-step predictions for ``horizon`` periods."""
+    train = series.iloc[:-horizon]
+    test = series.iloc[-horizon:]
+    X, y = create_lstm_sequences(train, window)
+    scaler = MinMaxScaler()
+    scaler.fit(np.vstack([X.reshape(-1, 1), y.reshape(-1, 1)]))
+    X_s = scaler.transform(X.reshape(-1, 1)).reshape(X.shape)
+    y_s = scaler.transform(y.reshape(-1, 1)).reshape(-1)
+
+    model = Sequential([LSTM(50, input_shape=(window, 1)), Dense(1)])
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(X_s, y_s, epochs=epochs, batch_size=16, verbose=0)
+
+    history = train.copy()
+    preds = []
+    for t, val in enumerate(test):
+        seq = history.values[-window:].reshape(1, window, 1)
+        seq_s = scaler.transform(seq.reshape(-1, 1)).reshape(1, window, 1)
+        pred_s = model.predict(seq_s, verbose=0)[0, 0]
+        pred = scaler.inverse_transform([[pred_s]])[0, 0]
+        preds.append(float(pred))
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index)
+
+
+def _rolling_catboost(series: pd.Series, freq: str, horizon: int) -> pd.Series:
+    """Return CatBoost one-step predictions for ``horizon`` periods."""
+    df_sup = prepare_supervised(series, freq)
+    preds, _ = rolling_forecast_catboost(df_sup, freq, test_size=horizon)
+    return pd.Series(preds, index=series.index[-horizon:])
+
+
+def _plot_rolling_forecasts(series: pd.Series, freq: str, out: Path) -> None:
+    """Plot observed series with rolling forecasts from several models."""
+    horizon = 60 if freq == "M" else (20 if freq == "Q" else 5)
+    obs = series.tail(horizon)
+
+    arima = _rolling_arima(series, horizon, seasonal=freq != "A", m={"M": 12, "Q": 4, "A": 1}[freq])
+    prophet = _rolling_prophet(series, horizon, yearly=freq != "A")
+    xgb = _rolling_xgb(series, horizon, n_lags={"M": 12, "Q": 4, "A": 3}[freq], add_time_features=True)
+    lstm = _rolling_lstm(series, horizon, window={"M": 12, "Q": 4, "A": 3}[freq])
+    cat = _rolling_catboost(series, freq, horizon)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(obs.index, obs.values, label="observed", color="black")
+    plt.plot(arima.index, arima.values, label="ARIMA", color="red")
+    plt.plot(prophet.index, prophet.values, label="Prophet", color="purple")
+    plt.plot(xgb.index, xgb.values, label="XGBoost", color="blue")
+    plt.plot(cat.index, cat.values, label="CatBoost", color="orange")
+    plt.plot(lstm.index, lstm.values, label="LSTM", color="green")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out)
+    plt.close()
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +320,73 @@ def main(argv: list[str] | None = None) -> None:
     fig.tight_layout()
     fig.savefig(fig_dir / "classification_metrics_barplot.png")
     plt.close(fig)
+
+    # --------------------------------------------------------------
+    # Additional opportunity and forecast visualisations
+    # --------------------------------------------------------------
+    if "input_path" in lead_cfg:
+        try:
+            df_opportunities = pd.read_csv(lead_cfg["input_path"])
+            df_opportunities["Date de clôture"] = pd.to_datetime(
+                df_opportunities["Date de clôture"], dayfirst=True, errors="coerce"
+            )
+        except Exception:
+            df_opportunities = None
+    else:
+        df_opportunities = None
+
+    if df_opportunities is not None and {"Date de clôture", "Total_estime"} <= set(df_opportunities.columns):
+        _plot_scatter(
+            df_opportunities,
+            "Date de clôture",
+            "Total_estime",
+            fig_dir / "total_vs_date.png",
+            sort_dates=False,
+        )
+        _plot_scatter(
+            df_opportunities,
+            "Date de clôture",
+            "Total_estime",
+            fig_dir / "total_vs_date_sorted.png",
+            sort_dates=True,
+        )
+
+        ts = df_opportunities.set_index("Date de clôture")["Total_estime"].dropna()
+        ts_monthly = ts.resample("M").sum()
+        ts_quarterly = ts.resample("Q").sum()
+        ts_yearly = ts.resample("A").sum()
+
+        _plot_rolling_forecasts(ts_monthly, "M", fig_dir / "monthly_forecasts.png")
+        _plot_rolling_forecasts(ts_quarterly, "Q", fig_dir / "quarterly_forecasts.png")
+        _plot_rolling_forecasts(ts_yearly, "A", fig_dir / "yearly_forecasts.png")
+
+    # Metrics comparison barplot across granularities
+    if not metrics.empty:
+        try:
+            df_metrics = metrics.copy()
+            required_cols = [
+                "model",
+                "MAE_monthly",
+                "RMSE_monthly",
+                "MAPE_monthly",
+                "MAE_quarterly",
+                "RMSE_quarterly",
+                "MAPE_quarterly",
+                "MAE_yearly",
+                "RMSE_yearly",
+                "MAPE_yearly",
+            ]
+            if set(required_cols) <= set(df_metrics.columns):
+                fig, ax = plt.subplots(figsize=(12, 6))
+                df_metrics.set_index("model")[required_cols[1:]].plot.bar(ax=ax)
+                ax.set_ylabel("Metric value")
+                ax.set_title("Comparaison des métriques agrégées")
+                ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+                fig.tight_layout()
+                fig.savefig(fig_dir / "metrics_comparison_barplot.png")
+                plt.close(fig)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":  # pragma: no cover - simple CLI

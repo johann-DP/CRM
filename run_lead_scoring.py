@@ -34,6 +34,7 @@ from train_lead_models import (
     train_prophet_conv_rate,
 )
 from evaluate_lead_models import evaluate_lead_models
+from plot_lead_results import main as plot_results
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -95,6 +96,12 @@ def main(argv: list[str] | None = None) -> None:
     report_file = out_dir / "lead_scoring_report.txt"
     try:
         report_file.write_text(df_metrics.to_string(index=False))
+    except Exception:
+        pass
+
+    # Generate all figures summarising the results
+    try:
+        plot_results(["--config", args.config])
     except Exception:
         pass
 
