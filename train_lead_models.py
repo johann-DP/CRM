@@ -1,66 +1,64 @@
+"""Training utilities for lead scoring models."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Tuple
 
 import pandas as pd
-from xgboost import XGBClassifier
 from sklearn.metrics import log_loss, roc_auc_score
-import pickle
+
+try:
+    from catboost import CatBoostClassifier
+except Exception:  # pragma: no cover - optional dependency safeguard
+    CatBoostClassifier = None
 
 
-def train_xgboost_lead(cfg: Dict) -> Tuple[float, float, XGBClassifier]:
-    """Train an XGBoost model on the lead scoring dataset.
+def train_catboost_lead(cfg: Dict[str, Dict]) -> Tuple[CatBoostClassifier, float, float]:
+    """Train a CatBoost model for lead scoring and return it with validation metrics."""
+    if CatBoostClassifier is None:  # pragma: no cover - catboost missing
+        raise ImportError("catboost is required for lead scoring")
 
-    Parameters
-    ----------
-    cfg : dict
-        Global configuration dictionary loaded from YAML. It must contain a
-        ``lead_scoring`` section with the dataset paths and an ``xgb_params``
-        section for the model hyper-parameters.
-
-    Returns
-    -------
-    Tuple[float, float, XGBClassifier]
-        The validation log-loss, the validation AUC and the fitted model.
-    """
     lead_cfg = cfg["lead_scoring"]
-    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
 
-    # Load datasets produced by ``preprocess_lead_scoring.py``
-    X_train = pd.read_csv(out_dir / "X_train.csv")
-    y_train = pd.read_csv(out_dir / "y_train.csv").squeeze()
-    X_val = pd.read_csv(out_dir / "X_val.csv")
-    y_val = pd.read_csv(out_dir / "y_val.csv").squeeze()
+    X_train = pd.read_csv(data_dir / "X_train.csv")
+    y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
+    X_val = pd.read_csv(data_dir / "X_val.csv")
+    y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
 
-    params = cfg["xgb_params"]
-    model_xgb = XGBClassifier(
-        objective="binary:logistic",
-        eval_metric="logloss",
-        n_estimators=params["n_estimators"],
+    cat_features = lead_cfg["cat_features"]
+    params = cfg["cat_params"]
+
+    model_cat = CatBoostClassifier(
+        iterations=params["iterations"],
         learning_rate=params["learning_rate"],
-        max_depth=params["max_depth"],
-        subsample=params["subsample"],
-        colsample_bytree=params["colsample_bytree"],
-        use_label_encoder=False,
-        n_jobs=params["n_jobs"],
+        depth=params["depth"],
+        eval_metric="Logloss",
+        loss_function="Logloss",
+        task_type=params.get("task_type", "CPU"),
+        thread_count=params["thread_count"],
+        random_seed=params["random_seed"],
     )
 
-    model_xgb.fit(
+    model_cat.fit(
         X_train,
         y_train,
-        eval_set=[(X_val, y_val)],
+        cat_features=cat_features,
+        eval_set=(X_val, y_val),
         early_stopping_rounds=params["early_stopping_rounds"],
         verbose=params["verbose"],
     )
 
     models_dir = Path(cfg.get("output_dir", ".")) / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
-    with open(models_dir / "lead_xgb.pkl", "wb") as fh:
-        pickle.dump(model_xgb, fh)
+    model_cat.save_model(models_dir / "lead_catboost.cbm")
 
-    probs_val = model_xgb.predict_proba(X_val)[:, 1]
-    logloss_val = log_loss(y_val, probs_val)
-    auc_val = roc_auc_score(y_val, probs_val)
+    proba_val = model_cat.predict_proba(X_val)[:, 1]
+    logloss_val = log_loss(y_val, proba_val)
+    auc_val = roc_auc_score(y_val, proba_val)
 
-    return logloss_val, auc_val, model_xgb
+    return model_cat, logloss_val, auc_val
+
+
+__all__ = ["train_catboost_lead"]
