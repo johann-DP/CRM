@@ -227,7 +227,7 @@ row of a dataset defined in `config.yaml`. The resulting CSV lists the
 identifier and the first principal components. Example usage:
 
 ```bash
-python export_pca_coordinates.py --config config.yaml --dataset raw \
+python phase4bis/export_pca_coordinates.py --config config.yaml --dataset raw \
     --components 3 --output ACP_coordonnees_individus.csv --sep ';'
 ```
 
@@ -242,7 +242,7 @@ UMAP. The two projections share the same cluster colouring obtained from
 an optimal K-means partition. Example usage:
 
 ```bash
-python compare_pca_umap.py --config config.yaml --dataset raw \
+python phase4bis/compare_pca_umap.py --config config.yaml --dataset raw \
     --n_neighbors 15 --output pca_vs_umap.png
 ```
 
@@ -253,7 +253,7 @@ It removes the `Code Analytique` column, standardises the numerical variables an
 and a table of explained variance.
 
 ```bash
-python simple_pca.py CRM_data.csv
+python phase4bis/simple_pca.py phase4bis/CRM_data.csv
 ```
 
 This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
@@ -264,7 +264,7 @@ This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in t
 given commit. Use it to test utilities added since `b362e454`::
 
 ```bash
-python run_all_since_commit.py --since b362e454 --jobs 4
+python phase4bis/run_all_since_commit.py --since b362e454 --jobs 4
 ```
 
 When `--jobs` is greater than one, scripts run in parallel; otherwise they are

@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-from export_mfa_inertias import export_mfa_inertias
+from phase4bis.export_mfa_inertias import export_mfa_inertias
 
 
 def test_export_mfa_inertias(tmp_path: Path) -> None:

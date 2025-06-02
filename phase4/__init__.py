@@ -4,6 +4,7 @@ warnings.filterwarnings("ignore", message="Tight layout not applied.*", module="
 from . import main as _main
 from . import parallel as _parallel
 from . import functions as _func
+from joblib import Parallel as Parallel, delayed as delayed
 
 _modules = [_main, _parallel, _func]
 
@@ -30,4 +31,7 @@ __all__ = [name for name in globals() if not name.startswith("__")]
 main = _main
 parallel = _parallel
 functions = _func
+
+# Use the version of run_pipeline_parallel from :mod:`main` by default
+run_pipeline_parallel = _main.run_pipeline_parallel
 
