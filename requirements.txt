@@ -16,6 +16,8 @@ pacmap~=0.8.0
 pypdf2~=3.0.1
 pytest~=8.3.5
 
+xgboost~=2.0
+
 flake8
 
 pathlib~=1.0.1
