@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import os
 from pathlib import Path
 from typing import Dict
 
@@ -129,7 +130,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--config", default="config.yaml", help="Fichier de configuration YAML"
     )
-    p.add_argument("--jobs", type=int, default=1, help="Nombre de processus paralleles")
+    p.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count(),
+        help="Nombre de processus paralleles",
+    )
     args = p.parse_args(argv)
 
     with open(args.config, "r", encoding="utf-8") as fh:

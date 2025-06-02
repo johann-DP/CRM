@@ -21,6 +21,7 @@ def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
+from .catboost_forecast import prepare_supervised, rolling_forecast_catboost
 
 from .train_xgboost import _to_supervised
 from .lstm_forecast import create_lstm_sequences, scale_lstm_data, build_lstm_model
@@ -160,6 +161,17 @@ def _evaluate_lstm(series: pd.Series, test_size: int, *, window: int, epochs: in
 
 
 # ---------------------------------------------------------------------------
+# CatBoost rolling forecast
+# ---------------------------------------------------------------------------
+
+def _evaluate_catboost(series: pd.Series, freq: str) -> Dict[str, float]:
+    """Evaluate CatBoost model with rolling forecast."""
+    df_sup = prepare_supervised(series, freq)
+    preds, actuals = rolling_forecast_catboost(df_sup, freq)
+    return _compute_metrics(actuals, preds)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -174,6 +186,7 @@ def evaluate_all_models(
         "Prophet": {"monthly": {}, "quarterly": {}, "yearly": {}},
         "XGBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
         "LSTM": {"monthly": {}, "quarterly": {}, "yearly": {}},
+        "CatBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
     }
 
     # Monthly: last 12 months for testing
@@ -181,18 +194,21 @@ def evaluate_all_models(
     results["Prophet"]["monthly"] = _evaluate_prophet(monthly, 12, yearly_seasonality=True)
     results["XGBoost"]["monthly"] = _evaluate_xgb(monthly, 12, n_lags=12, add_time_features=True)
     results["LSTM"]["monthly"] = _evaluate_lstm(monthly, 12, window=12)
+    results["CatBoost"]["monthly"] = _evaluate_catboost(monthly, "M")
 
     # Quarterly: last 4 quarters for testing
     results["ARIMA"]["quarterly"] = _evaluate_arima(quarterly, 4, seasonal=True, m=4)
     results["Prophet"]["quarterly"] = _evaluate_prophet(quarterly, 4, yearly_seasonality=True)
     results["XGBoost"]["quarterly"] = _evaluate_xgb(quarterly, 4, n_lags=4, add_time_features=True)
     results["LSTM"]["quarterly"] = _evaluate_lstm(quarterly, 4, window=4)
+    results["CatBoost"]["quarterly"] = _evaluate_catboost(quarterly, "Q")
 
     # Yearly: last 3 years for testing
     results["ARIMA"]["yearly"] = _evaluate_arima(yearly, 3, seasonal=False, m=1)
     results["Prophet"]["yearly"] = _evaluate_prophet(yearly, 3, yearly_seasonality=False)
     results["XGBoost"]["yearly"] = _evaluate_xgb(yearly, 3, n_lags=3, add_time_features=False)
     results["LSTM"]["yearly"] = _evaluate_lstm(yearly, 3, window=3)
+    results["CatBoost"]["yearly"] = _evaluate_catboost(yearly, "A")
 
     return results
 
