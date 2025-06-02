@@ -282,7 +282,10 @@ LSTM). Le tableau résumant les performances est sauvegardé dans
 Lancement du pipeline :
 
 ```bash
-python -m pred.run_all chemin/vers/donnees.csv --jobs 4
+python -m pred.run_all --config config.yaml --jobs 4
 ```
 
-Lorsque `--jobs` est supérieur à un, chaque modèle est évalué en parallèle.
+Le script lit `input_file_cleaned_3_multi` dans `config.yaml` pour charger
+le jeu de données fourni par la phase 3. Lorsque `--jobs` est supérieur à
+un, chaque modèle est évalué en parallèle et le tableau est enregistré dans
+le répertoire `output_dir` sous le nom `model_performance.csv`.
