@@ -53,9 +53,9 @@ def aggregate_revenue(df: pd.DataFrame, amount_col: str) -> Tuple[pd.Series, pd.
     Missing periods are filled with 0 so that the returned series have
     continuous indices.
     """
-    monthly = df[amount_col].resample("M").sum().fillna(0)
-    quarterly = df[amount_col].resample("Q").sum().fillna(0)
-    yearly = df[amount_col].resample("A").sum().fillna(0)
+    monthly = df[amount_col].resample("ME").sum().fillna(0)
+    quarterly = df[amount_col].resample("QE").sum().fillna(0)
+    yearly = df[amount_col].resample("YE").sum().fillna(0)
     return monthly, quarterly, yearly
 
 

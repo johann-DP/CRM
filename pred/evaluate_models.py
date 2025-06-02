@@ -26,7 +26,7 @@ from .lstm_forecast import create_lstm_sequences, scale_lstm_data, build_lstm_mo
 def _compute_metrics(true: np.ndarray, pred: List[float]) -> Dict[str, float]:
     """Return MAE, RMSE and MAPE between ``true`` and ``pred``."""
     mae = mean_absolute_error(true, pred)
-    rmse = mean_squared_error(true, pred, squared=False)
+    rmse = mean_squared_error(true, pred) ** 0.5
     mape = mean_absolute_percentage_error(true, pred)
     return {"MAE": mae, "RMSE": rmse, "MAPE": mape}
 
@@ -65,7 +65,7 @@ def _evaluate_prophet(series: pd.Series, test_size: int, *, yearly_seasonality: 
     test = series.iloc[-test_size:]
     history = train.copy()
     preds: List[float] = []
-    freq = series.index.freqstr or "M"
+    freq = series.index.freqstr or "ME"
     for t, val in enumerate(test):
         model = Prophet(yearly_seasonality=yearly_seasonality, weekly_seasonality=False, daily_seasonality=False)
         model.fit(_prophet_df(history))
@@ -101,6 +101,7 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
         # Build features for next period
         next_index = test.index[t]
         extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
+        extended = extended.asfreq(series.index.freq)
         X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
         X_pred = X_full.iloc[-1:]
         pred = float(model.predict(X_pred)[0])
