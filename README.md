@@ -227,7 +227,7 @@ row of a dataset defined in `config.yaml`. The resulting CSV lists the
 identifier and the first principal components. Example usage:
 
 ```bash
-python export_pca_coordinates.py --config config.yaml --dataset raw \
+python phase4bis/export_pca_coordinates.py --config config.yaml --dataset raw \
     --components 3 --output ACP_coordonnees_individus.csv --sep ';'
 ```
 
@@ -242,7 +242,7 @@ UMAP. The two projections share the same cluster colouring obtained from
 an optimal K-means partition. Example usage:
 
 ```bash
-python compare_pca_umap.py --config config.yaml --dataset raw \
+python phase4bis/compare_pca_umap.py --config config.yaml --dataset raw \
     --n_neighbors 15 --output pca_vs_umap.png
 ```
 
