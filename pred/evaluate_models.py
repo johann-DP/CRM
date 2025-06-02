@@ -6,11 +6,18 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import (
-    mean_absolute_error,
-    mean_squared_error,
-    mean_absolute_percentage_error,
-)
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+
+def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Return MAPE ignoring zero ``y_true`` values."""
+    mask = y_true != 0
+    if mask.sum() == 0:
+        return np.nan
+    return np.mean(np.abs((y_pred[mask] - y_true[mask]) / y_true[mask])) * 100
+
+
+
 from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
@@ -25,9 +32,11 @@ from .lstm_forecast import create_lstm_sequences, scale_lstm_data, build_lstm_mo
 
 def _compute_metrics(true: np.ndarray, pred: List[float]) -> Dict[str, float]:
     """Return MAE, RMSE and MAPE between ``true`` and ``pred``."""
-    mae = mean_absolute_error(true, pred)
-    rmse = mean_squared_error(true, pred) ** 0.5
-    mape = mean_absolute_percentage_error(true, pred)
+    true_a = np.asarray(true, dtype=float)
+    pred_a = np.asarray(pred, dtype=float)
+    mae = mean_absolute_error(true_a, pred_a)
+    rmse = mean_squared_error(true_a, pred_a) ** 0.5
+    mape = safe_mape(true_a, pred_a)
     return {"MAE": mae, "RMSE": rmse, "MAPE": mape}
 
 
