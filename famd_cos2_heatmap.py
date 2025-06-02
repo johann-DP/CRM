@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-import phase4_functions as pf
+import phase4.functions as pf
 
 
 def load_dataset(path: Path) -> pd.DataFrame:

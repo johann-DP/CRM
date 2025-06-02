@@ -24,7 +24,7 @@ import seaborn as sns
 import yaml
 import numpy as np
 
-import phase4_functions as pf
+import phase4.functions as pf
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 
-from phase4_functions import dunn_index
+from phase4.functions import dunn_index
 
 
 ALGOS = {

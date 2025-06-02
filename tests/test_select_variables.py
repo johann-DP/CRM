@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-import phase4_functions as pf
+import phase4.functions as pf
 
 
 def test_select_variables_basic():

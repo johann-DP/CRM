@@ -2,7 +2,7 @@
 """Compare trustworthiness and continuity across non-linear methods.
 
 This script runs t-SNE, UMAP, PaCMAP and PHATE on the Iris dataset using
-predefined optimal parameters from :mod:`phase4_functions`. It computes
+predefined optimal parameters from :mod:`phase4.functions`. It computes
 trustworthiness and continuity for each method and saves a grouped bar
 chart as PNG.
 """
@@ -18,7 +18,7 @@ import seaborn as sns
 from sklearn.datasets import load_iris
 from sklearn.manifold import trustworthiness
 
-import phase4_functions as pf
+import phase4.functions as pf
 
 _METHODS = {
     "tsne": pf.run_tsne,

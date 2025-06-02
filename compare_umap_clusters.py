@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import adjusted_rand_score
 
-from phase4_functions import run_umap, silhouette_score_safe
+from phase4.functions import run_umap, silhouette_score_safe
 
 
 _DEF_NEIGHBORS = 15
