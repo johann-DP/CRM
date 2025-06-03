@@ -16,6 +16,11 @@ Otherwise install the pinned dependencies from ``requirements.txt``::
 
     python -m pip install -r requirements.txt
 
+The repository also provides ``setup.sh`` which automates this step and
+installs the project in editable mode::
+
+    bash setup.sh
+
 Using a clean environment avoids binary incompatibilities between NumPy,
 pandas and the plotting libraries.
 
@@ -275,11 +280,22 @@ executed sequentially. Outputs are written in the directory set by
 
 Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
 `pred`. Il charge le chemin du fichier ``cleaned_3_multi`` à partir de
-`config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`,
-construit les séries temporelles de revenu, les prétraite puis
+`config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`.
+Ce nettoyage est la toute première étape du pipeline avant toute autre
+transformation et renvoie directement les séries temporelles agrégées
+utilisées par `preprocess_all`. La fonction retire à nouveau les valeurs de
+"Date de fin actualisée" dépassant 2040 après imputation pour garantir
+qu'aucune date aberrante ne subsiste. Il est donc impératif que cette fonction
+soit exécutée en amont pour éliminer les dates fictives, comme celles en 2050,
+et garantir des séries cohérentes. Le script construit ensuite
+les séries temporelles de revenu, les prétraite puis
 évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
 résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.
+Les figures générées par ``make_plots`` utilisent également ces séries
+nettoyées afin d'écarter les dates erronées lors de la visualisation.
+Un contrôle supplémentaire dans ``run_all`` lève une erreur si des dates
+supérieures ou égales à 2040 subsistent après cette étape de nettoyage.
 
 Lancement du pipeline :
 

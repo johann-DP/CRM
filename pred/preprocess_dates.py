@@ -182,6 +182,8 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
     imputed_median = impute_with_median(df, median)
     reg, features = train_duration_model(hist)
     imputed_model = impute_with_model(df, reg, features)
+    # Remove any dates that still fall in 2040 or beyond after imputation
+    replaced_after = replace_future_dates(df)
 
     df_won = filter_won(df)
     monthly, quarterly, yearly = aggregate_revenue(df_won)
@@ -195,6 +197,7 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
 
     info = {
         "replaced_2050": replaced,
+        "replaced_after_impute": replaced_after,
         "copied_real_end": copied,
         "imputed_median": imputed_median,
         "imputed_model": imputed_model,
