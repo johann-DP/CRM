@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Orchestration script for the forecasting modules in :mod:`pred`.
 
-The helper loads the CRM data, preprocesses the revenue time series and
-computes evaluation metrics for all available models.  Training and
-evaluation of each model run in parallel when several ``--jobs`` are
-specified.
+The helper loads the CRM data and first cleans erroneous closing dates
+using :func:`preprocess_dates`.  It then preprocesses the revenue time
+series and computes evaluation metrics for all available models.
+Training and evaluation of each model run in parallel when several
+``--jobs`` are specified.
 
 Usage::
 
