@@ -283,6 +283,8 @@ revenu, les prétraite puis
 évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
 résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.
+Les figures générées par ``make_plots`` utilisent également ces séries
+nettoyées afin d'écarter les dates erronées lors de la visualisation.
 
 Lancement du pipeline :
 

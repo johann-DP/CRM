@@ -165,8 +165,15 @@ def main(argv: list[str] | None = None) -> None:
     print(table.to_string())
     table.to_csv(out_file)
 
-    # Generate illustrative figures in the output directory
-    make_plots_main(str(output_dir), csv_path=str(csv_path), metrics=table)
+    # Generate illustrative figures using the cleaned time series
+    make_plots_main(
+        str(output_dir),
+        csv_path=None,
+        metrics=table,
+        ts_monthly=monthly,
+        ts_quarterly=quarterly,
+        ts_yearly=yearly,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper
