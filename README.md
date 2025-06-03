@@ -275,8 +275,11 @@ executed sequentially. Outputs are written in the directory set by
 
 Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
 `pred`. Il charge le chemin du fichier ``cleaned_3_multi`` à partir de
-`config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`,
-construit les séries temporelles de revenu, les prétraite puis
+`config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`.
+Ce nettoyage est la toute première étape du pipeline avant toute autre
+transformation et renvoie directement les séries temporelles agrégées
+utilisées par `preprocess_all`. Il construit ensuite les séries temporelles de
+revenu, les prétraite puis
 évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
 résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.
