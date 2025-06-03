@@ -157,6 +157,13 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     monthly, quarterly, yearly = preprocess_dates(csv_path, output_dir)
 
+    # Sanity check: no future dates should remain after cleaning
+    for s in (monthly, quarterly, yearly):
+        if (s.index.year >= 2040).any():
+            raise ValueError(
+                "preprocess_dates failed to remove future closing dates"
+            )
+
     # ------------------------------------------------------------------
     # Stage 2 - generic preprocessing of the aggregated time series
     # ------------------------------------------------------------------
