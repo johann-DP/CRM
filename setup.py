@@ -1,3 +1,4 @@
+# setup.py
 from setuptools import setup, find_packages
 
 setup(
@@ -10,7 +11,7 @@ setup(
         "matplotlib>=3.7",
         "seaborn~=0.13.2",
         "Pillow~=11.2.1",
-        "scikit-learn>=1.4",
+        "scikit-learn>=1.4.0",
         "scipy>=1.10",
         "diptest~=0.9.0",
         "matplotlib-venn",
