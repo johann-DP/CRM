@@ -147,7 +147,14 @@ def main(argv: list[str] | None = None) -> None:
     csv_path = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
     output_dir = Path(cfg.get("output_dir", "."))
 
+    # ------------------------------------------------------------------
+    # Stage 1 - cleaning closing dates before any other transformation
+    # ------------------------------------------------------------------
     monthly, quarterly, yearly = preprocess_dates(csv_path, output_dir)
+
+    # ------------------------------------------------------------------
+    # Stage 2 - generic preprocessing of the aggregated time series
+    # ------------------------------------------------------------------
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
