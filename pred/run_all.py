@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Orchestration script for the forecasting modules in :mod:`pred`.
 
-The helper loads the CRM data and first cleans erroneous closing dates
-using :func:`preprocess_dates`.  It then preprocesses the revenue time
-series and computes evaluation metrics for all available models.
+The helper loads the CRM data and **first cleans the closing dates**
+using :func:`preprocess_dates`. The aggregated revenue series returned by
+this step are subsequently preprocessed and used for every model
+evaluation. This guarantees that all transformations and forecasts operate
+exclusively on corrected data.
 Training and evaluation of each model run in parallel when several
 ``--jobs`` are specified.
 
@@ -147,7 +149,14 @@ def main(argv: list[str] | None = None) -> None:
     csv_path = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
     output_dir = Path(cfg.get("output_dir", "."))
 
+    # ------------------------------------------------------------------
+    # Stage 1 - cleaning closing dates before any other transformation
+    # ------------------------------------------------------------------
     monthly, quarterly, yearly = preprocess_dates(csv_path, output_dir)
+
+    # ------------------------------------------------------------------
+    # Stage 2 - generic preprocessing of the aggregated time series
+    # ------------------------------------------------------------------
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
@@ -158,8 +167,15 @@ def main(argv: list[str] | None = None) -> None:
     print(table.to_string())
     table.to_csv(out_file)
 
-    # Generate illustrative figures in the output directory
-    make_plots_main(str(output_dir), csv_path=str(csv_path), metrics=table)
+    # Generate illustrative figures using the cleaned time series
+    make_plots_main(
+        str(output_dir),
+        csv_path=None,
+        metrics=table,
+        ts_monthly=monthly,
+        ts_quarterly=quarterly,
+        ts_yearly=yearly,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI helper
