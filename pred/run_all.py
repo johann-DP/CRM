@@ -177,7 +177,6 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Stage 2 - generic preprocessing of the aggregated time series
     # ------------------------------------------------------------------
-    monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
     table = build_performance_table(results)
