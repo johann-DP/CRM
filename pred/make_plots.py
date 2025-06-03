@@ -112,7 +112,14 @@ def plot_metrics(metrics: pd.DataFrame, out: Path) -> None:
     plt.close()
 
 
-def main(output_dir: str = "output_dir", csv_path: str | Path = "phase3_cleaned_multivariate.csv", metrics: pd.DataFrame | None = None) -> None:
+def main(
+    output_dir: str = "output_dir",
+    csv_path: str | Path | None = "phase3_cleaned_multivariate.csv",
+    metrics: pd.DataFrame | None = None,
+    ts_monthly: pd.Series | None = None,
+    ts_quarterly: pd.Series | None = None,
+    ts_yearly: pd.Series | None = None,
+) -> None:
     """Generate all illustrative figures in ``output_dir``.
 
     Parameters
@@ -128,14 +135,19 @@ def main(output_dir: str = "output_dir", csv_path: str | Path = "phase3_cleaned_
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    df = load_original(Path(csv_path))
-    plot_scatter(df, out_path / "recette_vs_date.png", sort_dates=False)
-    plot_scatter(df, out_path / "recette_vs_date_sorted.png", sort_dates=True)
+    if ts_monthly is None or ts_quarterly is None or ts_yearly is None:
+        if csv_path is None:
+            raise ValueError("csv_path is required when time series are not provided")
+        df = load_original(Path(csv_path))
+        plot_scatter(df, out_path / "recette_vs_date.png", sort_dates=False)
+        plot_scatter(df, out_path / "recette_vs_date_sorted.png", sort_dates=True)
 
-    ts = df.set_index("Date de fin actualisée")["Total recette réalisé"]
-    monthly = ts.resample("M").sum()
-    quarterly = ts.resample("Q").sum()
-    yearly = ts.resample("A").sum()
+        ts = df.set_index("Date de fin actualisée")["Total recette réalisé"]
+        monthly = ts.resample("M").sum()
+        quarterly = ts.resample("Q").sum()
+        yearly = ts.resample("A").sum()
+    else:
+        monthly, quarterly, yearly = ts_monthly, ts_quarterly, ts_yearly
 
     plot_with_forecasts(monthly, "M", out_path / "recette_monthly_with_forecasts.png")
     plot_with_forecasts(quarterly, "Q", out_path / "recette_quarterly_with_forecasts.png")
