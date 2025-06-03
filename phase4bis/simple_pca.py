@@ -71,7 +71,11 @@ def plot_scree(var_ratio: pd.Series, cum_var: pd.Series, output: Path) -> None:
 
 
 def main(argv: list[str]) -> None:
-    data_path = Path(argv[1]) if len(argv) > 1 else Path("CRM_data.csv")
+    data_path = (
+        Path(argv[1])
+        if len(argv) > 1
+        else Path(__file__).resolve().with_name("CRM_data.csv")
+    )
     df = load_data(data_path)
     table = run_pca(df)
 

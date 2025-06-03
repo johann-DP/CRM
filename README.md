@@ -253,18 +253,18 @@ It removes the `Code Analytique` column, standardises the numerical variables an
 and a table of explained variance.
 
 ```bash
-python phase4bis/simple_pca.py
+python phase4bis/simple_pca.py phase4bis/CRM_data.csv
 ```
 
 This command produces `pca_scree_plot.png` and `ACP_variance_expliquee.csv` in the current directory.
 
-## Running newly added scripts
+## Running phase4bis utilities
 
-`run_all_since_commit.py` executes every Python script present in the
-`phase4bis` directory. Use it to run all helper utilities in one go::
+`run_all_since_commit.py` executes every helper script under `phase4bis`.
+Run it to generate all analysis outputs::
 
 ```bash
-python phase4bis/run_all_since_commit.py --jobs 4
+python -m phase4bis.run_all_since_commit --jobs 4
 ```
 
 When `--jobs` is greater than one, scripts run in parallel; otherwise they are
