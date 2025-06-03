@@ -25,16 +25,16 @@ import multiprocessing as mp
 from pathlib import Path
 import yaml
 
-from preprocess_lead_scoring import preprocess
-from train_lead_models import (
+from .preprocess_lead_scoring import preprocess
+from .train_lead_models import (
     train_xgboost_lead,
     train_catboost_lead,
     train_lstm_lead,
     train_arima_conv_rate,
     train_prophet_conv_rate,
 )
-from evaluate_lead_models import evaluate_lead_models
-from plot_lead_results import main as plot_results
+from .evaluate_lead_models import evaluate_lead_models
+from .plot_lead_results import main as plot_results
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -45,7 +45,10 @@ def main(argv: list[str] | None = None) -> None:
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
 
-    mp.set_start_method("forkserver", force=True)
+    try:
+        mp.set_start_method("forkserver", force=True)
+    except ValueError:  # pragma: no cover - Windows fallback
+        mp.set_start_method("spawn", force=True)
 
     (
         X_train,
