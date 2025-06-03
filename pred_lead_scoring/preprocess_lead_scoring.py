@@ -55,6 +55,32 @@ def _load_data(path: Path) -> pd.DataFrame:
     return df
 
 
+def _clean_closing_dates(df: pd.DataFrame) -> int:
+    """Replace unrealistic closing dates with ``NaT``.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Dataset with a ``Date de clôture`` column parsed as datetime.
+
+    Returns
+    -------
+    int
+        Number of replaced values.
+    """
+
+    col = "Date de clôture"
+    future_limit = pd.Timestamp("2025-03-01")
+    past_limit = pd.Timestamp("1995-01-01")
+
+    mask_future = df[col].notna() & (df[col] > future_limit)
+    mask_past = df[col].notna() & (df[col] < past_limit)
+    mask = mask_future | mask_past
+    count = int(mask.sum())
+    df.loc[mask, col] = pd.NaT
+    return count
+
+
 def _filter_status(df: pd.DataFrame) -> pd.DataFrame:
     """Keep only won/lost opportunities and add ``is_won`` column."""
     df = df[df["Statut_final"].isin(["Gagné", "Perdu"])]
@@ -150,13 +176,18 @@ def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
 def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     """Preprocess the lead scoring dataset and cache intermediate files."""
 
-    lead_cfg = cfg["lead_scoring"]
+    lead_cfg = cfg.get("lead_scoring", {})
+    if not lead_cfg:
+        raise KeyError("'lead_scoring' section missing from configuration")
     csv_path = Path(lead_cfg["input_path"])
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     df = _load_data(csv_path)
+    cleaned = _clean_closing_dates(df)
+    if cleaned:
+        print(f"Dates hors limites remplacées: {cleaned}")
     df = _filter_status(df)
 
     train, val, test = _split_sets(df, lead_cfg["test_start"], lead_cfg["test_end"])
