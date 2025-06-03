@@ -227,7 +227,7 @@ row of a dataset defined in `config.yaml`. The resulting CSV lists the
 identifier and the first principal components. Example usage:
 
 ```bash
-python export_pca_coordinates.py --config config.yaml --dataset raw \
+python phase4bis/export_pca_coordinates.py --config config.yaml --dataset raw \
     --components 3 --output ACP_coordonnees_individus.csv --sep ';'
 ```
 
@@ -242,13 +242,13 @@ UMAP. The two projections share the same cluster colouring obtained from
 an optimal K-means partition. Example usage:
 
 ```bash
-python compare_pca_umap.py --config config.yaml --dataset raw \
+python phase4bis/compare_pca_umap.py --config config.yaml --dataset raw \
     --n_neighbors 15 --output pca_vs_umap.png
 ```
 
 ## Simple PCA analysis
 
-Use `simple_pca.py` to quickly compute a Principal Component Analysis on a CSV export of the CRM data.
+Use `phase4bis/simple_pca.py` to quickly compute a Principal Component Analysis on a CSV export of the CRM data.
 It removes the `Code Analytique` column, standardises the numerical variables and saves a scree plot
 and a table of explained variance.
 
@@ -268,5 +268,23 @@ python -m phase4bis.run_all_since_commit --jobs 4
 ```
 
 When `--jobs` is greater than one, scripts run in parallel; otherwise they are
-executed sequentially. Outputs are written either in the working directory or in
-the directory set by `output_dir` in `config.yaml`.
+executed sequentially. Outputs are written in the directory set by
+`output_dir` in `config.yaml`.
+
+## Exécution des modules de prédiction
+
+Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
+`pred`. Il charge le chemin du fichier ``cleaned_3_multi`` à partir de
+`config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`,
+construit les séries temporelles de revenu, les prétraite puis
+évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
+résumant les performances est sauvegardé dans ``model_performance.csv`` dans
+le dossier ``output_dir`` défini dans la configuration.
+
+Lancement du pipeline :
+
+```bash
+python -m pred.run_all --config config.yaml --jobs 4
+```
+
+Lorsque `--jobs` est supérieur à un, chaque modèle est évalué en parallèle.

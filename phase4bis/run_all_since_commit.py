@@ -40,8 +40,6 @@ def run(cmd: list[str]) -> bool:
     return True
 
 
-
-
 def _needs_config(path: Path) -> bool:
     """Return True if ``path`` CLI accepts a ``--config`` option."""
     try:
