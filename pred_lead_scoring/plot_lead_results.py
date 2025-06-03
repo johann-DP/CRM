@@ -21,9 +21,12 @@ from tensorflow.keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
-from pred.train_xgboost import _to_supervised
-from pred.lstm_forecast import create_lstm_sequences
-from pred.catboost_forecast import prepare_supervised, rolling_forecast_catboost
+from pred_aggregated_amount.train_xgboost import _to_supervised
+from pred_aggregated_amount.lstm_forecast import create_lstm_sequences
+from pred_aggregated_amount.catboost_forecast import (
+    prepare_supervised,
+    rolling_forecast_catboost,
+)
 
 
 # ---------------------------------------------------------------------------

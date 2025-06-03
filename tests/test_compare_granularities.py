@@ -1,4 +1,4 @@
-from pred.compare_granularities import build_performance_table
+from pred_aggregated_amount.compare_granularities import build_performance_table
 
 
 def test_build_performance_table_basic():

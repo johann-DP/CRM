@@ -53,7 +53,7 @@ option automatically tunes key hyperparameters of each method.
 * `phase4bis/compare_pca_umap.py` – side-by-side PCA vs UMAP scatter plot.
 * `phase4bis/simple_pca.py` – quick PCA on a CSV export.
 * `phase4bis/run_all_since_commit.py` – execute every helper script.
-* `pred/run_all.py` – evaluate forecasting models on cleaned data.
+* `pred_aggregated_amount/run_all.py` – evaluate forecasting models on cleaned data.
 
 Install the optional `fpdf` package if you want nicer PDF layouts; otherwise
 Matplotlib's `PdfPages` is used.
