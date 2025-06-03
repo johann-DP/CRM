@@ -294,6 +294,8 @@ résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.
 Les figures générées par ``make_plots`` utilisent également ces séries
 nettoyées afin d'écarter les dates erronées lors de la visualisation.
+Un contrôle supplémentaire dans ``run_all`` lève une erreur si des dates
+supérieures ou égales à 2040 subsistent après cette étape de nettoyage.
 
 Lancement du pipeline :
 
