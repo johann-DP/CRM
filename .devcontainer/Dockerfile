@@ -1,23 +1,21 @@
 # .devcontainer/Dockerfile
 FROM mcr.microsoft.com/devcontainers/python:0-3.12
 
-# Installe les dépendances système si besoin
+# Installer les dépendances système
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       build-essential \
       git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Définir le dossier de travail
 WORKDIR /workspaces/CRM
 
-# Copier et installer les dépendances Python
+# 1) Copier la liste des dépendances et les installer 
 COPY --chown=vscode:vscode ../requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier le script setup.sh (pour installer pytest)
-COPY --chown=vscode:vscode ../setup.sh ./setup.sh
-RUN chmod +x ./setup.sh
-
-# Copier tout le projet dans le conteneur
+# 2) Copier l’intégralité du dépôt (sources, tests, setup.sh, etc.)
 COPY --chown=vscode:vscode .. /workspaces/CRM
+
+# Optionnel : installer pytest directement dans l’image
+RUN pip install --no-cache-dir pytest
