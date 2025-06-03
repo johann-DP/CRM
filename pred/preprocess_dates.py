@@ -25,15 +25,30 @@ def load_csv(path: str | Path) -> pd.DataFrame:
 
 
 def replace_future_dates(df: pd.DataFrame) -> int:
-    """Replace dates in 2040 and beyond with ``NaT``.
+    """Replace dates beyond ``2025-03-01`` with ``NaT``.
 
     Returns the number of replaced values.
     """
     col = "Date de fin actualisée"
-    mask = df[col].notna() & (df[col].dt.year >= 2040)
+    limit = pd.Timestamp("2025-03-01")
+    mask = df[col].notna() & (df[col] > limit)
     count = int(mask.sum())
     df.loc[mask, col] = pd.NaT
-    assert not (df[col].dropna().dt.year >= 2040).any()
+    assert (df[col].dropna() <= limit).all()
+    return count
+
+
+def remove_old_dates(df: pd.DataFrame) -> int:
+    """Replace dates older than ``1995-01-01`` with ``NaT``.
+
+    Returns the number of replaced values.
+    """
+    col = "Date de fin actualisée"
+    limit = pd.Timestamp("1995-01-01")
+    mask = df[col].notna() & (df[col] < limit)
+    count = int(mask.sum())
+    df.loc[mask, col] = pd.NaT
+    assert (df[col].dropna() >= limit).all()
     return count
 
 
@@ -178,7 +193,10 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
     df = load_csv(csv_path)
     df_before = df.copy()
 
-    replaced = replace_future_dates(df)
+    replaced_future = replace_future_dates(df)
+    replaced_old = remove_old_dates(df)
+    print(f"Dates > 2025-03-01 remplacées: {replaced_future}")
+    print(f"Dates < 1995-01-01 supprimées: {replaced_old}")
     copied = copy_real_end_dates(df)
     hist, median = build_history(df)
     imputed_median = impute_with_median(df, median)
@@ -196,7 +214,8 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
     plot_before_after(ts_before, monthly, out_dir)
 
     info = {
-        "replaced_2050": replaced,
+        "replaced_future": replaced_future,
+        "replaced_old": replaced_old,
         "copied_real_end": copied,
         "imputed_median": imputed_median,
         "imputed_model": imputed_model,
@@ -210,6 +229,7 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
 __all__ = [
     "load_csv",
     "replace_future_dates",
+    "remove_old_dates",
     "copy_real_end_dates",
     "build_history",
     "impute_with_median",
