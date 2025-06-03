@@ -278,8 +278,10 @@ Le script `pred/run_all.py` orchestre l'ensemble des fonctions du dossier
 `config.yaml`, nettoie d'abord les dates de clôture grâce à `preprocess_dates`.
 Ce nettoyage est la toute première étape du pipeline avant toute autre
 transformation et renvoie directement les séries temporelles agrégées
-utilisées par `preprocess_all`. Il construit ensuite les séries temporelles de
-revenu, les prétraite puis
+utilisées par `preprocess_all`. Il est donc impératif que cette fonction
+soit exécutée en amont pour éliminer les dates fictives, comme celles en
+2050, et garantir des séries cohérentes. Le script construit ensuite
+les séries temporelles de revenu, les prétraite puis
 évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
 résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.

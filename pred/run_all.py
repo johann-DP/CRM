@@ -2,10 +2,13 @@
 """Orchestration script for the forecasting modules in :mod:`pred`.
 
 The helper loads the CRM data and **first cleans the closing dates**
-using :func:`preprocess_dates`. The aggregated revenue series returned by
-this step are subsequently preprocessed and used for every model
-evaluation. This guarantees that all transformations and forecasts operate
-exclusively on corrected data.
+using :func:`preprocess_dates`.  This step removes aberrant values such as
+dates in the year 2050, imputes missing ones and returns the aggregated
+revenue series to the pipeline.  It is mandatory that this cleaning stage
+occurs before any other processing so that the following operations work
+exclusively on corrected data.  The resulting monthly, quarterly and yearly
+series are then preprocessed and used for every model evaluation,
+guaranteeing consistent transformations and forecasts.
 Training and evaluation of each model run in parallel when several
 ``--jobs`` are specified.
 
