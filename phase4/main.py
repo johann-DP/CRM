@@ -40,14 +40,15 @@ import re
 import tempfile
 from contextlib import suppress
 
-from joblib import Parallel, delayed
+from joblib import Parallel as _JoblibParallel, delayed as _joblib_delayed
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 from matplotlib.backends.backend_pdf import PdfPages
 from PyPDF2 import PdfMerger
-from phase4_functions import export_report_to_pdf
+import phase4
+from phase4.functions import export_report_to_pdf
 
 import warnings
 
@@ -64,7 +65,7 @@ warnings.filterwarnings(
 )
 
 # Import helper modules -------------------------------------------------------
-from phase4_functions import (
+from phase4.functions import (
     load_datasets,
     prepare_data,
     handle_missing_values,
@@ -80,7 +81,6 @@ from phase4_functions import (
     plot_methods_heatmap,
     plot_general_heatmap,
     generate_figures,
-    export_report_to_pdf,
     select_variables,
     unsupervised_cv_and_temporal_tests,
     format_metrics_table,
@@ -963,7 +963,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         if optimize:
             params.pop("n_components", None)
         tasks.append(
-            ("pca", run_pca, (df_active, quant_vars), dict(optimize=optimize, **params))
+            ("pca", phase4.run_pca, (df_active, quant_vars), dict(optimize=optimize, **params))
         )
         factor_names.append("pca")
 
@@ -972,7 +972,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         if optimize:
             params.pop("n_components", None)
         tasks.append(
-            ("mca", run_mca, (df_active, qual_vars), dict(optimize=optimize, **params))
+            ("mca", phase4.run_mca, (df_active, qual_vars), dict(optimize=optimize, **params))
         )
         factor_names.append("mca")
 
@@ -983,7 +983,7 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         tasks.append(
             (
                 "famd",
-                run_famd,
+                phase4.run_famd,
                 (df_active, quant_vars, qual_vars),
                 dict(optimize=optimize, **params),
             )
@@ -1003,21 +1003,21 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         if cfg_groups:
             groups = cfg_groups
         tasks.append(
-            ("mfa", run_mfa, (df_active, groups), dict(optimize=optimize, **params))
+            ("mfa", phase4.run_mfa, (df_active, groups), dict(optimize=optimize, **params))
         )
         factor_names.append("mfa")
 
     if "umap" in methods:
         params = _method_params("umap", config)
-        tasks.append(("umap", run_umap, (df_active,), params))
+        tasks.append(("umap", phase4.run_umap, (df_active,), params))
         nonlin_names.append("umap")
     if "phate" in methods:
         params = _method_params("phate", config)
-        tasks.append(("phate", run_phate, (df_active,), params))
+        tasks.append(("phate", phase4.run_phate, (df_active,), params))
         nonlin_names.append("phate")
     if "pacmap" in methods:
         params = _method_params("pacmap", config)
-        tasks.append(("pacmap", run_pacmap, (df_active,), params))
+        tasks.append(("pacmap", phase4.run_pacmap, (df_active,), params))
         nonlin_names.append("pacmap")
 
     backend = config.get("joblib_backend", "loky")
@@ -1026,9 +1026,9 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
             _run_method(name, func, args, kwargs) for name, func, args, kwargs in tasks
         ]
     else:
-        with Parallel(n_jobs=n_jobs or len(tasks), backend=backend) as parallel:
+        with phase4.Parallel(n_jobs=n_jobs or len(tasks), backend=backend) as parallel:
             results = parallel(
-                delayed(_run_method)(name, func, args, kwargs)
+                phase4.delayed(_run_method)(name, func, args, kwargs)
                 for name, func, args, kwargs in tasks
             )
 
@@ -1194,7 +1194,7 @@ def _run_pipeline_single(
     if "output_pdf" in cfg:
         pdf = Path(cfg["output_pdf"])
         cfg["output_pdf"] = str(pdf.with_name(f"{pdf.stem}_{name}{pdf.suffix}"))
-    result = run_pipeline(cfg)
+    result = phase4.run_pipeline(cfg)
     return name, result
 
 
@@ -1208,9 +1208,9 @@ def run_pipeline_parallel(
     """Run :func:`run_pipeline` on several datasets in parallel."""
 
     n_jobs = n_jobs or len(datasets)
-    with Parallel(n_jobs=n_jobs, backend=backend) as parallel:
+    with phase4.Parallel(n_jobs=n_jobs, backend=backend) as parallel:
         results = parallel(
-            delayed(_run_pipeline_single)(config, ds, keep_figures=True)
+            phase4.delayed(_run_pipeline_single)(config, ds, keep_figures=True)
             for ds in datasets
         )
     results = dict(results)
@@ -1238,7 +1238,7 @@ def run_pipeline_parallel(
     if "output_pdf" in config:
         pdf = Path(config["output_pdf"])
         tables = {"metrics": all_metrics}
-        export_report_to_pdf(figures, tables, pdf)
+        phase4.export_report_to_pdf(figures, tables, pdf)
 
     logging.shutdown()
     return results

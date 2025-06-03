@@ -1,5 +1,5 @@
 import pandas as pd
-import generate_distance_matrix as gdm
+import phase4bis.generate_distance_matrix as gdm
 
 
 def test_compute_distance_matrix_basic():

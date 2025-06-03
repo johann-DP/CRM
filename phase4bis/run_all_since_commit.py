@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Run every script introduced since a given commit.
+"""Run all analysis utilities located in this directory.
 
-The helper inspects the Git history and executes all Python scripts that
-appeared after the specified base commit.  Scripts are executed
-concurrently when ``--jobs`` is greater than one.  A few utilities expect
-an input CSV file; ``sample_dataset.csv`` from the repository root is
-used for these.
+The helper discovers every Python script in the ``phase4bis`` folder and
+executes them sequentially or in parallel when ``--jobs`` is greater than
+one.  Some scripts need an example CSV file; ``sample_dataset.csv`` from
+this directory is provided for this purpose.
 
 Usage::
 
-    python run_all_since_commit.py [--since b362e454] [--config config.yaml]
-                                  [--jobs N]
+    python -m phase4bis.run_all_since_commit \
+        [--config config.yaml] [--jobs N]
 
 Results of the executed scripts are written either in the working
 directory or under the ``output_dir`` defined in ``config.yaml``.
@@ -41,23 +40,6 @@ def run(cmd: list[str]) -> bool:
     return True
 
 
-def _new_scripts(base: str) -> list[Path]:
-    """Return Python files added after ``base``."""
-    out = subprocess.check_output(
-        ["git", "diff", "--name-status", "--diff-filter=A", f"{base}..HEAD"],
-        text=True,
-    )
-    paths: list[Path] = []
-    for line in out.splitlines():
-        _status, name = line.split("\t", 1)
-        if not name.endswith(".py"):
-            continue
-        if name.startswith("tests/"):
-            continue
-        if name == Path(__file__).name:
-            continue
-        paths.append(Path(name))
-    return paths
 
 
 def _needs_config(path: Path) -> bool:
@@ -69,7 +51,16 @@ def _needs_config(path: Path) -> bool:
     return "--config" in text
 
 
-_SAMPLE = Path("sample_dataset.csv")
+def _scripts_in_dir(folder: Path) -> list[Path]:
+    """Return Python scripts located in ``folder`` sorted by name."""
+    return sorted(
+        p
+        for p in folder.glob("*.py")
+        if p.name != Path(__file__).name
+    )
+
+
+_SAMPLE = Path(__file__).resolve().parent / "sample_dataset.csv"
 
 _EXTRA_ARGS: dict[str, list[str]] = {
     "clustering_quality_indices.py": [str(_SAMPLE)],
@@ -88,7 +79,7 @@ def _command(path: Path, config: Path) -> list[str] | None:
         # available in the repository; skip automatic execution.
         return None
 
-    cmd = [sys.executable, str(path)]
+    cmd = [sys.executable, str(path.resolve())]
     if _needs_config(path):
         cmd += ["--config", str(config)]
     extra = _EXTRA_ARGS.get(path.name)
@@ -98,19 +89,19 @@ def _command(path: Path, config: Path) -> list[str] | None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    p = argparse.ArgumentParser(description="Run scripts added since a commit")
-    p.add_argument("--since", default="b362e454", help="Base commit")
+    p = argparse.ArgumentParser(description="Run all utilities from phase4bis")
     p.add_argument("--config", default="config.yaml", help="Configuration file")
     p.add_argument("--jobs", type=int, default=12, help="Number of parallel scripts")
     args = p.parse_args(argv)
 
     cfg_path = Path(args.config)
 
-    scripts = [_command(pth, cfg_path) for pth in _new_scripts(args.since)]
+    folder = Path(__file__).resolve().parent
+    scripts = [_command(pth, cfg_path) for pth in _scripts_in_dir(folder)]
     scripts = [cmd for cmd in scripts if cmd]
 
     if not scripts:
-        print("No new scripts since", args.since)
+        print(f"No scripts found in {folder}")
         return
 
     global OUTPUT_DIR
