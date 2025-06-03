@@ -19,6 +19,13 @@ Otherwise install the pinned dependencies from ``requirements.txt``::
 Using a clean environment avoids binary incompatibilities between NumPy,
 pandas and the plotting libraries.
 
+The repository also provides setup.sh which automates this step and installs the project in editable mode::
+
+    bash setup.sh
+
+Using a clean environment avoids binary incompatibilities between NumPy,
+pandas and the plotting libraries.
+
 ## Phase 1 – Audit initial et préparation des données
 
 The first phase focused on exploring the raw export of the Digora CRM.
@@ -282,7 +289,7 @@ utilisées par `preprocess_all`. Il est donc impératif que cette fonction
 soit exécutée en amont pour éliminer les dates fictives, comme celles en
 2050, et garantir des séries cohérentes. Le script construit ensuite
 les séries temporelles de revenu, les prétraite puis
-évalue tous les modèles (ARIMA, Prophet, XGBoost et LSTM). Le tableau
+évalue tous les modèles (ARIMA, Prophet, XGBoost, Catboost et LSTM). Le tableau
 résumant les performances est sauvegardé dans ``model_performance.csv`` dans
 le dossier ``output_dir`` défini dans la configuration.
 Les figures générées par ``make_plots`` utilisent également ces séries
