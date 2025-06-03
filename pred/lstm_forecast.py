@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Tuple
 
+import os
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+
+# Reduce TensorFlow verbosity during model creation
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 
 # ---------------------------------------------------------------------------
@@ -48,11 +52,13 @@ def scale_lstm_data(X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarra
 def build_lstm_model(window_size: int):
     """Return a simple LSTM model with 50 units followed by a Dense output."""
     from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense
+    from tensorflow.keras.layers import Input, LSTM, Dense
 
-    model = Sequential()
-    model.add(LSTM(50, input_shape=(window_size, 1)))
-    model.add(Dense(1))
+    model = Sequential([
+        Input(shape=(window_size, 1)),
+        LSTM(50),
+        Dense(1),
+    ])
     model.compile(loss="mse", optimizer="adam")
     return model
 

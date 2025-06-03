@@ -18,9 +18,19 @@ Usage::
 """
 from __future__ import annotations
 
+import os
+import warnings
+
+# Silence verbose TensorFlow logs and deprecation notices from optional libs
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+)
+
 import argparse
 import concurrent.futures
-import os
 from pathlib import Path
 from typing import Dict
 

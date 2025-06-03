@@ -19,7 +19,8 @@ def load_csv(path: str | Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     for col in ["Date de fin actualisée", "Date de début actualisée", "Date de fin réelle"]:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+            # The data is stored in ISO format so ``dayfirst`` should be False
+            df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=False)
     return df
 
 
@@ -116,9 +117,10 @@ def filter_won(df: pd.DataFrame) -> pd.DataFrame:
 def aggregate_revenue(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """Aggregate revenue into monthly, quarterly and yearly sums."""
     df = df.set_index("Date de fin actualisée")
-    monthly = df["Total recette réalisé"].resample("M").sum().fillna(0)
-    quarterly = df["Total recette réalisé"].resample("Q").sum().fillna(0)
-    yearly = df["Total recette réalisé"].resample("A").sum().fillna(0)
+    # ``M``, ``Q`` and ``A`` are deprecated aliases; use ``ME``/``QE``/``YE``
+    monthly = df["Total recette réalisé"].resample("ME").sum().fillna(0)
+    quarterly = df["Total recette réalisé"].resample("QE").sum().fillna(0)
+    yearly = df["Total recette réalisé"].resample("YE").sum().fillna(0)
     return monthly, quarterly, yearly
 
 
@@ -187,7 +189,7 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
     monthly, quarterly, yearly = aggregate_revenue(df_won)
 
     ts_before = (
-        df_before.set_index("Date de fin actualisée")["Total recette réalisé"].resample("M").sum().fillna(0)
+        df_before.set_index("Date de fin actualisée")["Total recette réalisé"].resample("ME").sum().fillna(0)
     )
 
     plot_histograms(df_before, df, out_dir)
