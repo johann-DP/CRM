@@ -15,5 +15,9 @@ WORKDIR /workspaces/CRM
 COPY --chown=vscode:vscode ../requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copier le script setup.sh (pour installer pytest)
+COPY --chown=vscode:vscode ../setup.sh ./setup.sh
+RUN chmod +x ./setup.sh
+
 # Copier tout le projet dans le conteneur
 COPY --chown=vscode:vscode .. /workspaces/CRM
