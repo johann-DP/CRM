@@ -55,6 +55,10 @@ option automatically tunes key hyperparameters of each method.
 * `phase4bis/run_all_since_commit.py` – execute every helper script.
 * `pred/run_all.py` – evaluate forecasting models on cleaned data.
 
+### Forecasting modules (`pred`)
+Scripts under `pred/` attempt to forecast revenue trends. The entry point `pred/run_all.py` first cleans closing dates with `preprocess_dates`, then aggregates the series and evaluates multiple models (ARIMA, Prophet, XGBoost, CatBoost and LSTM). The summary metrics are saved to `model_performance.csv` in `output_dir`. This section is still experimental.
+
+
 Install the optional `fpdf` package if you want nicer PDF layouts; otherwise
 Matplotlib's `PdfPages` is used.
 
