@@ -10,6 +10,7 @@ from .preprocess_timeseries import (
     preprocess_series,
     preprocess_all,
 )
+from .preprocess_dates import preprocess_dates
 from .lstm_forecast import (
     create_lstm_sequences,
     scale_lstm_data,
@@ -64,6 +65,7 @@ __all__ = [
     "load_and_aggregate",
     "preprocess_series",
     "preprocess_all",
+    "preprocess_dates",
     "fit_all_arima",
     "train_xgb_model",
     "train_all_granularities",

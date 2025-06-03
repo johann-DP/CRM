@@ -20,7 +20,8 @@ from typing import Dict
 
 import yaml
 
-from .preprocess_timeseries import load_and_aggregate, preprocess_all
+from .preprocess_timeseries import preprocess_all
+from .preprocess_dates import preprocess_dates
 from .evaluate_models import (
     _evaluate_arima,
     _evaluate_prophet,
@@ -145,15 +146,7 @@ def main(argv: list[str] | None = None) -> None:
     csv_path = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
     output_dir = Path(cfg.get("output_dir", "."))
 
-    cfg_timeseries = {
-        "csv_path": csv_path,
-        "date_col": cfg.get("date_col", "Date de fin actualisée"),
-        "status_col": cfg.get("status_col", "Statut commercial"),
-        "won_value": cfg.get("won_value", "Gagné"),
-        "amount_col": cfg.get("amount_col", "Total recette réalisé"),
-    }
-
-    monthly, quarterly, yearly = load_and_aggregate(cfg_timeseries)
+    monthly, quarterly, yearly = preprocess_dates(csv_path, output_dir)
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
     results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
