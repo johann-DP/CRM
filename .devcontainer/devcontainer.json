@@ -22,6 +22,7 @@
     }
   },
   "forwardPorts": [],
-  "postCreateCommand": "pip install -r requirements.txt",
+  // Ici on exécute setup.sh (qui installe pytest) puis on lance les tests
+  "postCreateCommand": "bash ./setup.sh && pytest -q",
   "remoteUser": "vscode"
 }
