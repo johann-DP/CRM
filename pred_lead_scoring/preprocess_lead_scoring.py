@@ -125,16 +125,30 @@ def _encode_features(
     enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
 
     X_train_num = imp.fit_transform(train[num_features])
-    X_val_num = imp.transform(val[num_features])
-    X_test_num = imp.transform(test[num_features])
+    if len(val) > 0:
+        X_val_num = imp.transform(val[num_features])
+    else:
+        X_val_num = np.empty((0, len(num_features)))
+    if len(test) > 0:
+        X_test_num = imp.transform(test[num_features])
+    else:
+        X_test_num = np.empty((0, len(num_features)))
 
     X_train_num = scaler.fit_transform(X_train_num)
-    X_val_num = scaler.transform(X_val_num)
-    X_test_num = scaler.transform(X_test_num)
+    if len(val) > 0:
+        X_val_num = scaler.transform(X_val_num)
+    if len(test) > 0:
+        X_test_num = scaler.transform(X_test_num)
 
     X_train_cat = enc.fit_transform(train[cat_features].astype(str))
-    X_val_cat = enc.transform(val[cat_features].astype(str))
-    X_test_cat = enc.transform(test[cat_features].astype(str))
+    if len(val) > 0:
+        X_val_cat = enc.transform(val[cat_features].astype(str))
+    else:
+        X_val_cat = np.empty((0, len(cat_features)))
+    if len(test) > 0:
+        X_test_cat = enc.transform(test[cat_features].astype(str))
+    else:
+        X_test_cat = np.empty((0, len(cat_features)))
 
     cols = num_features + cat_features
     X_train = pd.DataFrame(
