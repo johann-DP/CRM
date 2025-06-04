@@ -48,14 +48,16 @@ def train_lstm_lead(
     Parameters
     ----------
     cfg: dict
-        Configuration dictionary containing ``lstm_params`` and ``output_dir``.
-        ``intra_threads`` and ``inter_threads`` control TensorFlow threading and
-        GPU usage is detected automatically.
+        Configuration dictionary with a ``lead_scoring`` section holding
+        ``lstm_params`` and ``output_dir``. ``intra_threads`` and
+        ``inter_threads`` control TensorFlow threading and GPU usage is
+        detected automatically.
     """
 
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
+    lstm_params = lead_cfg.get("lstm_params", {})
 
     # ------------------------------------------------------------------
     # Load datasets if not provided
@@ -75,10 +77,10 @@ def train_lstm_lead(
 
     # Configure TensorFlow threading
     tf.config.threading.set_intra_op_parallelism_threads(
-        cfg["lstm_params"].get("intra_threads", 0)
+        lstm_params.get("intra_threads", 0)
     )
     tf.config.threading.set_inter_op_parallelism_threads(
-        cfg["lstm_params"].get("inter_threads", 0)
+        lstm_params.get("inter_threads", 0)
     )
 
     device = "/GPU:0" if tf.config.list_physical_devices("GPU") else "/CPU:0"
@@ -96,7 +98,7 @@ def train_lstm_lead(
         model_lstm = Model(inputs=inp, outputs=out)
         model_lstm.compile(
             optimizer=tf.keras.optimizers.Adam(
-                learning_rate=cfg["lstm_params"]["learning_rate"]
+                learning_rate=lstm_params["learning_rate"]
             ),
             loss="binary_crossentropy",
             metrics=["AUC", "accuracy"],
@@ -109,16 +111,16 @@ def train_lstm_lead(
         X_train,
         y_train,
         validation_data=(X_val, y_val),
-        batch_size=cfg["lstm_params"]["batch_size"],
-        epochs=cfg["lstm_params"]["epochs"],
+        batch_size=lstm_params["batch_size"],
+        epochs=lstm_params["epochs"],
         callbacks=[
             tf.keras.callbacks.EarlyStopping(
                 monitor="val_loss",
-                patience=cfg["lstm_params"]["patience"],
+                patience=lstm_params["patience"],
                 restore_best_weights=True,
             )
         ],
-        verbose=cfg["lstm_params"].get("verbose", 1),
+        verbose=lstm_params.get("verbose", 1),
     )
 
     # ------------------------------------------------------------------
