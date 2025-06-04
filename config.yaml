@@ -204,8 +204,8 @@ pacmap:
 lead_scoring:
   # 1) Fichier brut d’opportunités (Everwin SX / Digora)
   #    Doit contenir au moins :
-  #      - "Date de clôture" (datetime)
-  #      - "Statut_final" (valeurs "Gagné" ou "Perdu")
+  #      - "Date de fin actualisée" (datetime)
+  #      - "Statut commercial" (modalités "Abandonné", "Perdu", "Gagné", "En cours", "Retardé", "Non Conforme")
   #      - les colonnes d’entrée à encoder / normaliser
   input_path: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_ou\phase3_cleaned_all.csv'
 

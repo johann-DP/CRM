@@ -330,31 +330,31 @@ def main(argv: list[str] | None = None) -> None:
     if "input_path" in lead_cfg:
         try:
             df_opportunities = pd.read_csv(lead_cfg["input_path"])
-            df_opportunities["Date de clôture"] = pd.to_datetime(
-                df_opportunities["Date de clôture"], dayfirst=True, errors="coerce"
+            df_opportunities["Date de fin actualisée"] = pd.to_datetime(
+                df_opportunities["Date de fin actualisée"], dayfirst=True, errors="coerce"
             )
         except Exception:
             df_opportunities = None
     else:
         df_opportunities = None
 
-    if df_opportunities is not None and {"Date de clôture", "Total_estime"} <= set(df_opportunities.columns):
+    if df_opportunities is not None and {"Date de fin actualisée", "Total_estime"} <= set(df_opportunities.columns):
         _plot_scatter(
             df_opportunities,
-            "Date de clôture",
+            "Date de fin actualisée",
             "Total_estime",
             fig_dir / "total_vs_date.png",
             sort_dates=False,
         )
         _plot_scatter(
             df_opportunities,
-            "Date de clôture",
+            "Date de fin actualisée",
             "Total_estime",
             fig_dir / "total_vs_date_sorted.png",
             sort_dates=True,
         )
 
-        ts = df_opportunities.set_index("Date de clôture")["Total_estime"].dropna()
+        ts = df_opportunities.set_index("Date de fin actualisée")["Total_estime"].dropna()
         ts_monthly = ts.resample("M").sum()
         ts_quarterly = ts.resample("Q").sum()
         ts_yearly = ts.resample("A").sum()
