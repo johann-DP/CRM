@@ -226,6 +226,7 @@ lead_scoring:
 
   # Colonne date utilisée pour le split chronologique
   date_col: "Date de fin actualisée"
+  cross_val: false
 
   # 4) Liste des variables catégorielles
   cat_features:
