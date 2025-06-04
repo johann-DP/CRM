@@ -11,6 +11,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
+from sklearn.linear_model import LogisticRegression
 from prophet import Prophet
 from sklearn.metrics import (
     log_loss,

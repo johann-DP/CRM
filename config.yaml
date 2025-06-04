@@ -226,6 +226,7 @@ lead_scoring:
 
   # Colonne date utilisée pour le split chronologique
   date_col: "Date de fin actualisée"
+  cross_val: false
 
   # 4) Liste des variables catégorielles
   cat_features:
@@ -242,6 +243,8 @@ lead_scoring:
     # - "Total recette produit" # Leakage
     - "Budget client estimé" # s’il est mis à jour différemment une fois la vente conclue, il peut trahir le statut.
     # Pas de leakage car pas de différence entre avec et sans
+
+  feat_eng: true
 
   # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
   xgb_params:
@@ -272,3 +275,4 @@ lead_scoring:
   prophet_params:
    changepoint_prior_scale: 0.05
   prophet_forecast_periods: 12
+  imbal_target: false
