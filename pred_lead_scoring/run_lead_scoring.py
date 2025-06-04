@@ -70,9 +70,10 @@ def main(argv: list[str] | None = None) -> None:
         fut_cat = ex.submit(train_catboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_lstm = ex.submit(train_lstm_lead, cfg, X_train, y_train, X_val, y_val)
 
-        model_xgb, metrics_xgb = fut_xgb.result()
-        model_cat, metrics_cat = fut_cat.result()
-        model_lstm, metrics_lstm = fut_lstm.result()
+        # Retrieve results to surface potential exceptions from worker threads
+        fut_xgb.result()
+        fut_cat.result()
+        fut_lstm.result()
 
     # ------------------------------------------------------------------
     # Forecast models
@@ -88,8 +89,9 @@ def main(argv: list[str] | None = None) -> None:
             train_prophet_conv_rate, cfg, df_prophet_train, ts_conv_test["conv_rate"]
         )
 
-        model_arima, metrics_arima = fut_arima.result()
-        model_prophet, metrics_prophet = fut_prophet.result()
+        # Ensure forecasting models completed successfully
+        fut_arima.result()
+        fut_prophet.result()
 
     df_metrics = evaluate_lead_models(cfg, X_test, y_test, ts_conv_test["conv_rate"])
     print(df_metrics.to_string(index=False))
