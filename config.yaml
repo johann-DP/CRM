@@ -243,6 +243,8 @@ lead_scoring:
     - "Budget client estimé" # s’il est mis à jour différemment une fois la vente conclue, il peut trahir le statut.
     # Pas de leakage car pas de différence entre avec et sans
 
+  feat_eng: true
+
   # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
   xgb_params:
    n_estimators: 100
