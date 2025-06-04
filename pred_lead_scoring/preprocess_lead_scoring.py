@@ -24,11 +24,19 @@ from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 # ---------------------------------------------------------------------------
 
 
-def _load_data(path: Path) -> pd.DataFrame:
+def _load_data(
+    path: Path,
+    date_col: str,
+    date_format: str | None = None,
+    dayfirst: bool = False,
+) -> pd.DataFrame:
     """Read the CSV file and parse the closing date.
 
     If the file contains several hundred thousand rows and :mod:`dask` is
-    available, ``dask.dataframe`` is used to limit memory usage.
+    available, ``dask.dataframe`` is used to limit memory usage.  ``date_col``
+    specifies the column containing the closing date. ``date_format`` may be
+    provided to enforce parsing with :func:`pandas.to_datetime`. If omitted,
+    ``dayfirst`` controls the default parsing behaviour.
     """
     if dd is not None:
         try:
@@ -47,15 +55,19 @@ def _load_data(path: Path) -> pd.DataFrame:
         df = dd.read_csv(path).compute()
     else:
         df = pd.read_csv(path)
-    if "Date de fin actualisée" not in df.columns:
-        raise ValueError("'Date de fin actualisée' column missing")
-    df["Date de fin actualisée"] = pd.to_datetime(
-        df["Date de fin actualisée"], dayfirst=False, errors="coerce"
-    )
+
+    if date_col not in df.columns:
+        raise ValueError(f"'{date_col}' column missing")
+
+    if date_format:
+        df[date_col] = pd.to_datetime(df[date_col], format=date_format, errors="coerce")
+    else:
+        df[date_col] = pd.to_datetime(df[date_col], dayfirst=dayfirst, errors="coerce")
+
     return df
 
 
-def _clean_closing_dates(df: pd.DataFrame) -> int:
+def _clean_closing_dates(df: pd.DataFrame, date_col: str) -> int:
     """Replace unrealistic closing dates with ``NaT``.
 
     Parameters
@@ -69,7 +81,7 @@ def _clean_closing_dates(df: pd.DataFrame) -> int:
         Number of replaced values.
     """
 
-    col = "Date de fin actualisée"
+    col = date_col
     future_limit = pd.Timestamp("2025-03-01")
     past_limit = pd.Timestamp("1995-01-01")
 
@@ -81,11 +93,17 @@ def _clean_closing_dates(df: pd.DataFrame) -> int:
     return count
 
 
-def _filter_status(df: pd.DataFrame) -> pd.DataFrame:
+def _filter_status(
+    df: pd.DataFrame,
+    date_col: str,
+    target_col: str,
+    positive_label: str,
+) -> pd.DataFrame:
     """Keep only won/lost opportunities and add ``is_won`` column."""
-    df = df[df["Statut commercial"].isin(["Gagné", "Perdu"])]
-    df = df.dropna(subset=["Date de fin actualisée", "Statut commercial"]).copy()
-    df["is_won"] = (df["Statut commercial"] == "Gagné").astype(int)
+
+    df = df[df[target_col].isin([positive_label, "Perdu"])]
+    df = df.dropna(subset=[date_col, target_col]).copy()
+    df["is_won"] = (df[target_col] == positive_label).astype(int)
     return df
 
 
@@ -95,15 +113,18 @@ def _filter_status(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _split_sets(
-    df: pd.DataFrame, test_start: str, test_end: str
+    df: pd.DataFrame,
+    date_col: str,
+    test_start: str,
+    test_end: str,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return train/validation/test DataFrames based on closing date."""
     start = pd.to_datetime(test_start)
     end = pd.to_datetime(test_end)
 
-    train = df[df["Date de fin actualisée"] < start].copy()
-    val = df[(df["Date de fin actualisée"] >= start) & (df["Date de fin actualisée"] <= end)].copy()
-    test = df[df["Date de fin actualisée"] > end].copy()
+    train = df[df[date_col] < start].copy()
+    val = df[(df[date_col] >= start) & (df[date_col] <= end)].copy()
+    test = df[df[date_col] > end].copy()
     return train, val, test
 
 
@@ -174,9 +195,13 @@ def _encode_features(
 # ---------------------------------------------------------------------------
 
 
-def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
-    df_closed = df[df["Statut commercial"].notna()].copy()
-    df_closed = df_closed.set_index("Date de fin actualisée")
+def _conversion_time_series(
+    df: pd.DataFrame,
+    date_col: str,
+    target_col: str,
+) -> pd.DataFrame:
+    df_closed = df[df[target_col].notna()].copy()
+    df_closed = df_closed.set_index(date_col)
     ts = df_closed["is_won"].resample("M").agg(["sum", "count"]).fillna(0.0)
     ts["conv_rate"] = np.where(ts["count"] > 0, ts["sum"] / ts["count"], 0.0)
     return ts
@@ -198,13 +223,24 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     data_dir = out_dir / "data_cache"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    df = _load_data(csv_path)
-    cleaned = _clean_closing_dates(df)
+    date_col = lead_cfg.get("date_col", "Date de fin actualisée")
+    target_col = lead_cfg.get("target_col", "Statut commercial")
+    positive_label = lead_cfg.get("positive_label", "Gagné")
+    date_format = lead_cfg.get("date_format")
+    dayfirst = lead_cfg.get("dayfirst", False)
+
+    df = _load_data(csv_path, date_col, date_format=date_format, dayfirst=dayfirst)
+    cleaned = _clean_closing_dates(df, date_col)
     if cleaned:
         print(f"Dates hors limites remplacées: {cleaned}")
-    df = _filter_status(df)
+    df = _filter_status(df, date_col, target_col, positive_label)
 
-    train, val, test = _split_sets(df, lead_cfg["test_start"], lead_cfg["test_end"])
+    train, val, test = _split_sets(
+        df,
+        date_col,
+        lead_cfg["test_start"],
+        lead_cfg["test_end"],
+    )
 
     cache_file = data_dir / "encoded_features.joblib"
     if cache_file.exists():
@@ -223,7 +259,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     y_test = test["is_won"]
 
     # Conversion rate time series
-    ts_conv = _conversion_time_series(df)
+    ts_conv = _conversion_time_series(df, date_col, target_col)
     start = pd.to_datetime(lead_cfg["test_start"])
     ts_conv_rate_train = ts_conv[:start]
     ts_conv_rate_test = ts_conv[start:]
