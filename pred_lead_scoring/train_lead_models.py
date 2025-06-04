@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 import pickle
+import logging
 from math import sqrt
 import joblib
 
@@ -24,6 +25,9 @@ from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
+from .logging_utils import setup_logging
+
+logger = logging.getLogger(__name__)
 
 try:  # Optional dependency
     from pmdarima import auto_arima as _auto_arima
@@ -140,7 +144,11 @@ def train_lstm_lead(
     logloss_val = log_loss(y_val, val_preds)
     auc_val = roc_auc_score(y_val, val_preds)
     pd.Series(val_preds).to_csv(data_dir / "proba_lstm.csv", index=False)
-    print(f"Validation log loss: {logloss_val:.4f}, AUC: {auc_val:.4f}")
+    logger.info(
+        "Validation log loss: %.4f, AUC: %.4f",
+        logloss_val,
+        auc_val,
+    )
 
     return model_lstm
 
@@ -179,11 +187,11 @@ def train_xgboost_lead(
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
 
-    print("DEBUG – XGBoost")
-    print("  X_train.shape:", X_train.shape)
-    print("  len(y_train):", len(y_train))
-    print("  X_val.shape:", X_val.shape)
-    print("  len(y_val):", len(y_val))
+    logger.debug("DEBUG – XGBoost")
+    logger.debug("  X_train.shape: %s", X_train.shape)
+    logger.debug("  len(y_train): %d", len(y_train))
+    logger.debug("  X_val.shape: %s", X_val.shape)
+    logger.debug("  len(y_val): %d", len(y_val))
 
     model_xgb.fit(
         X_train,

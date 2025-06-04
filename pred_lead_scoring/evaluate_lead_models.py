@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 import pickle
+import logging
 
 import joblib
 import numpy as np
@@ -19,6 +20,9 @@ from sklearn.metrics import (
     mean_squared_error,
 )
 import tensorflow as tf
+from .logging_utils import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -143,6 +147,8 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     import argparse
     import yaml
 
+    setup_logging()
+
     p = argparse.ArgumentParser(description="Evaluate lead scoring models")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args()
@@ -150,4 +156,4 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     df = evaluate_lead_models(cfg)
-    print(df.to_string(index=False))
+    logger.info("\n%s", df.to_string(index=False))
