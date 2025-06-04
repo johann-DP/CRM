@@ -71,7 +71,13 @@ def _load_data(
     return df
 
 
-def _clean_closing_dates(df: pd.DataFrame, date_col: str) -> int:
+def _clean_closing_dates(
+    df: pd.DataFrame,
+    date_col: str,
+    *,
+    future_limit: str | pd.Timestamp = "2025-03-01",
+    past_limit: str | pd.Timestamp = "1995-01-01",
+) -> int:
     """Replace unrealistic closing dates with ``NaT``.
 
     Parameters
@@ -86,8 +92,8 @@ def _clean_closing_dates(df: pd.DataFrame, date_col: str) -> int:
     """
 
     col = date_col
-    future_limit = pd.Timestamp("2025-03-01")
-    past_limit = pd.Timestamp("1995-01-01")
+    future_limit = pd.to_datetime(future_limit)
+    past_limit = pd.to_datetime(past_limit)
 
     mask_future = df[col].notna() & (df[col] > future_limit)
     mask_past = df[col].notna() & (df[col] < past_limit)
@@ -270,7 +276,11 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     dayfirst = lead_cfg.get("dayfirst", False)
 
     df = _load_data(csv_path, date_col, date_format=date_format, dayfirst=dayfirst)
-    cleaned = _clean_closing_dates(df, date_col)
+    cleaned = _clean_closing_dates(
+        df,
+        date_col,
+        future_limit=lead_cfg.get("future_limit", "2025-03-01"),
+    )
     if cleaned:
         logger.info("Dates hors limites remplacées: %d", cleaned)
     df = _filter_status(df, date_col, target_col, positive_label)

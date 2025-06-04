@@ -219,6 +219,8 @@ lead_scoring:
   #    date > test_end → test final.
   test_start: "2024-01-01"
   test_end:   "2025-03-01"
+  # Dates supérieures à ``future_limit`` seront ignorées
+  future_limit: "2025-04-01"
 
   # Colonne cible et valeur positive
   target_col: "Statut commercial"        # NE JAMAIS la mettre dans cat_features
