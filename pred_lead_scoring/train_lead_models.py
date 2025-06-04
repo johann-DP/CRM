@@ -26,6 +26,9 @@ from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from sklearn.linear_model import LogisticRegression
 from .logging_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -77,6 +80,12 @@ def train_lstm_lead(
 
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
+
+    if lead_cfg.get("imbal_target", False):
+        smote = SMOTE(random_state=0, n_jobs=-1)
+        under = RandomUnderSampler(random_state=0)
+        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
+        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
 
     # Convert to ``np.ndarray`` and ensure correct dtypes
     X_train = np.asarray(X_train, dtype=float)
@@ -239,59 +248,35 @@ def train_xgboost_lead(
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
 
     params = lead_cfg.get("xgb_params", {})
-    params.setdefault("n_jobs", -1)
-    cross_val = lead_cfg.get("cross_val", False)
+    params.setdefault("n_jobs", lead_cfg.get("xgb_params", {}).get("n_jobs", 1))
 
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
 
-    def _fit_model(X_t, y_t, X_v=None, y_v=None):
-        model = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
-        if X_v is not None and y_v is not None:
-            model.fit(X_t, y_t, eval_set=[(X_v, y_v)], verbose=params.get("verbose", False))
-        else:
-            model.fit(X_t, y_t, verbose=params.get("verbose", False))
-        return model
+    if lead_cfg.get("imbal_target", False):
+        pos = int((y_train == 1).sum())
+        neg = int((y_train == 0).sum())
+        if pos:
+            params.setdefault("scale_pos_weight", neg / pos)
+        smote = SMOTE(random_state=0, n_jobs=-1)
+        under = RandomUnderSampler(random_state=0)
+        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
+        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
 
-    if cross_val:
-        X_full = pd.concat([X_train, X_val])
-        y_full = pd.concat([y_train, y_val])
-        tscv = TimeSeriesSplit(n_splits=5)
-        metrics = []
-        for i, (tr, va) in enumerate(tscv.split(X_full)):
-            model_cv = _fit_model(X_full.iloc[tr], y_full.iloc[tr], X_full.iloc[va], y_full.iloc[va])
-            preds = model_cv.predict_proba(X_full.iloc[va])[:, 1]
-            fold_logloss = log_loss(y_full.iloc[va], preds)
-            fold_auc = roc_auc_score(y_full.iloc[va], preds)
-            metrics.append({"logloss": fold_logloss, "auc": fold_auc})
-            logger.info(
-                "XGB fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                fold_logloss,
-                fold_auc,
-            )
-        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
-        std_logloss = float(np.std([m["logloss"] for m in metrics]))
-        mean_auc = float(np.mean([m["auc"] for m in metrics]))
-        std_auc = float(np.std([m["auc"] for m in metrics]))
-        logger.info(
-            "XGB CV log loss: %.4f ± %.4f, AUC: %.4f ± %.4f",
-            mean_logloss,
-            std_logloss,
-            mean_auc,
-            std_auc,
-        )
-        model_xgb = _fit_model(X_full, y_full)
-        metrics_summary = {"logloss": mean_logloss, "auc": mean_auc}
-    else:
-        model_xgb = _fit_model(X_train, y_train, X_val, y_val)
-        val_pred = model_xgb.predict_proba(X_val)[:, 1]
-        metrics_summary = {
-            "logloss": log_loss(y_val, val_pred),
-            "auc": roc_auc_score(y_val, val_pred),
-        }
-        pd.Series(val_pred).to_csv(data_dir / "proba_xgboost.csv", index=False)
+    model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
+
+    logger.debug("DEBUG – XGBoost")
+    logger.debug("  X_train.shape: %s", X_train.shape)
+    logger.debug("  len(y_train): %d", len(y_train))
+    logger.debug("  X_val.shape: %s", X_val.shape)
+    logger.debug("  len(y_val): %d", len(y_val))
+
+    model_xgb.fit(
+        X_train,
+        y_train,
+        eval_set=[(X_val, y_val)],
+        verbose=params.get("verbose", False),
+    )
 
     model_path = out_dir / "models" / "lead_xgb.pkl"
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -328,62 +313,80 @@ def train_catboost_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("catboost_params", {})
-    params.setdefault("thread_count", -1)
-    cross_val = lead_cfg.get("cross_val", False)
+    params.setdefault(
+        "thread_count", lead_cfg.get("catboost_params", {}).get("thread_count", 1)
+    )
 
-    def _fit_model(X_t, y_t, X_v=None, y_v=None):
-        model = CatBoostClassifier(**params)
-        if X_v is not None and y_v is not None:
-            model.fit(X_t, y_t, eval_set=(X_v, y_v), verbose=params.get("verbose", False))
-        else:
-            model.fit(X_t, y_t, verbose=params.get("verbose", False))
-        return model
-
-    if cross_val:
-        X_full = pd.concat([X_train, X_val])
-        y_full = pd.concat([y_train, y_val])
-        tscv = TimeSeriesSplit(n_splits=5)
-        metrics = []
-        for i, (tr, va) in enumerate(tscv.split(X_full)):
-            model_cv = _fit_model(X_full.iloc[tr], y_full.iloc[tr], X_full.iloc[va], y_full.iloc[va])
-            preds = model_cv.predict_proba(X_full.iloc[va])[:, 1]
-            fold_logloss = log_loss(y_full.iloc[va], preds)
-            fold_auc = roc_auc_score(y_full.iloc[va], preds)
-            metrics.append({"logloss": fold_logloss, "auc": fold_auc})
-            logger.info(
-                "CatBoost fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                fold_logloss,
-                fold_auc,
+    if lead_cfg.get("imbal_target", False):
+        pos = int((y_train == 1).sum())
+        neg = int((y_train == 0).sum())
+        if pos and neg:
+            params.setdefault(
+                "class_weights",
+                [len(y_train) / (2 * neg), len(y_train) / (2 * pos)],
             )
-        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
-        std_logloss = float(np.std([m["logloss"] for m in metrics]))
-        mean_auc = float(np.mean([m["auc"] for m in metrics]))
-        std_auc = float(np.std([m["auc"] for m in metrics]))
-        logger.info(
-            "CatBoost CV log loss: %.4f ± %.4f, AUC: %.4f ± %.4f",
-            mean_logloss,
-            std_logloss,
-            mean_auc,
-            std_auc,
-        )
-        model_cat = _fit_model(X_full, y_full)
-        metrics_summary = {"logloss": mean_logloss, "auc": mean_auc}
-    else:
-        model_cat = _fit_model(X_train, y_train, X_val, y_val)
-        val_pred = model_cat.predict_proba(X_val)[:, 1]
-        metrics_summary = {
-            "logloss": log_loss(y_val, val_pred),
-            "auc": roc_auc_score(y_val, val_pred),
-        }
-        pd.Series(val_pred).to_csv(data_dir / "proba_catboost.csv", index=False)
+        smote = SMOTE(random_state=0, n_jobs=-1)
+        under = RandomUnderSampler(random_state=0)
+        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
+        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+
+    model_cat = CatBoostClassifier(**params)
+    model_cat.fit(
+        X_train, y_train, eval_set=(X_val, y_val), verbose=params.get("verbose", False)
+    )
 
     model_path = out_dir / "models" / "lead_catboost.cbm"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model_cat.save_model(str(model_path))
 
     return model_cat, metrics_summary
+
+
+def train_logistic_lead(
+    cfg: Dict[str, Dict],
+    X_train: Optional[pd.DataFrame] = None,
+    y_train: Optional[pd.Series] = None,
+    X_val: Optional[pd.DataFrame] = None,
+    y_val: Optional[pd.Series] = None,
+) -> tuple[LogisticRegression, Dict[str, float]]:
+    """Train a logistic regression classifier on the lead scoring dataset."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
+
+    if X_train is None or y_train is None:
+        X_train = pd.read_csv(data_dir / "X_train.csv")
+        y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
+    if X_val is None or y_val is None:
+        X_val = pd.read_csv(data_dir / "X_val.csv")
+        y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
+
+    params = lead_cfg.get("logreg_params", {})
+    if lead_cfg.get("imbal_target", False):
+        params.setdefault("class_weight", "balanced")
+        smote = SMOTE(random_state=0, n_jobs=-1)
+        under = RandomUnderSampler(random_state=0)
+        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
+        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+
+    model_log = LogisticRegression(**params)
+    model_log.fit(X_train, y_train)
+
+    model_path = out_dir / "models" / "lead_logistic.pkl"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model_log, model_path)
+
+    val_pred = model_log.predict_proba(X_val)[:, 1]
+    pd.Series(val_pred).to_csv(data_dir / "proba_logistic.csv", index=False)
+    metrics = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    return model_log, metrics
 
 
 def train_arima_conv_rate(
@@ -523,6 +526,7 @@ __all__ = [
     "train_lstm_lead",
     "train_xgboost_lead",
     "train_catboost_lead",
+    "train_logistic_lead",
     "train_arima_conv_rate",
     "train_prophet_conv_rate",
 ]

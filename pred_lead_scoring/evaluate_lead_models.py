@@ -11,6 +11,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
+from sklearn.linear_model import LogisticRegression
 from prophet import Prophet
 from sklearn.metrics import (
     log_loss,
@@ -64,6 +65,8 @@ def evaluate_lead_models(
     cat_model = CatBoostClassifier()
     cat_model.load_model(str(models_dir / "lead_catboost.cbm"))
 
+    log_model = joblib.load(models_dir / "lead_logistic.pkl")
+
     lstm_model = tf.keras.models.load_model(models_dir / "lead_lstm.h5")
 
     with open(models_dir / "arima_conv_rate.pkl", "rb") as fh:
@@ -103,6 +106,7 @@ def evaluate_lead_models(
 
     _add_clf("xgboost", xgb_model.predict_proba(X_test)[:, 1])
     _add_clf("catboost", cat_model.predict_proba(X_test)[:, 1])
+    _add_clf("logistic", log_model.predict_proba(X_test)[:, 1])
     _add_clf("lstm", lstm_model.predict(X_test).ravel())
 
     # ------------------------------------------------------------------
