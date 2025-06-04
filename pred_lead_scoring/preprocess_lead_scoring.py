@@ -177,8 +177,8 @@ def _encode_features(
 def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
     df_closed = df[df["Statut commercial"].notna()].copy()
     df_closed = df_closed.set_index("Date de fin actualisée")
-    ts = df_closed["is_won"].resample("M").agg(["sum", "count"])
-    ts["conv_rate"] = ts["sum"] / ts["count"]
+    ts = df_closed["is_won"].resample("M").agg(["sum", "count"]).fillna(0.0)
+    ts["conv_rate"] = np.where(ts["count"] > 0, ts["sum"] / ts["count"], 0.0)
     return ts
 
 
