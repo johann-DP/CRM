@@ -122,7 +122,7 @@ def train_lstm_lead(
     X_val = X_val.loc[y_val.index]
 
     if lead_cfg.get("imbal_target", False):
-        smote = SMOTE(random_state=0, n_jobs=-1)
+        smote = SMOTE(random_state=0)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
         X_train, y_train = under.fit_resample(X_tmp, y_tmp)
@@ -363,7 +363,7 @@ def train_xgboost_lead(
         neg = int((y_train == 0).sum())
         if pos:
             params.setdefault("scale_pos_weight", neg / pos)
-        smote = SMOTE(random_state=0, n_jobs=-1)
+        smote = SMOTE(random_state=0)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
         X_train, y_train = under.fit_resample(X_tmp, y_tmp)
@@ -489,7 +489,7 @@ def train_logistic_lead(
     params = lead_cfg.get("logreg_params", {})
     if lead_cfg.get("imbal_target", False):
         params.setdefault("class_weight", "balanced")
-        smote = SMOTE(random_state=0, n_jobs=-1)
+        smote = SMOTE(random_state=0)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
         X_train, y_train = under.fit_resample(X_tmp, y_tmp)
