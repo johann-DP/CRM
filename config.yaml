@@ -220,6 +220,13 @@ lead_scoring:
   test_start: "2024-01-01"
   test_end:   "2025-03-01"
 
+  # Colonne cible et valeur positive
+  target_col: "Statut commercial"        # NE JAMAIS la mettre dans cat_features
+  positive_label: "Gagné"                # 1 si == "Gagné", 0 sinon
+
+  # Colonne date utilisée pour le split chronologique
+  date_col: "Date de fin actualisée"
+
   # 4) Liste des variables catégorielles
   #    (colonne exacte dans opportunites_2025.csv)
   cat_features:
