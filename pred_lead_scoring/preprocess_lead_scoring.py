@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Dict, Tuple
 import numpy as np
@@ -10,6 +11,9 @@ import numpy as np
 import pandas as pd
 import yaml
 from joblib import dump, load
+from .logging_utils import setup_logging
+
+logger = logging.getLogger(__name__)
 
 try:  # optional dependency for large datasets
     import dask.dataframe as dd
@@ -118,13 +122,49 @@ def _split_sets(
     test_start: str,
     test_end: str,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return train/validation/test DataFrames based on closing date."""
+    """Return train/validation/test DataFrames based on closing date.
+
+    The input ``df`` is sorted chronologically to preserve natural ordering. A
+    check verifies that concatenating the splits yields the same index as the
+    sorted dataframe to guard against misaligned date boundaries. Detailed
+    sizes and date ranges are logged for debugging.
+    """
     start = pd.to_datetime(test_start)
     end = pd.to_datetime(test_end)
 
-    train = df[df[date_col] < start].copy()
-    val = df[(df[date_col] >= start) & (df[date_col] <= end)].copy()
-    test = df[df[date_col] > end].copy()
+    df_sorted = df.sort_values(date_col)
+
+    train = df_sorted[df_sorted[date_col] < start].copy()
+    val = df_sorted[(df_sorted[date_col] >= start) & (df_sorted[date_col] <= end)].copy()
+    test = df_sorted[df_sorted[date_col] > end].copy()
+
+    logger.debug(
+        "Split bounds start=%s end=%s (dataset range %s -> %s)",
+        start.date(),
+        end.date(),
+        df_sorted[date_col].min().date(),
+        df_sorted[date_col].max().date(),
+    )
+    logger.debug(
+        "Split sizes train=%d val=%d test=%d",
+        len(train),
+        len(val),
+        len(test),
+    )
+
+    if train.empty or val.empty or test.empty:
+        raise ValueError(
+            "One of the train/val/test splits is empty. "
+            f"train={len(train)}, val={len(val)}, test={len(test)}."
+        )
+
+    combined_index = pd.concat([train, val, test]).index
+    if not combined_index.equals(df_sorted.index):
+        raise ValueError(
+            "Mismatch between concatenated splits and original data order. "
+            "Check that 'test_start' and 'test_end' correctly cover the date range."
+        )
+
     return train, val, test
 
 
@@ -232,7 +272,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     df = _load_data(csv_path, date_col, date_format=date_format, dayfirst=dayfirst)
     cleaned = _clean_closing_dates(df, date_col)
     if cleaned:
-        print(f"Dates hors limites remplacées: {cleaned}")
+        logger.info("Dates hors limites remplacées: %d", cleaned)
     df = _filter_status(df, date_col, target_col, positive_label)
 
     train, val, test = _split_sets(
@@ -240,6 +280,12 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         date_col,
         lead_cfg["test_start"],
         lead_cfg["test_end"],
+    )
+    logger.debug(
+        "After split: train=%d, val=%d, test=%d",
+        len(train),
+        len(val),
+        len(test),
     )
 
     cache_file = data_dir / "encoded_features.joblib"
@@ -345,6 +391,7 @@ def preprocess(cfg: Dict[str, Dict]):
 
 
 def main(argv: list[str] | None = None) -> None:
+    setup_logging()
     p = argparse.ArgumentParser(description="Preprocess lead scoring dataset")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args(argv)
