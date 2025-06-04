@@ -218,7 +218,7 @@ lead_scoring:
   #    test_start <= date <= test_end → validation,
   #    date > test_end → test final.
   test_start: "2024-01-01"
-  test_end:   "2025-03-01"
+  test_end:   "2025-01-01"
 
   # Colonne cible et valeur positive
   target_col: "Statut commercial"        # NE JAMAIS la mettre dans cat_features
@@ -228,7 +228,6 @@ lead_scoring:
   date_col: "Date de fin actualisée"
 
   # 4) Liste des variables catégorielles
-  #    (colonne exacte dans opportunites_2025.csv)
   cat_features:
     - "Entité opérationnelle"
     - "Statut production"
@@ -239,7 +238,6 @@ lead_scoring:
     - "Type opportunité"
 
   # 5) Liste des variables numériques
-  #    (pas de “;” ni de majuscules/pièces manquantes)
   numeric_features:
     - "Total recette actualisé"
     - "Total recette réalisé"
@@ -269,4 +267,4 @@ lead_scoring:
 
   prophet_params:
    changepoint_prior_scale: 0.05
-   prophet_forecast_periods: 12
+  prophet_forecast_periods: 12
