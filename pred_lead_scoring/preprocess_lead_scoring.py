@@ -266,7 +266,30 @@ def _conversion_time_series(
     date_col: str,
     target_col: str,
 ) -> pd.DataFrame:
-    df_closed = df[df[target_col].notna()].copy()
+    """Return monthly conversion rate time series.
+
+    The preprocessing step (:func:`_filter_status`) adds an ``is_won`` column
+    derived from ``target_col``.  This helper relies solely on ``is_won`` so
+    that subsequent steps may drop the original target column without causing a
+    ``KeyError``.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Dataset containing an ``is_won`` column and the date column ``date_col``.
+    date_col : str
+        Name of the date column used to index the time series.
+    target_col : str
+        Original target column name.  Only used for error reporting.
+    """
+
+    if "is_won" not in df.columns:
+        if target_col not in df.columns:
+            raise KeyError(f"'{target_col}' column missing and 'is_won' not found")
+        df_closed = df[df[target_col].notna()].copy()
+    else:
+        df_closed = df.copy()
+
     df_closed = df_closed.set_index(date_col)
     ts = df_closed["is_won"].resample("M").agg(["sum", "count"]).fillna(0.0)
     ts["conv_rate"] = np.where(ts["count"] > 0, ts["sum"] / ts["count"], 0.0)
