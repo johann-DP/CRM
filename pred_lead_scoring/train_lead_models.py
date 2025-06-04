@@ -18,7 +18,11 @@ from sklearn.metrics import (
     mean_squared_error,
     mean_absolute_percentage_error,
 )
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+from skopt import BayesSearchCV
+from skopt.space import Integer, Real
+import concurrent.futures
 
 import tensorflow as tf
 from keras import layers, Model
@@ -37,6 +41,42 @@ try:  # Optional dependency
     from pmdarima import auto_arima as _auto_arima
 except Exception as _exc_pmdarima:  # pragma: no cover - optional
     _auto_arima = None
+
+
+def _run_hyperparameter_search(
+    model,
+    param_grid: dict,
+    bayes_space: dict,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+) -> dict:
+    """Run GridSearchCV and BayesSearchCV in parallel and return best params."""
+    cv = TimeSeriesSplit(n_splits=5)
+    grid = GridSearchCV(
+        model,
+        param_grid=param_grid,
+        scoring="roc_auc",
+        cv=cv,
+        n_jobs=-1,
+    )
+    bayes = BayesSearchCV(
+        model,
+        search_spaces=bayes_space,
+        scoring="roc_auc",
+        cv=cv,
+        n_jobs=-1,
+        n_iter=20,
+    )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        fut_grid = ex.submit(grid.fit, X_train, y_train)
+        fut_bayes = ex.submit(bayes.fit, X_train, y_train)
+        fut_grid.result()
+        fut_bayes.result()
+
+    if bayes.best_score_ >= grid.best_score_:
+        return bayes.best_params_
+    return grid.best_params_
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +260,54 @@ def train_lstm_lead(
     return model_lstm, metrics_summary
 
 
+def train_logistic_lead(
+    cfg: Dict[str, Dict],
+    X_train: Optional[pd.DataFrame] = None,
+    y_train: Optional[pd.Series] = None,
+    X_val: Optional[pd.DataFrame] = None,
+    y_val: Optional[pd.Series] = None,
+) -> tuple[LogisticRegression, Dict[str, float]]:
+    """Train a logistic regression classifier with optional hyperparameter search."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
+
+    if X_train is None or y_train is None:
+        X_train = pd.read_csv(data_dir / "X_train.csv")
+        y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
+    if X_val is None or y_val is None:
+        X_val = pd.read_csv(data_dir / "X_val.csv")
+        y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
+
+    params = lead_cfg.get("logistic_params", {}).copy()
+
+    if lead_cfg.get("fine_tuning", False):
+        grid = {"C": [0.01, 0.1, 1, 10]}
+        space = {"C": Real(1e-3, 10, prior="log-uniform")}
+        base_model = LogisticRegression(max_iter=1000, **params)
+        best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
+        params.update(best_params)
+
+    model_log = LogisticRegression(max_iter=1000, **params)
+    model_log.fit(X_train, y_train)
+
+    model_path = out_dir / "models" / "lead_logistic.pkl"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model_log, model_path)
+
+    val_pred = model_log.predict_proba(X_val)[:, 1]
+    pd.Series(val_pred).to_csv(data_dir / "proba_logistic.csv", index=False)
+    metrics = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    return model_log, metrics
+
+
 def train_xgboost_lead(
     cfg: Dict[str, Dict],
     X_train: Optional[pd.DataFrame] = None,
@@ -247,8 +335,25 @@ def train_xgboost_lead(
         X_val = pd.read_csv(data_dir / "X_val.csv")
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
 
-    params = lead_cfg.get("xgb_params", {})
+    params = lead_cfg.get("xgb_params", {}).copy()
     params.setdefault("n_jobs", lead_cfg.get("xgb_params", {}).get("n_jobs", 1))
+
+    if lead_cfg.get("fine_tuning", False):
+        grid = {
+            "max_depth": [3, 6, 10],
+            "learning_rate": [0.01, 0.1],
+            "subsample": [0.5, 1.0],
+        }
+        space = {
+            "max_depth": Integer(3, 10),
+            "learning_rate": Real(0.01, 0.3, prior="log-uniform"),
+            "subsample": Real(0.5, 1.0),
+        }
+        base_model = XGBClassifier(use_label_encoder=False, eval_metric="logloss", n_jobs=params["n_jobs"])
+        best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
+        params.update(best_params)
+
+    model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
 
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
@@ -312,23 +417,25 @@ def train_catboost_lead(
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
 
-    params = lead_cfg.get("catboost_params", {})
+    params = lead_cfg.get("catboost_params", {}).copy()
     params.setdefault(
         "thread_count", lead_cfg.get("catboost_params", {}).get("thread_count", 1)
     )
 
-    if lead_cfg.get("imbal_target", False):
-        pos = int((y_train == 1).sum())
-        neg = int((y_train == 0).sum())
-        if pos and neg:
-            params.setdefault(
-                "class_weights",
-                [len(y_train) / (2 * neg), len(y_train) / (2 * pos)],
-            )
-        smote = SMOTE(random_state=0, n_jobs=-1)
-        under = RandomUnderSampler(random_state=0)
-        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
-        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+    if lead_cfg.get("fine_tuning", False):
+        grid = {
+            "depth": [4, 6, 8],
+            "l2_leaf_reg": [1, 5, 10],
+            "learning_rate": [0.01, 0.1],
+        }
+        space = {
+            "depth": Integer(4, 8),
+            "l2_leaf_reg": Integer(1, 10),
+            "learning_rate": Real(0.01, 0.3, prior="log-uniform"),
+        }
+        base_model = CatBoostClassifier(**params)
+        best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
+        params.update(best_params)
 
     model_cat = CatBoostClassifier(**params)
     model_cat.fit(
@@ -524,6 +631,7 @@ def train_prophet_conv_rate(
 
 __all__ = [
     "train_lstm_lead",
+    "train_logistic_lead",
     "train_xgboost_lead",
     "train_catboost_lead",
     "train_logistic_lead",
