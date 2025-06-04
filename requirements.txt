@@ -42,3 +42,6 @@ cmdstanpy==1.2.5
 # ------------------ Deep Learning ------------------
 tensorflow_cpu==2.19.0
 keras==3.10.0
+
+scikit_optimize==0.9.0
+imblearn
