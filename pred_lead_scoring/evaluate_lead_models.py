@@ -66,7 +66,8 @@ def evaluate_lead_models(
         arima_model = pickle.load(fh)
 
     prophet_model = Prophet()
-    prophet_model.load(str(models_dir / "prophet_conv_rate.pkl"))
+    with open(models_dir / "prophet_conv_rate.pkl", "rb") as fh:
+        prophet_model = pickle.load(fh)
 
     metrics = []
 
@@ -91,6 +92,10 @@ def evaluate_lead_models(
                 "f1": f1,
             }
         )
+
+    # Avant de passer X_test à XGBoost, s'assurer que les colonnes object sont en 'category'
+    for col in X_test.select_dtypes(include="object").columns:
+        X_test[col] = X_test[col].astype("category")
 
     _add_clf("xgboost", xgb_model.predict_proba(X_test)[:, 1])
     _add_clf("catboost", cat_model.predict_proba(X_test)[:, 1])

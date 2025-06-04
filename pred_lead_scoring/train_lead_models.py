@@ -365,7 +365,11 @@ def train_prophet_conv_rate(
         freq="M",
     )
     forecast = model_prophet.predict(future)
-    prophet_pred = forecast.set_index("ds")["yhat"].loc[ts_conv_rate_test.index]
+
+    forecast_series = forecast.set_index("ds")["yhat"]
+    # On réindexe sur l’index de test ; si certaines dates de test ne figurent pas dans 'forecast_series',
+    # on prend la dernière valeur connue (méthode "ffill").
+    prophet_pred = forecast_series.reindex(ts_conv_rate_test.index, method="ffill")
 
     mae = mean_absolute_error(ts_conv_rate_test, prophet_pred)
     rmse = sqrt(mean_squared_error(ts_conv_rate_test, prophet_pred))
