@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> None:
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
 
-    csv_path = Path(cfg.get("input_file_cleaned_3_multi", "cleaned_3_multi.csv"))
+    csv_path = Path(cfg.get("input_file_cleaned_3_all", "phase3_cleaned_all.csv"))
     output_dir = Path(cfg.get("output_dir", "."))
 
     # ------------------------------------------------------------------

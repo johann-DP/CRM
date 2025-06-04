@@ -195,3 +195,72 @@ pacmap:
     cleaned_1:
     cleaned_3_univ:
     cleaned_3_multi:
+
+# … vos autres réglages de config …
+
+# -------------------------------------------------------------------
+# Section Lead Scoring
+# -------------------------------------------------------------------
+lead_scoring:
+  # 1) Fichier brut d’opportunités (Everwin SX / Digora)
+  #    Doit contenir au moins :
+  #      - "Date de clôture" (datetime)
+  #      - "Statut_final" (valeurs "Gagné" ou "Perdu")
+  #      - les colonnes d’entrée à encoder / normaliser
+  input_path: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase3_ou\phase3_cleaned_all.csv'
+
+  # 2) Répertoire où déposer data_cache/ et models/
+  #    (créé automatiquement s’il n’existe pas)
+  output_dir: '\\Lenovo\d\DATAPREDICT\DATAPREDICT 2024\Missions\Digora\phase4_output'
+
+  # 3) Période pour découper train/validation/test
+  #    Tous les enregistrements < test_start → entraînement,
+  #    test_start <= date <= test_end → validation,
+  #    date > test_end → test final.
+  test_start: "2024-01-01"
+  test_end:   "2025-03-01"
+
+  # 4) Liste des variables catégorielles
+  #    (colonne exacte dans opportunites_2025.csv)
+  cat_features:
+    - "Entité opérationnelle"
+    - "Statut production"
+    - "Statut commercial"
+    - "Type"
+    - "Catégorie"
+    - "Sous-catégorie"
+    - "Reconduction taciteReconduction tacite"
+    - "Type opportunité"
+
+  # 5) Liste des variables numériques
+  #    (pas de “;” ni de majuscules/pièces manquantes)
+  numeric_features:
+    - "Total recette actualisé"
+    - "Total recette réalisé"
+    - "Total recette produit"
+    - "Budget client estimé"
+
+  # 6) (Optionnel) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
+  #    Vous pouvez, par exemple, ajouter :
+  # xgb_params:
+  #   n_estimators: 100
+  #   max_depth: 5
+  #
+  # catboost_params:
+  #   learning_rate: 0.1
+  #   thread_count: 4
+  #
+  # lstm_params:
+  #   batch_size: 32
+  #   epochs: 50
+  #   patience: 5
+  #   intra_threads: 1
+  #   inter_threads: 1
+  #
+  # arima_params:
+  #   n_jobs: 2
+  #   arima_order: [1, 1, 1]   # si vous voulez forcer un ordre
+  #
+  # prophet_params:
+  #   changepoint_prior_scale: 0.05
+  #   prophet_forecast_periods: 12
