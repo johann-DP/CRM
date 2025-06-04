@@ -398,6 +398,11 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
 
         if {"Date de début actualisée", "Date de fin réelle"} <= set(train.columns):
             for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
+                raw["Date de début actualisée"] = pd.to_datetime(raw["Date de début actualisée"], dayfirst=True,
+                                                                 errors="coerce")
+                raw["Date de fin réelle"] = pd.to_datetime(raw["Date de fin réelle"], dayfirst=True,
+                                                                 errors="coerce")
+
                 duration = (
                     raw["Date de fin réelle"] - raw["Date de début actualisée"]
                 ).dt.days
