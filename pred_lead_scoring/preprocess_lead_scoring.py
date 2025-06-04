@@ -265,6 +265,7 @@ def _conversion_time_series(
     df: pd.DataFrame,
     date_col: str,
     target_col: str,
+    positive_label: str = "Gagné",
 ) -> pd.DataFrame:
     """Return monthly conversion rate time series.
 
@@ -276,17 +277,22 @@ def _conversion_time_series(
     Parameters
     ----------
     df : DataFrame
-        Dataset containing an ``is_won`` column and the date column ``date_col``.
+        Dataset with closing dates and either an ``is_won`` column or the
+        original ``target_col``.
     date_col : str
         Name of the date column used to index the time series.
     target_col : str
         Original target column name.  Only used for error reporting.
+    positive_label : str, optional
+        Positive outcome value in ``target_col`` used when ``is_won`` is not
+        present. Defaults to ``"Gagné"``.
     """
 
     if "is_won" not in df.columns:
         if target_col not in df.columns:
             raise KeyError(f"'{target_col}' column missing and 'is_won' not found")
         df_closed = df[df[target_col].notna()].copy()
+        df_closed["is_won"] = (df_closed[target_col] == positive_label).astype(int)
     else:
         df_closed = df.copy()
 
@@ -448,7 +454,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         X_test[num_cols] = scaler_extra.transform(X_test[num_cols])
 
     # Conversion rate time series
-    ts_conv = _conversion_time_series(df, date_col, target_col)
+    ts_conv = _conversion_time_series(df, date_col, target_col, positive_label)
     start = pd.to_datetime(lead_cfg["test_start"])
     ts_conv_rate_train = ts_conv[:start]
     ts_conv_rate_test = ts_conv[start:]
