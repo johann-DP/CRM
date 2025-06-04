@@ -32,6 +32,7 @@ diptest==0.9.0
 # ------------------ Machine Learning & Boosting ------------------
 xgboost==2.1.4
 catboost==1.2.8
+scikit-optimize==0.9.0
 
 # ------------------ Séries temporelles avancées ------------------
 statsforecast==2.0.1

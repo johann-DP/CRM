@@ -32,6 +32,7 @@ from .preprocess_lead_scoring import preprocess
 from .train_lead_models import (
     train_xgboost_lead,
     train_catboost_lead,
+    train_logistic_lead,
     train_lstm_lead,
     train_arima_conv_rate,
     train_prophet_conv_rate,
@@ -71,14 +72,16 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Classification models
     # ------------------------------------------------------------------
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         fut_xgb = ex.submit(train_xgboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_cat = ex.submit(train_catboost_lead, cfg, X_train, y_train, X_val, y_val)
+        fut_log = ex.submit(train_logistic_lead, cfg, X_train, y_train, X_val, y_val)
         fut_lstm = ex.submit(train_lstm_lead, cfg, X_train, y_train, X_val, y_val)
 
         # Retrieve results to surface potential exceptions from worker threads
         fut_xgb.result()
         fut_cat.result()
+        fut_log.result()
         fut_lstm.result()
 
     # ------------------------------------------------------------------

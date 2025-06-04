@@ -252,6 +252,11 @@ lead_scoring:
    learning_rate: 0.1
    thread_count: 4
 
+  logistic_params:
+   C: 1.0
+
+  fine_tuning: false
+
   lstm_params:
    batch_size: 32
    epochs: 50
