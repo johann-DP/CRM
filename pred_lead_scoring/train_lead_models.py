@@ -19,7 +19,7 @@ from sklearn.metrics import (
 )
 
 import tensorflow as tf
-from tensorflow.keras import layers, Model
+from keras import layers, Model
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from xgboost import XGBClassifier
@@ -68,6 +68,9 @@ def train_lstm_lead(
     if X_val is None or y_val is None:
         X_val = pd.read_csv(data_dir / "X_val.csv")
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
 
     # Convert to ``np.ndarray`` and ensure correct dtypes
     X_train = np.asarray(X_train, dtype=float)
@@ -172,6 +175,16 @@ def train_xgboost_lead(
     params = lead_cfg.get("xgb_params", {})
     params.setdefault("n_jobs", lead_cfg.get("xgb_params", {}).get("n_jobs", 1))
     model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
+
+    print("DEBUG – XGBoost")
+    print("  X_train.shape:", X_train.shape)
+    print("  len(y_train):", len(y_train))
+    print("  X_val.shape:", X_val.shape)
+    print("  len(y_val):", len(y_val))
+
     model_xgb.fit(
         X_train,
         y_train,
@@ -215,6 +228,9 @@ def train_catboost_lead(
     if X_val is None or y_val is None:
         X_val = pd.read_csv(data_dir / "X_val.csv")
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("catboost_params", {})
     params.setdefault(
