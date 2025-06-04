@@ -217,8 +217,8 @@ lead_scoring:
   #    Tous les enregistrements < test_start → entraînement,
   #    test_start <= date <= test_end → validation,
   #    date > test_end → test final.
-  test_start: "2024-01-01"
-  test_end:   "2025-03-01"
+  test_start: "2023-01-01"
+  test_end:   "2024-01-01"
 
   # Colonne cible et valeur positive
   target_col: "Statut commercial"        # NE JAMAIS la mettre dans cat_features
@@ -230,19 +230,18 @@ lead_scoring:
   # 4) Liste des variables catégorielles
   cat_features:
     - "Entité opérationnelle"
-    - "Statut production"
-    - "Type"
+    #" - "Statut production" # Tant que ce statut n’est pas “Gagné” (ce qui s’exprime en fait via le champ “Statut commercial”), il ne révèle pas la conversion finale. Attention toutefois à ne pas inclure la modalité “Perdu” ici si vous l’utilisez pour construire la cible ; on préfère conserver ce champ pour le feature engineering (ex. fréquence des statuts intermédiaires), mais il ne doit pas être corrélé directement au fait d’être “Gagné” ou “Perdu” comme cible.
     - "Catégorie"
     - "Sous-catégorie"
-    - "Reconduction tacite"
     - "Type opportunité"
 
   # 5) Liste des variables numériques
   numeric_features:
-    - "Total recette actualisé"
-    - "Total recette réalisé"
-    - "Total recette produit"
-    - "Budget client estimé"
+    # - "Total recette actualisé" # Leakage
+    # - "Total recette réalisé" # Leakage
+    # - "Total recette produit" # Leakage
+    - "Budget client estimé" # s’il est mis à jour différemment une fois la vente conclue, il peut trahir le statut.
+    # Pas de leakage car pas de différence entre avec et sans
 
   # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
   xgb_params:

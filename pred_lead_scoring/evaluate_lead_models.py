@@ -118,7 +118,7 @@ def evaluate_lead_models(
             "model": "arima",
             "model_type": "arima",
             "mae": mean_absolute_error(ts_conv_rate_test, pred_arima),
-            "rmse": mean_squared_error(ts_conv_rate_test, pred_arima, squared=False),
+            "rmse": mean_squared_error(ts_conv_rate_test, pred_arima),
             "mape": _safe_mape(ts_conv_rate_test.values, np.asarray(pred_arima)),
         }
     )
@@ -132,7 +132,7 @@ def evaluate_lead_models(
             "model": "prophet",
             "model_type": "prophet",
             "mae": mean_absolute_error(ts_conv_rate_test, pred_prophet),
-            "rmse": mean_squared_error(ts_conv_rate_test, pred_prophet, squared=False),
+            "rmse": mean_squared_error(ts_conv_rate_test, pred_prophet),
             "mape": _safe_mape(ts_conv_rate_test.values, pred_prophet.values),
         }
     )

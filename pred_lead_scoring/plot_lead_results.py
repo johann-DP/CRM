@@ -331,7 +331,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             df_opportunities = pd.read_csv(lead_cfg["input_path"])
             df_opportunities["Date de fin actualisée"] = pd.to_datetime(
-                df_opportunities["Date de fin actualisée"], dayfirst=True, errors="coerce"
+                df_opportunities["Date de fin actualisée"], dayfirst=False, errors="coerce"
             )
         except Exception:
             df_opportunities = None

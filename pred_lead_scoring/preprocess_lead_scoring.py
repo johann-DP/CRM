@@ -181,52 +181,77 @@ def _encode_features(
     num_features: list[str],
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Impute/scale numeric vars and ordinal-encode categorical vars."""
-    imp = SimpleImputer(strategy="median")
-    scaler = StandardScaler()
+    # 1) Encoder les variables numériques si la liste n'est pas vide
+
+    if num_features:
+        imp = SimpleImputer(strategy="median")
+        scaler = StandardScaler()
+
+        # Imputation + normalisation
+        X_train_num = imp.fit_transform(train[num_features])
+
+        if len(val) > 0:
+            X_val_num = imp.transform(val[num_features])
+        else:
+            X_val_num = np.empty((0, len(num_features)))
+
+        if len(test) > 0:
+            X_test_num = imp.transform(test[num_features])
+        else:
+            X_test_num = np.empty((0, len(num_features)))
+
+        X_train_num = scaler.fit_transform(X_train_num)
+
+        if len(val) > 0:
+            X_val_num = scaler.transform(X_val_num)
+
+        if len(test) > 0:
+            X_test_num = scaler.transform(X_test_num)
+    else:
+        # Aucun champ numérique : créer des tableaux vides (n_lignes x 0)
+        X_train_num = np.empty((len(train), 0))
+        X_val_num = np.empty((len(val), 0))
+        X_test_num = np.empty((len(test), 0))
+
+    # 2) Encoder les variables catégorielles (OrdinalEncoder)
     enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
 
-    X_train_num = imp.fit_transform(train[num_features])
-    if len(val) > 0:
-        X_val_num = imp.transform(val[num_features])
-    else:
-        X_val_num = np.empty((0, len(num_features)))
-    if len(test) > 0:
-        X_test_num = imp.transform(test[num_features])
-    else:
-        X_test_num = np.empty((0, len(num_features)))
+    if cat_features:
+        X_train_cat = enc.fit_transform(train[cat_features].astype(str))
 
-    X_train_num = scaler.fit_transform(X_train_num)
-    if len(val) > 0:
-        X_val_num = scaler.transform(X_val_num)
-    if len(test) > 0:
-        X_test_num = scaler.transform(X_test_num)
+        if len(val) > 0:
+            X_val_cat = enc.transform(val[cat_features].astype(str))
+        else:
+            X_val_cat = np.empty((0, len(cat_features)))
 
-    X_train_cat = enc.fit_transform(train[cat_features].astype(str))
-    if len(val) > 0:
-        X_val_cat = enc.transform(val[cat_features].astype(str))
+        if len(test) > 0:
+            X_test_cat = enc.transform(test[cat_features].astype(str))
+        else:
+            X_test_cat = np.empty((0, len(cat_features)))
     else:
-        X_val_cat = np.empty((0, len(cat_features)))
-    if len(test) > 0:
-        X_test_cat = enc.transform(test[cat_features].astype(str))
-    else:
-        X_test_cat = np.empty((0, len(cat_features)))
+        # Aucun champ catégoriel : tableaux vides (n_lignes x 0)
+        X_train_cat = np.empty((len(train), 0))
+        X_val_cat = np.empty((len(val), 0))
+        X_test_cat = np.empty((len(test), 0))
 
+    # 3) Concaténer (numérique | cat) pour obtenir le DataFrame final
     cols = num_features + cat_features
     X_train = pd.DataFrame(
-        np.column_stack([X_train_num, X_train_cat]),
-        columns=cols,
-        index=train.index,
+         np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
+         columns = cols,
+         index = train.index,
     )
     X_val = pd.DataFrame(
-        np.column_stack([X_val_num, X_val_cat]),
-        columns=cols,
-        index=val.index,
+         np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(val), 0)),
+         columns = cols,
+         index = val.index,
     )
     X_test = pd.DataFrame(
-        np.column_stack([X_test_num, X_test_cat]),
-        columns=cols,
-        index=test.index,
+         np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(test), 0)),
+         columns = cols,
+         index = test.index,
     )
+
     return X_train, X_val, X_test
 
 
@@ -288,6 +313,29 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         len(test),
     )
 
+    # === DÉBUT BLOC NETTOYAGE ET VALIDATION DES FEATURES ===
+    raw_cat_features = lead_cfg.get("cat_features") or []
+    raw_num_features = lead_cfg.get("numeric_features") or []
+
+    # 1) Supprimer automatiquement tout None ou chaîne vide
+    cat_features = [f for f in raw_cat_features if f is not None and str(f).strip() != ""]
+    num_features = [f for f in raw_num_features if f is not None and str(f).strip() != ""]
+
+    # 2) Vérifier que chaque colonne catégorielle existe dans train
+    missing_cat = [f for f in cat_features if f not in train.columns]
+    if missing_cat:
+        raise KeyError(f"Colonnes catégorielles manquantes dans train : {missing_cat}")
+
+    # 3) Vérifier que chaque colonne numérique existe dans train (si num_features non vide)
+    missing_num = [f for f in num_features if f not in train.columns]
+    if missing_num:
+        raise KeyError(f"Colonnes numériques manquantes dans train : {missing_num}")
+
+    # 4) Mettre à jour lead_cfg
+    lead_cfg["cat_features"] = cat_features
+    lead_cfg["numeric_features"] = num_features
+
+    # 5) Appeler _encode_features (avec cache)
     cache_file = data_dir / "encoded_features.joblib"
     if cache_file.exists():
         X_train, X_val, X_test = load(cache_file)
@@ -296,10 +344,12 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
             train,
             val,
             test,
-            lead_cfg["cat_features"],
-            lead_cfg["numeric_features"],
+            cat_features,
+            num_features,
         )
         dump((X_train, X_val, X_test), cache_file)
+    # === FIN BLOC NETTOYAGE ET VALIDATION DES FEATURES ===
+
     y_train = train["is_won"]
     y_val = val["is_won"]
     y_test = test["is_won"]
@@ -310,12 +360,10 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     ts_conv_rate_train = ts_conv[:start]
     ts_conv_rate_test = ts_conv[start:]
 
-    df_prophet_train = ts_conv_rate_train[["conv_rate"]].rename(
-        columns={"conv_rate": "y"}
-    )
+    df_prophet_train = ts_conv_rate_train[["conv_rate"]].rename(columns={"conv_rate": "y"})
     df_prophet_train = df_prophet_train.rename_axis("ds").reset_index()
 
-    # Export datasets for potential reuse
+    # Export datasets pour réutilisation
     X_train.to_csv(data_dir / "X_train.csv", index=False)
     y_train.to_csv(data_dir / "y_train.csv", index=False)
     X_val.to_csv(data_dir / "X_val.csv", index=False)
