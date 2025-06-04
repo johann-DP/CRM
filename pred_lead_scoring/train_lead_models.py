@@ -267,6 +267,9 @@ def train_arima_conv_rate(
             data_dir / "ts_conv_rate_test.csv", index_col=0, parse_dates=True
         )["conv_rate"]
 
+    ts_conv_rate_train = ts_conv_rate_train.fillna(0.0)
+    ts_conv_rate_test = ts_conv_rate_test.fillna(0.0)
+
     # Determine ARIMA order either from config or via automatic search
     order = lead_cfg.get("arima_order")
     if order is None:
