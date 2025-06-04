@@ -50,7 +50,7 @@ def _load_data(path: Path) -> pd.DataFrame:
     if "Date de fin actualisée" not in df.columns:
         raise ValueError("'Date de fin actualisée' column missing")
     df["Date de fin actualisée"] = pd.to_datetime(
-        df["Date de fin actualisée"], dayfirst=True, errors="coerce"
+        df["Date de fin actualisée"], dayfirst=False, errors="coerce"
     )
     return df
 

@@ -235,7 +235,7 @@ lead_scoring:
     - "Type"
     - "Catégorie"
     - "Sous-catégorie"
-    - "Reconduction taciteReconduction tacite"
+    - "Reconduction tacite"
     - "Type opportunité"
 
   # 5) Liste des variables numériques
@@ -246,27 +246,26 @@ lead_scoring:
     - "Total recette produit"
     - "Budget client estimé"
 
-  # 6) (Optionnel) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
-  #    Vous pouvez, par exemple, ajouter :
-  # xgb_params:
-  #   n_estimators: 100
-  #   max_depth: 5
-  #
-  # catboost_params:
-  #   learning_rate: 0.1
-  #   thread_count: 4
-  #
-  # lstm_params:
-  #   batch_size: 32
-  #   epochs: 50
-  #   patience: 5
-  #   intra_threads: 1
-  #   inter_threads: 1
-  #
-  # arima_params:
-  #   n_jobs: 2
-  #   arima_order: [1, 1, 1]   # si vous voulez forcer un ordre
-  #
-  # prophet_params:
-  #   changepoint_prior_scale: 0.05
-  #   prophet_forecast_periods: 12
+  # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
+  xgb_params:
+   n_estimators: 100
+   max_depth: 5
+
+  catboost_params:
+   learning_rate: 0.1
+   thread_count: 4
+
+  lstm_params:
+   batch_size: 32
+   epochs: 50
+   patience: 5
+   intra_threads: 1
+   inter_threads: 1
+
+  arima_params:
+   n_jobs: 2
+   arima_order: [1, 1, 1]   # si vous voulez forcer un ordre
+
+  prophet_params:
+   changepoint_prior_scale: 0.05
+   prophet_forecast_periods: 12
