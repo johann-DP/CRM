@@ -394,6 +394,18 @@ def train_xgboost_lead(
     model_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model_xgb, model_path)
 
+    val_pred = model_xgb.predict_proba(X_val)[:, 1]
+    pd.Series(val_pred).to_csv(data_dir / "proba_xgb.csv", index=False)
+    metrics_summary = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    logger.info(
+        "Validation log loss: %.4f, AUC: %.4f",
+        metrics_summary["logloss"],
+        metrics_summary["auc"],
+    )
+
     return model_xgb, metrics_summary
 
 
@@ -459,6 +471,18 @@ def train_catboost_lead(
     model_path = out_dir / "models" / "lead_catboost.cbm"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model_cat.save_model(str(model_path))
+
+    val_pred = model_cat.predict_proba(X_val)[:, 1]
+    pd.Series(val_pred).to_csv(data_dir / "proba_catboost.csv", index=False)
+    metrics_summary = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    logger.info(
+        "Validation log loss: %.4f, AUC: %.4f",
+        metrics_summary["logloss"],
+        metrics_summary["auc"],
+    )
 
     return model_cat, metrics_summary
 
@@ -648,7 +672,6 @@ __all__ = [
     "train_logistic_lead",
     "train_xgboost_lead",
     "train_catboost_lead",
-    "train_logistic_lead",
     "train_arima_conv_rate",
     "train_prophet_conv_rate",
 ]
