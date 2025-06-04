@@ -261,6 +261,7 @@ lead_scoring:
    patience: 5
    intra_threads: 1
    inter_threads: 1
+   learning_rate: 0.001
 
   arima_params:
    n_jobs: 2
