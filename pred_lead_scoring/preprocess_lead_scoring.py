@@ -47,10 +47,10 @@ def _load_data(path: Path) -> pd.DataFrame:
         df = dd.read_csv(path).compute()
     else:
         df = pd.read_csv(path)
-    if "Date de clôture" not in df.columns:
-        raise ValueError("'Date de clôture' column missing")
-    df["Date de clôture"] = pd.to_datetime(
-        df["Date de clôture"], dayfirst=True, errors="coerce"
+    if "Date de fin actualisée" not in df.columns:
+        raise ValueError("'Date de fin actualisée' column missing")
+    df["Date de fin actualisée"] = pd.to_datetime(
+        df["Date de fin actualisée"], dayfirst=True, errors="coerce"
     )
     return df
 
@@ -61,7 +61,7 @@ def _clean_closing_dates(df: pd.DataFrame) -> int:
     Parameters
     ----------
     df : DataFrame
-        Dataset with a ``Date de clôture`` column parsed as datetime.
+        Dataset with a ``Date de fin actualisée`` column parsed as datetime.
 
     Returns
     -------
@@ -69,7 +69,7 @@ def _clean_closing_dates(df: pd.DataFrame) -> int:
         Number of replaced values.
     """
 
-    col = "Date de clôture"
+    col = "Date de fin actualisée"
     future_limit = pd.Timestamp("2025-03-01")
     past_limit = pd.Timestamp("1995-01-01")
 
@@ -83,9 +83,9 @@ def _clean_closing_dates(df: pd.DataFrame) -> int:
 
 def _filter_status(df: pd.DataFrame) -> pd.DataFrame:
     """Keep only won/lost opportunities and add ``is_won`` column."""
-    df = df[df["Statut_final"].isin(["Gagné", "Perdu"])]
-    df = df.dropna(subset=["Date de clôture", "Statut_final"]).copy()
-    df["is_won"] = (df["Statut_final"] == "Gagné").astype(int)
+    df = df[df["Statut commercial"].isin(["Gagné", "Perdu"])]
+    df = df.dropna(subset=["Date de fin actualisée", "Statut commercial"]).copy()
+    df["is_won"] = (df["Statut commercial"] == "Gagné").astype(int)
     return df
 
 
@@ -101,9 +101,9 @@ def _split_sets(
     start = pd.to_datetime(test_start)
     end = pd.to_datetime(test_end)
 
-    train = df[df["Date de clôture"] < start].copy()
-    val = df[(df["Date de clôture"] >= start) & (df["Date de clôture"] <= end)].copy()
-    test = df[df["Date de clôture"] > end].copy()
+    train = df[df["Date de fin actualisée"] < start].copy()
+    val = df[(df["Date de fin actualisée"] >= start) & (df["Date de fin actualisée"] <= end)].copy()
+    test = df[df["Date de fin actualisée"] > end].copy()
     return train, val, test
 
 
@@ -161,8 +161,8 @@ def _encode_features(
 
 
 def _conversion_time_series(df: pd.DataFrame) -> pd.DataFrame:
-    df_closed = df[df["Statut_final"].notna()].copy()
-    df_closed = df_closed.set_index("Date de clôture")
+    df_closed = df[df["Statut commercial"].notna()].copy()
+    df_closed = df_closed.set_index("Date de fin actualisée")
     ts = df_closed["is_won"].resample("M").agg(["sum", "count"])
     ts["conv_rate"] = ts["sum"] / ts["count"]
     return ts
