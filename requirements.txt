@@ -44,4 +44,10 @@ tensorflow_cpu==2.19.0
 keras==3.10.0
 
 scikit_optimize==0.9.0
-imblearn
+imblearn~=0.0
+threadpoolctl~=3.6.0
+fpdf~=1.7.2
+rich~=14.0.0
+statsmodels~=0.14.4
+imbalanced-learn~=0.13.0
+pmdarima~=2.0.4

@@ -16,8 +16,8 @@ from xgboost import XGBRegressor
 from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from catboost import CatBoostRegressor
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from keras.models import Sequential
+from keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 

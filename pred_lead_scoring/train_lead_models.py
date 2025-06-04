@@ -10,6 +10,7 @@ from math import sqrt
 import joblib
 
 import numpy as np
+np.int = int
 import pandas as pd
 from sklearn.metrics import (
     log_loss,
@@ -161,7 +162,7 @@ def train_lstm_lead(
             )
         return model
 
-    if cross_val:
+    if lead_cfg.get("cross_val", False):
         X_full = np.concatenate([X_train, X_val])
         y_full = np.concatenate([y_train, y_val])
         tscv = TimeSeriesSplit(n_splits=5)
@@ -184,21 +185,24 @@ def train_lstm_lead(
                 verbose=lstm_params.get("verbose", 1),
             )
             preds = model_cv.predict(X_full[va]).ravel()
+            classes_fold = np.unique(y_full[va])
+            if len(classes_fold) < 2:
+                # Avertissement : seule une classe présente dans ce fold
+                logger.warning("Fold %d skipped: only one class (label=%s) in validation set", i + 1, classes_fold)
+                # On peut enregistrer NaN pour ces métriques
+                metrics.append({"logloss": np.nan, "auc": np.nan})
+                continue
+            # Si on arrive ici, il y a au moins deux classes dans y_full[va]
             fold_logloss = log_loss(y_full[va], preds)
             fold_auc = roc_auc_score(y_full[va], preds)
             metrics.append({"logloss": fold_logloss, "auc": fold_auc})
-            logger.info(
-                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                fold_logloss,
-                fold_auc,
-            )
+            logger.info("Fold %d/%d - log loss: %.4f, AUC: %.4f", i + 1, tscv.n_splits, fold_logloss, fold_auc)
 
-        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
-        std_logloss = float(np.std([m["logloss"] for m in metrics]))
-        mean_auc = float(np.mean([m["auc"] for m in metrics]))
-        std_auc = float(np.std([m["auc"] for m in metrics]))
+        mean_logloss = float(np.nanmean([m["logloss"] for m in metrics]))
+        std_logloss = float(np.nanstd([m["logloss"] for m in metrics]))
+        mean_auc = float(np.nanmean([m["auc"] for m in metrics]))
+        std_auc = float(np.nanstd([m["auc"] for m in metrics]))
+
         logger.info(
             "CV log loss: %.4f ± %.4f, AUC: %.4f ± %.4f",
             mean_logloss,

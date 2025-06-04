@@ -226,7 +226,7 @@ lead_scoring:
 
   # Colonne date utilisée pour le split chronologique
   date_col: "Date de fin actualisée"
-  cross_val: false
+  cross_val: true
 
   # 4) Liste des variables catégorielles
   cat_features:
@@ -258,7 +258,7 @@ lead_scoring:
   logistic_params:
    C: 1.0
 
-  fine_tuning: false
+  fine_tuning: true
 
   lstm_params:
    batch_size: 32
@@ -269,10 +269,10 @@ lead_scoring:
    learning_rate: 0.001
 
   arima_params:
-   n_jobs: 2
-   arima_order: [1, 1, 1]   # si vous voulez forcer un ordre
+   n_jobs: -1
+   # arima_order: [1, 1, 1]   # si vous voulez forcer un ordre
 
   prophet_params:
    changepoint_prior_scale: 0.05
   prophet_forecast_periods: 12
-  imbal_target: false
+  imbal_target: true
