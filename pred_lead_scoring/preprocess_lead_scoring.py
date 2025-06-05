@@ -119,7 +119,12 @@ def _filter_status(
     elif "is_won" in df.columns:
         df = df.dropna(subset=[date_col, "is_won"]).copy()
     else:
-        raise KeyError(f"Missing both '{target_col}' and 'is_won' columns")
+        logger.warning(
+            "Columns '%s' and 'is_won' missing; assuming all opportunities are lost",
+            target_col,
+        )
+        df = df.dropna(subset=[date_col]).copy()
+        df["is_won"] = 0
 
     return df
 
@@ -300,13 +305,17 @@ def _conversion_time_series(
         present. Defaults to ``"Gagné"``.
     """
 
-    if "is_won" not in df.columns:
-        if target_col not in df.columns:
-            raise KeyError(f"'{target_col}' column missing and 'is_won' not found")
+    if "is_won" in df.columns:
+        df_closed = df.dropna(subset=[date_col, "is_won"]).copy()
+    elif target_col in df.columns:
         df_closed = df[df[target_col].notna()].copy()
         df_closed["is_won"] = (df_closed[target_col] == positive_label).astype(int)
     else:
-        df_closed = df.copy()
+        logger.warning(
+            "Columns '%s' and 'is_won' missing; conversion rate set to zero", target_col
+        )
+        df_closed = df.dropna(subset=[date_col]).copy()
+        df_closed["is_won"] = 0
 
     df_closed = df_closed.set_index(date_col)
     ts = df_closed["is_won"].resample("M").agg(["sum", "count"]).fillna(0.0)
