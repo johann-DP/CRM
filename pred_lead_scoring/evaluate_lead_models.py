@@ -67,7 +67,7 @@ def evaluate_lead_models(
 
     log_model = joblib.load(models_dir / "lead_logistic.pkl")
 
-    lstm_model = tf.keras.models.load_model(models_dir / "lead_lstm.h5")
+    mlp_model = tf.keras.models.load_model(models_dir / "lead_mlp.h5")
 
     with open(models_dir / "arima_conv_rate.pkl", "rb") as fh:
         arima_model = pickle.load(fh)
@@ -107,7 +107,11 @@ def evaluate_lead_models(
     _add_clf("xgboost", xgb_model.predict_proba(X_test)[:, 1])
     _add_clf("catboost", cat_model.predict_proba(X_test)[:, 1])
     _add_clf("logistic", log_model.predict_proba(X_test)[:, 1])
-    _add_clf("lstm", lstm_model.predict(X_test).ravel())
+    _add_clf("mlp", mlp_model.predict(X_test).ravel())
+    ensemble_proba = (
+        xgb_model.predict_proba(X_test)[:, 1] + cat_model.predict_proba(X_test)[:, 1]
+    ) / 2
+    _add_clf("ensemble", ensemble_proba)
 
     # ------------------------------------------------------------------
     # Forecast models

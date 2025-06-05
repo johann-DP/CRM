@@ -316,7 +316,8 @@ def test_run_lead_scoring_pipeline(tmp_path, monkeypatch):
         "train_xgboost_lead",
         "train_catboost_lead",
         "train_logistic_lead",
-        "train_lstm_lead",
+        "train_mlp_lead",
+        "train_ensemble_lead",
         "train_arima_conv_rate",
         "train_prophet_conv_rate",
     ]:

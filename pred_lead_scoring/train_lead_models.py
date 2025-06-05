@@ -71,7 +71,7 @@ def _run_hyperparameter_search(
         scoring="roc_auc",
         cv=cv,
         n_jobs=1,
-        n_iter=20,
+        n_iter=40,
     )
 
     # NOTE: Joblib-based parallelism used by ``fit`` calls can conflict with
@@ -88,25 +88,41 @@ def _run_hyperparameter_search(
     return grid.best_params_
 
 
+def _apply_imbalance_strategy(X: pd.DataFrame, y: pd.Series, strategy: str):
+    """Return resampled ``X`` and ``y`` according to the chosen strategy."""
+    if strategy == "smote":
+        sampler = SMOTE(random_state=0)
+        return sampler.fit_resample(X, y)
+    if strategy == "undersample":
+        sampler = RandomUnderSampler(random_state=0)
+        return sampler.fit_resample(X, y)
+    if strategy == "both":
+        smote = SMOTE(random_state=0)
+        under = RandomUnderSampler(random_state=0)
+        X_tmp, y_tmp = smote.fit_resample(X, y)
+        return under.fit_resample(X_tmp, y_tmp)
+    return X, y
+
+
 # ---------------------------------------------------------------------------
 # Main training function
 # ---------------------------------------------------------------------------
 
 
-def train_lstm_lead(
+def train_mlp_lead(
     cfg: Dict[str, Dict],
     X_train: Optional[pd.DataFrame] = None,
     y_train: Optional[pd.Series] = None,
     X_val: Optional[pd.DataFrame] = None,
     y_val: Optional[pd.Series] = None,
 ) -> Model:
-    """Train a simple MLP/LSTM model on the preprocessed lead scoring dataset.
+    """Train a simple MLP model on the preprocessed lead scoring dataset.
 
     Parameters
     ----------
     cfg: dict
         Configuration dictionary with a ``lead_scoring`` section holding
-        ``lstm_params`` and ``output_dir``. ``intra_threads`` and
+        ``mlp_params`` and ``output_dir``. ``intra_threads`` and
         ``inter_threads`` control TensorFlow threading and GPU usage is
         detected automatically.
     """
@@ -114,7 +130,7 @@ def train_lstm_lead(
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
-    lstm_params = lead_cfg.get("lstm_params", {})
+    mlp_params = lead_cfg.get("mlp_params", {})
     cross_val = lead_cfg.get("cross_val", False)
 
     # ------------------------------------------------------------------
@@ -130,11 +146,8 @@ def train_lstm_lead(
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
 
-    if lead_cfg.get("imbal_target", False):
-        smote = SMOTE(random_state=0)
-        under = RandomUnderSampler(random_state=0)
-        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
-        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+    strategy = lead_cfg.get("imbalance_strategy", "none")
+    X_train, y_train = _apply_imbalance_strategy(X_train, y_train, strategy)
 
     # Convert to ``np.ndarray`` and ensure correct dtypes
     X_train = np.asarray(X_train, dtype=float)
@@ -144,10 +157,10 @@ def train_lstm_lead(
 
     # Configure TensorFlow threading
     tf.config.threading.set_intra_op_parallelism_threads(
-        lstm_params.get("intra_threads", 0)
+        mlp_params.get("intra_threads", 0)
     )
     tf.config.threading.set_inter_op_parallelism_threads(
-        lstm_params.get("inter_threads", 0)
+        mlp_params.get("inter_threads", 0)
     )
 
     device = "/GPU:0" if tf.config.list_physical_devices("GPU") else "/CPU:0"
@@ -163,7 +176,7 @@ def train_lstm_lead(
             model = Model(inputs=inp, outputs=out)
             model.compile(
                 optimizer=tf.keras.optimizers.Adam(
-                    learning_rate=lstm_params["learning_rate"]
+                    learning_rate=mlp_params["learning_rate"]
                 ),
                 loss="binary_crossentropy",
                 metrics=["AUC", "accuracy"],
@@ -181,16 +194,16 @@ def train_lstm_lead(
                 X_full[tr],
                 y_full[tr],
                 validation_data=(X_full[va], y_full[va]),
-                batch_size=lstm_params["batch_size"],
-                epochs=lstm_params["epochs"],
+                batch_size=mlp_params["batch_size"],
+                epochs=mlp_params["epochs"],
                 callbacks=[
                     tf.keras.callbacks.EarlyStopping(
                         monitor="val_loss",
-                        patience=lstm_params["patience"],
+                        patience=mlp_params["patience"],
                         restore_best_weights=True,
                     )
                 ],
-                verbose=lstm_params.get("verbose", 1),
+                verbose=mlp_params.get("verbose", 1),
             )
             preds = model_cv.predict(X_full[va]).ravel()
             classes_fold = np.unique(y_full[va])
@@ -219,57 +232,57 @@ def train_lstm_lead(
             std_auc,
         )
 
-        model_lstm = _build_model()
-        model_lstm.fit(
+        model_mlp = _build_model()
+        model_mlp.fit(
             X_full,
             y_full,
             validation_split=0.1,
-            batch_size=lstm_params["batch_size"],
-            epochs=lstm_params["epochs"],
+            batch_size=mlp_params["batch_size"],
+            epochs=mlp_params["epochs"],
             callbacks=[
                 tf.keras.callbacks.EarlyStopping(
                     monitor="val_loss",
-                    patience=lstm_params["patience"],
+                    patience=mlp_params["patience"],
                     restore_best_weights=True,
                 )
             ],
-            verbose=lstm_params.get("verbose", 1),
+            verbose=mlp_params.get("verbose", 1),
         )
         metrics_summary = {"logloss": mean_logloss, "auc": mean_auc}
     else:
-        model_lstm = _build_model()
-        model_lstm.fit(
+        model_mlp = _build_model()
+        model_mlp.fit(
             X_train,
             y_train,
             validation_data=(X_val, y_val),
-            batch_size=lstm_params["batch_size"],
-            epochs=lstm_params["epochs"],
+            batch_size=mlp_params["batch_size"],
+            epochs=mlp_params["epochs"],
             callbacks=[
                 tf.keras.callbacks.EarlyStopping(
                     monitor="val_loss",
-                    patience=lstm_params["patience"],
+                    patience=mlp_params["patience"],
                     restore_best_weights=True,
                 )
             ],
-            verbose=lstm_params.get("verbose", 1),
+            verbose=mlp_params.get("verbose", 1),
         )
-        val_preds = model_lstm.predict(X_val).ravel()
+        val_preds = model_mlp.predict(X_val).ravel()
         metrics_summary = {
             "logloss": log_loss(y_val, val_preds),
             "auc": roc_auc_score(y_val, val_preds),
         }
-        pd.Series(val_preds).to_csv(data_dir / "proba_lstm.csv", index=False)
+        pd.Series(val_preds).to_csv(data_dir / "proba_mlp.csv", index=False)
         logger.info(
             "Validation log loss: %.4f, AUC: %.4f",
             metrics_summary["logloss"],
             metrics_summary["auc"],
         )
 
-    model_path = out_dir / "models" / "lead_lstm.h5"
+    model_path = out_dir / "models" / "lead_mlp.h5"
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    model_lstm.save(model_path)
+    model_mlp.save(model_path)
 
-    return model_lstm, metrics_summary
+    return model_mlp, metrics_summary
 
 
 def train_logistic_lead(
@@ -298,8 +311,8 @@ def train_logistic_lead(
     params = lead_cfg.get("logistic_params", {}).copy()
 
     if lead_cfg.get("fine_tuning", False):
-        grid = {"C": [0.01, 0.1, 1, 10]}
-        space = {"C": Real(1e-3, 10, prior="log-uniform")}
+        grid = {"C": [0.001, 0.01, 0.1, 1, 10, 100]}
+        space = {"C": Real(1e-4, 100, prior="log-uniform")}
         base_model = LogisticRegression(max_iter=1000, **params)
         best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
         params.update(best_params)
@@ -352,13 +365,13 @@ def train_xgboost_lead(
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
-            "max_depth": [3, 6, 10],
-            "learning_rate": [0.01, 0.1],
-            "subsample": [0.5, 1.0],
+            "max_depth": [3, 6, 10, 12],
+            "learning_rate": [0.005, 0.01, 0.05, 0.1],
+            "subsample": [0.5, 0.8, 1.0],
         }
         space = {
-            "max_depth": Integer(3, 10),
-            "learning_rate": Real(0.01, 0.3, prior="log-uniform"),
+            "max_depth": Integer(3, 12),
+            "learning_rate": Real(0.005, 0.3, prior="log-uniform"),
             "subsample": Real(0.5, 1.0),
         }
         base_model = XGBClassifier(use_label_encoder=False, eval_metric="logloss", n_jobs=params["n_jobs"])
@@ -370,15 +383,13 @@ def train_xgboost_lead(
     X_train = X_train.loc[y_train.index]
     X_val = X_val.loc[y_val.index]
 
-    if lead_cfg.get("imbal_target", False):
+    strategy = lead_cfg.get("imbalance_strategy", "none")
+    if strategy != "none":
         pos = int((y_train == 1).sum())
         neg = int((y_train == 0).sum())
         if pos:
             params.setdefault("scale_pos_weight", neg / pos)
-        smote = SMOTE(random_state=0)
-        under = RandomUnderSampler(random_state=0)
-        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
-        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+    X_train, y_train = _apply_imbalance_strategy(X_train, y_train, strategy)
 
     model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
 
@@ -388,19 +399,46 @@ def train_xgboost_lead(
     logger.debug("  X_val.shape: %s", X_val.shape)
     logger.debug("  len(y_val): %d", len(y_val))
 
-    model_xgb.fit(
-        X_train,
-        y_train,
-        eval_set=[(X_val, y_val)],
-        verbose=params.get("verbose", False),
-    )
+    if lead_cfg.get("cross_val", False):
+        X_full = pd.concat([X_train, X_val])
+        y_full = pd.concat([y_train, y_val])
+        tscv = TimeSeriesSplit(n_splits=5)
+        metrics = []
+        for i, (tr, va) in enumerate(tscv.split(X_full)):
+            clf = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
+            clf.fit(X_full.iloc[tr], y_full.iloc[tr])
+            preds = clf.predict_proba(X_full.iloc[va])[:, 1]
+            metrics.append({
+                "logloss": log_loss(y_full.iloc[va], preds),
+                "auc": roc_auc_score(y_full.iloc[va], preds),
+            })
+            logger.info(
+                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
+                i + 1,
+                tscv.n_splits,
+                metrics[-1]["logloss"],
+                metrics[-1]["auc"],
+            )
+        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
+        mean_auc = float(np.mean([m["auc"] for m in metrics]))
+        model_xgb.fit(X_full, y_full, eval_set=[(X_val, y_val)], verbose=params.get("verbose", False))
+        metrics_summary = {"logloss": mean_logloss, "auc": mean_auc}
+    else:
+        model_xgb.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            verbose=params.get("verbose", False),
+        )
+        val_pred = model_xgb.predict_proba(X_val)[:, 1]
+        metrics_summary = {
+            "logloss": log_loss(y_val, val_pred),
+            "auc": roc_auc_score(y_val, val_pred),
+        }
 
-    val_pred = model_xgb.predict_proba(X_val)[:, 1]
-    pd.Series(val_pred).to_csv(data_dir / "proba_xgboost.csv", index=False)
-    metrics_summary = {
-        "logloss": log_loss(y_val, val_pred),
-        "auc": roc_auc_score(y_val, val_pred),
-    }
+    pd.Series(model_xgb.predict_proba(X_val)[:, 1]).to_csv(
+        data_dir / "proba_xgboost.csv", index=False
+    )
 
     model_path = out_dir / "models" / "lead_xgb.pkl"
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -460,12 +498,12 @@ def train_catboost_lead(
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
-            "depth": [4, 6, 8],
-            "l2_leaf_reg": [1, 5, 10],
-            "learning_rate": [0.01, 0.1],
+            "depth": [4, 6, 8, 10],
+            "l2_leaf_reg": [1, 3, 5, 10],
+            "learning_rate": [0.01, 0.05, 0.1],
         }
         space = {
-            "depth": Integer(4, 8),
+            "depth": Integer(4, 10),
             "l2_leaf_reg": Integer(1, 10),
             "learning_rate": Real(0.01, 0.3, prior="log-uniform"),
         }
@@ -473,28 +511,49 @@ def train_catboost_lead(
         best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
         params.update(best_params)
 
+    cat_cols = lead_cfg.get("cat_features", [])
+    cat_indices = [X_train.columns.get_loc(c) for c in cat_cols if c in X_train.columns]
     model_cat = CatBoostClassifier(**params)
-    model_cat.fit(
-        X_train, y_train, eval_set=(X_val, y_val), verbose=params.get("verbose", False)
-    )
 
-    val_pred = model_cat.predict_proba(X_val)[:, 1]
-    pd.Series(val_pred).to_csv(data_dir / "proba_catboost.csv", index=False)
-    metrics_summary = {
-        "logloss": log_loss(y_val, val_pred),
-        "auc": roc_auc_score(y_val, val_pred),
-    }
+    if lead_cfg.get("cross_val", False):
+        X_full = pd.concat([X_train, X_val])
+        y_full = pd.concat([y_train, y_val])
+        tscv = TimeSeriesSplit(n_splits=5)
+        metrics = []
+        for i, (tr, va) in enumerate(tscv.split(X_full)):
+            clf = CatBoostClassifier(**params)
+            clf.fit(X_full.iloc[tr], y_full.iloc[tr], cat_features=cat_indices, verbose=False)
+            preds = clf.predict_proba(X_full.iloc[va])[:, 1]
+            metrics.append({
+                "logloss": log_loss(y_full.iloc[va], preds),
+                "auc": roc_auc_score(y_full.iloc[va], preds),
+            })
+            logger.info(
+                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
+                i + 1,
+                tscv.n_splits,
+                metrics[-1]["logloss"],
+                metrics[-1]["auc"],
+            )
+        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
+        mean_auc = float(np.mean([m["auc"] for m in metrics]))
+        model_cat.fit(X_full, y_full, cat_features=cat_indices, verbose=params.get("verbose", False))
+        metrics_summary = {"logloss": mean_logloss, "auc": mean_auc}
+    else:
+        model_cat.fit(X_train, y_train, eval_set=(X_val, y_val), cat_features=cat_indices, verbose=params.get("verbose", False))
+        val_pred = model_cat.predict_proba(X_val)[:, 1]
+        metrics_summary = {
+            "logloss": log_loss(y_val, val_pred),
+            "auc": roc_auc_score(y_val, val_pred),
+        }
+
+    pd.Series(model_cat.predict_proba(X_val)[:, 1]).to_csv(
+        data_dir / "proba_catboost.csv", index=False
+    )
 
     model_path = out_dir / "models" / "lead_catboost.cbm"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model_cat.save_model(str(model_path))
-
-    val_pred = model_cat.predict_proba(X_val)[:, 1]
-    pd.Series(val_pred).to_csv(data_dir / "proba_catboost.csv", index=False)
-    metrics_summary = {
-        "logloss": log_loss(y_val, val_pred),
-        "auc": roc_auc_score(y_val, val_pred),
-    }
     logger.info(
         "Validation log loss: %.4f, AUC: %.4f",
         metrics_summary["logloss"],
@@ -528,15 +587,46 @@ def train_logistic_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("logreg_params", {})
-    if lead_cfg.get("imbal_target", False):
+    strategy = lead_cfg.get("imbalance_strategy", "none")
+    if strategy != "none":
         params.setdefault("class_weight", "balanced")
-        smote = SMOTE(random_state=0)
-        under = RandomUnderSampler(random_state=0)
-        X_tmp, y_tmp = smote.fit_resample(X_train, y_train)
-        X_train, y_train = under.fit_resample(X_tmp, y_tmp)
+    X_train, y_train = _apply_imbalance_strategy(X_train, y_train, strategy)
 
     model_log = LogisticRegression(**params)
-    model_log.fit(X_train, y_train)
+
+    if lead_cfg.get("cross_val", False):
+        X_full = pd.concat([X_train, X_val])
+        y_full = pd.concat([y_train, y_val])
+        tscv = TimeSeriesSplit(n_splits=5)
+        metrics = []
+        for i, (tr, va) in enumerate(tscv.split(X_full)):
+            clf = LogisticRegression(**params)
+            clf.fit(X_full.iloc[tr], y_full.iloc[tr])
+            preds = clf.predict_proba(X_full.iloc[va])[:, 1]
+            metrics.append(
+                {
+                    "logloss": log_loss(y_full.iloc[va], preds),
+                    "auc": roc_auc_score(y_full.iloc[va], preds),
+                }
+            )
+            logger.info(
+                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
+                i + 1,
+                tscv.n_splits,
+                metrics[-1]["logloss"],
+                metrics[-1]["auc"],
+            )
+        mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
+        mean_auc = float(np.mean([m["auc"] for m in metrics]))
+        model_log.fit(X_full, y_full)
+        metrics = {"logloss": mean_logloss, "auc": mean_auc}
+    else:
+        model_log.fit(X_train, y_train)
+        val_pred = model_log.predict_proba(X_val)[:, 1]
+        metrics = {
+            "logloss": log_loss(y_val, val_pred),
+            "auc": roc_auc_score(y_val, val_pred),
+        }
 
     model_path = out_dir / "models" / "lead_logistic.pkl"
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -544,11 +634,43 @@ def train_logistic_lead(
 
     val_pred = model_log.predict_proba(X_val)[:, 1]
     pd.Series(val_pred).to_csv(data_dir / "proba_logistic.csv", index=False)
-    metrics = {
-        "logloss": log_loss(y_val, val_pred),
-        "auc": roc_auc_score(y_val, val_pred),
-    }
     return model_log, metrics
+
+
+def train_ensemble_lead(
+    cfg: Dict[str, Dict],
+    X_val: Optional[pd.DataFrame] = None,
+    y_val: Optional[pd.Series] = None,
+) -> tuple[None, Dict[str, float]]:
+    """Evaluate a simple ensemble of XGBoost and CatBoost."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
+    models_dir = out_dir / "models"
+
+    if X_val is None or y_val is None:
+        X_val = pd.read_csv(data_dir / "X_val.csv")
+        y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    xgb = joblib.load(models_dir / "lead_xgb.pkl")
+    cat = CatBoostClassifier()
+    cat.load_model(str(models_dir / "lead_catboost.cbm"))
+
+    proba = (xgb.predict_proba(X_val)[:, 1] + cat.predict_proba(X_val)[:, 1]) / 2
+    pd.Series(proba).to_csv(data_dir / "proba_ensemble.csv", index=False)
+
+    metrics = {
+        "logloss": log_loss(y_val, proba),
+        "auc": roc_auc_score(y_val, proba),
+    }
+    logger.info(
+        "Ensemble validation log loss: %.4f, AUC: %.4f",
+        metrics["logloss"],
+        metrics["auc"],
+    )
+
+    return None, metrics
 
 
 def train_arima_conv_rate(
@@ -696,10 +818,11 @@ def train_prophet_conv_rate(
 
 
 __all__ = [
-    "train_lstm_lead",
+    "train_mlp_lead",
     "train_logistic_lead",
     "train_xgboost_lead",
     "train_catboost_lead",
+    "train_ensemble_lead",
     "train_arima_conv_rate",
     "train_prophet_conv_rate",
 ]
