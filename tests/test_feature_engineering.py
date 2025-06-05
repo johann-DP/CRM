@@ -170,6 +170,65 @@ def test_enrich_with_geo_data(sample_data, monkeypatch):
     assert geo_calls["99999"] == 1
 
 
+def test_enrich_with_sirene_missing_column(monkeypatch):
+    train = pd.DataFrame({"Budget": [1, 2]})
+    val = train.copy()
+    test = train.copy()
+    _fake_requests(monkeypatch)
+
+    fe.enrich_with_sirene(train, val, test)
+
+    for df in (train, val, test):
+        assert {"secteur_activite", "tranche_effectif"} <= set(df.columns)
+        assert (df["secteur_activite"] == "inconnu").all()
+        assert (df["tranche_effectif"] == "inconnu").all()
+
+
+def test_enrich_with_geo_data_missing_column(monkeypatch):
+    train = pd.DataFrame({"Budget": [1, 2]})
+    val = train.copy()
+    test = train.copy()
+    _fake_requests(monkeypatch)
+
+    fe.enrich_with_geo_data(train, val, test)
+
+    for df in (train, val, test):
+        assert {"population_commune", "code_region"} <= set(df.columns)
+        assert (df["population_commune"] == 0).all()
+        assert (df["code_region"] == "nc").all()
+
+
+def test_advanced_feature_engineering_missing_columns(monkeypatch):
+    train = pd.DataFrame(
+        {
+            "Date de clôture": ["2024-01-10", "2024-02-20"],
+            "category": ["A", "B"],
+            "Budget": [100, 200],
+            "is_won": [1, 0],
+        }
+    )
+    val = train.iloc[:1].copy()
+    test = train.iloc[1:].copy()
+
+    _patch_sklearn(monkeypatch)
+    _fake_requests(monkeypatch)
+
+    cfg = {
+        "date_col": "Date de clôture",
+        "cat_features": ["category"],
+        "numeric_features": ["Budget"],
+        "min_cat_freq": 1,
+        "target_col": "is_won",
+    }
+
+    X_train, X_val, X_test = fe.advanced_feature_engineering(
+        train.copy(), val.copy(), test.copy(), cfg
+    )
+
+    assert not X_train.isna().any().any()
+    assert "secteur_activite" in X_train.columns
+
+
 def test_advanced_feature_engineering(sample_data, monkeypatch):
     train, val, test = sample_data
     _patch_sklearn(monkeypatch)
