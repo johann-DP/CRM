@@ -47,7 +47,46 @@ def reduce_categorical_levels(
     occurrences in ``X_train`` and applies the mapping to the validation
     and test sets.
     """
-    pass
+    if not cat_cols:
+        return
+
+    for col in cat_cols:
+        if col not in X_train.columns:
+            continue
+
+        train_series = X_train[col].astype("category")
+        counts = train_series.value_counts(dropna=False)
+
+        threshold = 0 if len(train_series) < min_freq else min_freq
+        frequent = set(counts[counts >= threshold].index)
+
+        # Ensure "Autre" exists as a category in all datasets
+        for df in (X_train, X_val, X_test):
+            if col in df.columns:
+                if not pd.api.types.is_categorical_dtype(df[col]):
+                    df[col] = df[col].astype("category")
+                if "Autre" not in df[col].cat.categories:
+                    df[col] = df[col].cat.add_categories(["Autre"])
+
+        # Replace rare modalities in the training set
+        mask_train = ~X_train[col].isin(frequent)
+        if mask_train.any():
+            X_train.loc[mask_train, col] = "Autre"
+
+        # Apply the same mapping to validation and test sets
+        for df in (X_val, X_test):
+            if col not in df.columns:
+                continue
+            mask = ~df[col].isin(frequent)
+            if mask.any():
+                df.loc[mask, col] = "Autre"
+
+        # Cast back to category dtype
+        X_train[col] = X_train[col].astype("category")
+        if col in X_val.columns:
+            X_val[col] = X_val[col].astype("category")
+        if col in X_test.columns:
+            X_test[col] = X_test[col].astype("category")
 
 
 def enrich_with_sirene(
