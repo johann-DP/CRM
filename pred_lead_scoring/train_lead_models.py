@@ -392,13 +392,6 @@ def train_xgboost_lead(
     X_train, y_train = _apply_imbalance_strategy(X_train, y_train, strategy)
 
     model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
-
-    logger.debug("DEBUG – XGBoost")
-    logger.debug("  X_train.shape: %s", X_train.shape)
-    logger.debug("  len(y_train): %d", len(y_train))
-    logger.debug("  X_val.shape: %s", X_val.shape)
-    logger.debug("  len(y_val): %d", len(y_val))
-
     if lead_cfg.get("cross_val", False):
         X_full = pd.concat([X_train, X_val])
         y_full = pd.concat([y_train, y_val])
