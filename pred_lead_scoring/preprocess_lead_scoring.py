@@ -17,7 +17,7 @@ try:  # optional dependency for large datasets
 except Exception:  # pragma: no cover - dask not installed
     dd = None
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -194,8 +194,10 @@ def _encode_features(
     test: pd.DataFrame,
     cat_features: list[str],
     num_features: list[str],
+    *,
+    encoding: str = "ordinal",
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Impute/scale numeric vars and ordinal-encode categorical vars."""
+    """Impute/scale numeric vars and encode categorical vars."""
     # 1) Encoder les variables numériques si la liste n'est pas vide
 
     if num_features:
@@ -228,29 +230,44 @@ def _encode_features(
         X_val_num = np.empty((len(val), 0))
         X_test_num = np.empty((len(test), 0))
 
-    # 2) Encoder les variables catégorielles (OrdinalEncoder)
-    enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    # 2) Encoder les variables catégorielles
+    if encoding == "onehot":
+        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
+    else:
+        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
 
     if cat_features:
-        X_train_cat = enc.fit_transform(train[cat_features].astype(str))
+        train_cat = train[cat_features].astype(str)
+        train_cat = train_cat.mask(train[cat_features].isna(), "missing")
+        X_train_cat = enc.fit_transform(train_cat)
+        cat_cols = (
+            enc.get_feature_names_out(cat_features).tolist()
+            if encoding == "onehot"
+            else cat_features
+        )
 
         if len(val) > 0:
-            X_val_cat = enc.transform(val[cat_features].astype(str))
+            val_cat = val[cat_features].astype(str)
+            val_cat = val_cat.mask(val[cat_features].isna(), "missing")
+            X_val_cat = enc.transform(val_cat)
         else:
-            X_val_cat = np.empty((0, len(cat_features)))
+            X_val_cat = np.empty((0, len(cat_cols)))
 
         if len(test) > 0:
-            X_test_cat = enc.transform(test[cat_features].astype(str))
+            test_cat = test[cat_features].astype(str)
+            test_cat = test_cat.mask(test[cat_features].isna(), "missing")
+            X_test_cat = enc.transform(test_cat)
         else:
-            X_test_cat = np.empty((0, len(cat_features)))
+            X_test_cat = np.empty((0, len(cat_cols)))
     else:
         # Aucun champ catégoriel : tableaux vides (n_lignes x 0)
         X_train_cat = np.empty((len(train), 0))
         X_val_cat = np.empty((len(val), 0))
         X_test_cat = np.empty((len(test), 0))
+        cat_cols = []
 
     # 3) Concaténer (numérique | cat) pour obtenir le DataFrame final
-    cols = num_features + cat_features
+    cols = num_features + cat_cols
     X_train = pd.DataFrame(
         np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
         columns=cols,
@@ -392,11 +409,34 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     if missing_num:
         raise KeyError(f"Colonnes numériques manquantes dans train : {missing_num}")
 
+    # 3b) Remove potential leakage columns
+    leakage_cols = [
+        "Total recette actualisé",
+        "Total recette réalisé",
+        "Total recette produit",
+    ]
+    num_features = [c for c in num_features if c not in leakage_cols]
+    cat_features = [c for c in cat_features if c not in leakage_cols]
+
     # 4) Mettre à jour lead_cfg
     lead_cfg["cat_features"] = cat_features
     lead_cfg["numeric_features"] = num_features
 
+    # Cap outliers based on training distribution
+    def _cap(df_tr, df_v, df_te, cols, low=0.01, high=0.99):
+        for col in cols:
+            if col not in df_tr.columns:
+                continue
+            lo = df_tr[col].quantile(low)
+            hi = df_tr[col].quantile(high)
+            for df_ in (df_tr, df_v, df_te):
+                if col in df_.columns:
+                    df_[col] = df_[col].clip(lo, hi)
+
+    _cap(train, val, test, num_features)
+
     # 5) Feature engineering / encoding
+    encoding_type = lead_cfg.get("encoding", "ordinal")
     if lead_cfg.get("feat_eng", False):
         from .feature_engineering import advanced_feature_engineering
         X_train, X_val, X_test = advanced_feature_engineering(train, val, test, lead_cfg)
@@ -407,6 +447,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
             test,
             lead_cfg["cat_features"],
             lead_cfg["numeric_features"],
+            encoding=encoding_type,
         )
     # === FIN BLOC NETTOYAGE ET VALIDATION DES FEATURES ===
 

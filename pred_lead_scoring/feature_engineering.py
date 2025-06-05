@@ -7,6 +7,9 @@ from typing import Iterable, List, Tuple, Dict
 import pandas as pd
 import requests
 
+SIRENE_CACHE: Dict[str, Tuple[str, str]] = {}
+GEO_CACHE: Dict[str, Tuple[int, str]] = {}
+
 from .preprocess_lead_scoring import _encode_features
 
 
@@ -16,7 +19,14 @@ __all__ = [
     "enrich_with_sirene",
     "enrich_with_geo_data",
     "advanced_feature_engineering",
+    "clear_caches",
 ]
+
+
+def clear_caches() -> None:
+    """Clear cached API responses used during enrichment."""
+    SIRENE_CACHE.clear()
+    GEO_CACHE.clear()
 
 
 def create_internal_features(
@@ -48,6 +58,21 @@ def create_internal_features(
                 end = pd.to_datetime(df["Date de fin réelle"], errors="coerce")
                 df["duree_entre_debut_fin"] = (end - start).dt.days.fillna(0).astype(float)
         new_feats.append("duree_entre_debut_fin")
+
+    # Count intermediate status changes if a history column is available
+    hist_col = next((c for c in train.columns if "statut" in c.lower() and "hist" in c.lower()), None)
+    if hist_col:
+        for df in (train, val, test):
+            if hist_col in df.columns:
+                df["nb_changements_statut"] = (
+                    df[hist_col]
+                    .astype(str)
+                    .str.split(r"[>|;/]")
+                    .apply(lambda x: len([s for s in x if s and str(s).strip() != ""]) - 1)
+                    .fillna(0)
+                    .astype(int)
+                )
+        new_feats.append("nb_changements_statut")
 
     num = cfg.get("numeric_features", [])
     for feat in new_feats:
@@ -96,6 +121,10 @@ def enrich_with_sirene(
 
     info: Dict[str, Tuple[str, str]] = {}
     for siren in sirens:
+        key = str(siren)
+        if key in SIRENE_CACHE:
+            info[key] = SIRENE_CACHE[key]
+            continue
         url = f"https://entreprise.data.gouv.fr/api/sirene/v3/etablissements/{siren}"
         try:
             resp = requests.get(url, timeout=5)
@@ -103,11 +132,12 @@ def enrich_with_sirene(
                 data = resp.json().get("unite_legale", {})
                 ap = data.get("activite_principale", "inconnu")
                 te = data.get("tranche_effectifs") or data.get("tranche_effectif") or "inconnu"
-                info[str(siren)] = (ap, te)
+                info[key] = (ap, te)
             else:
-                info[str(siren)] = ("inconnu", "inconnu")
+                info[key] = ("inconnu", "inconnu")
         except Exception:
-            info[str(siren)] = ("inconnu", "inconnu")
+            info[key] = ("inconnu", "inconnu")
+        SIRENE_CACHE[key] = info[key]
 
     for df in (train, val, test):
         s = df.get("SIREN")
@@ -131,6 +161,10 @@ def enrich_with_geo_data(
     cps = pd.concat(series_list).dropna().unique() if series_list else []
     info: Dict[str, Tuple[int, str]] = {}
     for cp in cps:
+        key = str(cp)
+        if key in GEO_CACHE:
+            info[key] = GEO_CACHE[key]
+            continue
         url = (
             "https://geo.api.gouv.fr/communes?codePostal="
             f"{cp}&fields=population,codeRegion&format=json"
@@ -144,11 +178,12 @@ def enrich_with_geo_data(
                     reg = data[0].get("codeRegion")
                 else:
                     pop, reg = 0, "nc"
-                info[str(cp)] = (int(pop or 0), reg or "nc")
+                info[key] = (int(pop or 0), reg or "nc")
             else:
-                info[str(cp)] = (0, "nc")
+                info[key] = (0, "nc")
         except Exception:
-            info[str(cp)] = (0, "nc")
+            info[key] = (0, "nc")
+        GEO_CACHE[key] = info[key]
 
     for df in (train, val, test):
         cp = df.get("Code postal")
@@ -186,5 +221,6 @@ def advanced_feature_engineering(
     min_freq = cfg.get("min_cat_freq", 5)
     reduce_categorical_levels(train, val, test, cat_features, min_freq=min_freq)
 
-    return _encode_features(train, val, test, cat_features, num_features)
+    encoding = cfg.get("encoding", "ordinal")
+    return _encode_features(train, val, test, cat_features, num_features, encoding=encoding)
 
