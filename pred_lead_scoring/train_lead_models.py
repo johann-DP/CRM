@@ -395,13 +395,6 @@ def train_xgboost_lead(
     X_train, y_train = _apply_imbalance_strategy(X_train, y_train, strategy)
 
     model_xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", **params)
-
-    logger.debug("DEBUG – XGBoost")
-    logger.debug("  X_train.shape: %s", X_train.shape)
-    logger.debug("  len(y_train): %d", len(y_train))
-    logger.debug("  X_val.shape: %s", X_val.shape)
-    logger.debug("  len(y_val): %d", len(y_val))
-
     if lead_cfg.get("cross_val", False):
         X_full = pd.concat([X_train, X_val])
         y_full = pd.concat([y_train, y_val])
@@ -516,6 +509,12 @@ def train_catboost_lead(
 
     cat_cols = lead_cfg.get("cat_features", [])
     cat_indices = [X_train.columns.get_loc(c) for c in cat_cols if c in X_train.columns]
+
+    # Cast encoded categorical columns to integer for CatBoost compatibility
+    for df_ in (X_train, X_val):
+        for col in cat_cols:
+            if col in df_.columns:
+                df_[col] = df_[col].astype(int)
     model_cat = CatBoostClassifier(**params)
 
     if lead_cfg.get("cross_val", False):

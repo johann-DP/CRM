@@ -174,7 +174,7 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     import argparse
     import yaml
 
-    setup_logging()
+    setup_logging(log_file="training_output.txt")
 
     p = argparse.ArgumentParser(description="Evaluate lead scoring models")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")

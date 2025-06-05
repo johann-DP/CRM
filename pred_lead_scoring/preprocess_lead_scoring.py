@@ -537,7 +537,7 @@ def preprocess(cfg: Dict[str, Dict]):
 
 
 def main(argv: list[str] | None = None) -> None:
-    setup_logging()
+    setup_logging(log_file="training_output.txt")
     p = argparse.ArgumentParser(description="Preprocess lead scoring dataset")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args(argv)
