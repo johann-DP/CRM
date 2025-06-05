@@ -289,7 +289,8 @@ def _conversion_time_series(
     The preprocessing step (:func:`_filter_status`) adds an ``is_won`` column
     derived from ``target_col``.  This helper relies solely on ``is_won`` so
     that subsequent steps may drop the original target column without causing a
-    ``KeyError``.
+    ``KeyError``. If ``date_col`` is itself missing, a warning is emitted and
+    an empty time series with the expected ``DatetimeIndex`` is returned.
 
     Parameters
     ----------
@@ -309,7 +310,9 @@ def _conversion_time_series(
         logger.warning(
             "Date column '%s' missing; conversion rate time series empty", date_col
         )
-        return pd.DataFrame(columns=["sum", "count", "conv_rate"])
+        empty = pd.DataFrame(columns=["sum", "count", "conv_rate"])
+        empty.index = pd.DatetimeIndex([], name=date_col)
+        return empty
 
     if "is_won" in df.columns:
         df_closed = df.dropna(subset=[date_col, "is_won"]).copy()
