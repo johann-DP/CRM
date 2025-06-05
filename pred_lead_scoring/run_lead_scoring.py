@@ -75,12 +75,13 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Classification models
     # ------------------------------------------------------------------
-    executor_cls = (
-        concurrent.futures.ProcessPoolExecutor
-        if "PYTEST_CURRENT_TEST" not in os.environ
-        else concurrent.futures.ThreadPoolExecutor
-    )
-    with executor_cls(max_workers=mp.cpu_count()) as ex:
+    # Using ``ProcessPoolExecutor`` caused excessive overhead and very slow
+    # start-up times on some platforms (notably Windows).  The training
+    # functions already leverage multi-threaded libraries, so a thread pool is
+    # sufficient here and keeps the pipeline responsive.
+    executor_cls = concurrent.futures.ThreadPoolExecutor
+
+    with executor_cls(max_workers=4) as ex:
         fut_xgb = ex.submit(train_xgboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_cat = ex.submit(train_catboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_log = ex.submit(train_logistic_lead, cfg, X_train, y_train, X_val, y_val)
@@ -98,7 +99,7 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Forecast models
     # ------------------------------------------------------------------
-    with executor_cls(max_workers=mp.cpu_count()) as ex:
+    with executor_cls(max_workers=2) as ex:
         fut_arima = ex.submit(
             train_arima_conv_rate,
             cfg,
