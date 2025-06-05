@@ -68,6 +68,7 @@ def _fake_requests(monkeypatch):
         types.SimpleNamespace(get=fake_get, RequestException=Exception),
         False,
     )
+    fe.clear_caches()
     return sirene_calls, geo_calls
 
 
@@ -180,6 +181,20 @@ def test_enrich_with_geo_data(sample_data, monkeypatch):
     assert train.loc[3, "population_commune"] == 0
     assert geo_calls["75001"] == 1
     assert geo_calls["99999"] == 1
+
+
+def test_enrichment_caching(sample_data, monkeypatch):
+    train, val, test = sample_data
+    _patch_sklearn(monkeypatch)
+    sirene_calls, geo_calls = _fake_requests(monkeypatch)
+    fe.clear_caches()
+    fe.enrich_with_sirene(train, val, test)
+    fe.enrich_with_geo_data(train, val, test)
+    # second run should not trigger additional API calls
+    fe.enrich_with_sirene(train, val, test)
+    fe.enrich_with_geo_data(train, val, test)
+    assert sirene_calls["123456789"] == 1
+    assert geo_calls["75001"] == 1
 
 
 def test_enrich_with_sirene_missing_column(monkeypatch):

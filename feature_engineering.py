@@ -36,11 +36,16 @@ def advanced_feature_engineering(*args, **kwargs):
     return _call_with_patched_requests(_fe.advanced_feature_engineering, *args, **kwargs)
 
 
+def clear_caches(*args, **kwargs):
+    return _fe.clear_caches(*args, **kwargs)
+
+
 __all__ = [
     "create_internal_features",
     "reduce_categorical_levels",
     "enrich_with_sirene",
     "enrich_with_geo_data",
     "advanced_feature_engineering",
+    "clear_caches",
 ]
 
