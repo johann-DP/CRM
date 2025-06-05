@@ -13,16 +13,16 @@ import yaml
 from joblib import dump, load
 from .logging_utils import setup_logging
 
-logger = logging.getLogger(__name__)
-
 try:  # optional dependency for large datasets
     import dask.dataframe as dd
 except Exception:  # pragma: no cover - dask not installed
     dd = None
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler, MinMaxScaler
+# Import after optional dask dependency to satisfy flake8 ordering
 from sklearn.feature_selection import chi2, mutual_info_classif
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data loading and filtering
@@ -104,11 +104,28 @@ def _filter_status(
     target_col: str,
     positive_label: str,
 ) -> pd.DataFrame:
-    """Keep only won/lost opportunities and add ``is_won`` column."""
+    """Keep only won/lost opportunities and add ``is_won`` column.
 
-    df = df[df[target_col].isin([positive_label, "Perdu"])]
-    df = df.dropna(subset=[date_col, target_col]).copy()
-    df["is_won"] = (df[target_col] == positive_label).astype(int)
+    This helper normally derives ``is_won`` from ``target_col``.  Some
+    pre-cleaned datasets may already include ``is_won`` and omit the original
+    target column.  In that case, the function simply ensures the date column is
+    present and drops rows with missing values.
+    """
+
+    if target_col in df.columns:
+        df = df[df[target_col].isin([positive_label, "Perdu"])]
+        df = df.dropna(subset=[date_col, target_col]).copy()
+        df["is_won"] = (df[target_col] == positive_label).astype(int)
+    elif "is_won" in df.columns:
+        df = df.dropna(subset=[date_col, "is_won"]).copy()
+    else:
+        logger.warning(
+            "Columns '%s' and 'is_won' missing; assuming all opportunities are lost",
+            target_col,
+        )
+        df = df.dropna(subset=[date_col]).copy()
+        df["is_won"] = 0
+
     return df
 
 
@@ -238,19 +255,19 @@ def _encode_features(
     # 3) Concaténer (numérique | cat) pour obtenir le DataFrame final
     cols = num_features + cat_features
     X_train = pd.DataFrame(
-         np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
-         columns = cols,
-         index = train.index,
+        np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
+        columns=cols,
+        index=train.index,
     )
     X_val = pd.DataFrame(
-         np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(val), 0)),
-         columns = cols,
-         index = val.index,
+        np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(val), 0)),
+        columns=cols,
+        index=val.index,
     )
     X_test = pd.DataFrame(
-         np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(test), 0)),
-         columns = cols,
-         index = test.index,
+        np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(test), 0)),
+        columns=cols,
+        index=test.index,
     )
 
     return X_train, X_val, X_test
@@ -265,6 +282,7 @@ def _conversion_time_series(
     df: pd.DataFrame,
     date_col: str,
     target_col: str,
+    positive_label: str = "Gagné",
 ) -> pd.DataFrame:
     """Return monthly conversion rate time series.
 
@@ -276,19 +294,28 @@ def _conversion_time_series(
     Parameters
     ----------
     df : DataFrame
-        Dataset containing an ``is_won`` column and the date column ``date_col``.
+        Dataset with closing dates and either an ``is_won`` column or the
+        original ``target_col``.
     date_col : str
         Name of the date column used to index the time series.
     target_col : str
         Original target column name.  Only used for error reporting.
+    positive_label : str, optional
+        Positive outcome value in ``target_col`` used when ``is_won`` is not
+        present. Defaults to ``"Gagné"``.
     """
 
-    if "is_won" not in df.columns:
-        if target_col not in df.columns:
-            raise KeyError(f"'{target_col}' column missing and 'is_won' not found")
+    if "is_won" in df.columns:
+        df_closed = df.dropna(subset=[date_col, "is_won"]).copy()
+    elif target_col in df.columns:
         df_closed = df[df[target_col].notna()].copy()
+        df_closed["is_won"] = (df_closed[target_col] == positive_label).astype(int)
     else:
-        df_closed = df.copy()
+        logger.warning(
+            "Columns '%s' and 'is_won' missing; conversion rate set to zero", target_col
+        )
+        df_closed = df.dropna(subset=[date_col]).copy()
+        df_closed["is_won"] = 0
 
     df_closed = df_closed.set_index(date_col)
     ts = df_closed["is_won"].resample("M").agg(["sum", "count"]).fillna(0.0)
@@ -398,10 +425,12 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
 
         if {"Date de début actualisée", "Date de fin réelle"} <= set(train.columns):
             for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
-                raw["Date de début actualisée"] = pd.to_datetime(raw["Date de début actualisée"], dayfirst=True,
-                                                                 errors="coerce")
-                raw["Date de fin réelle"] = pd.to_datetime(raw["Date de fin réelle"], dayfirst=True,
-                                                                 errors="coerce")
+                raw["Date de début actualisée"] = pd.to_datetime(
+                    raw["Date de début actualisée"], dayfirst=True, errors="coerce"
+                )
+                raw["Date de fin réelle"] = pd.to_datetime(
+                    raw["Date de fin réelle"], dayfirst=True, errors="coerce"
+                )
 
                 duration = (
                     raw["Date de fin réelle"] - raw["Date de début actualisée"]
@@ -448,7 +477,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         X_test[num_cols] = scaler_extra.transform(X_test[num_cols])
 
     # Conversion rate time series
-    ts_conv = _conversion_time_series(df, date_col, target_col)
+    ts_conv = _conversion_time_series(df, date_col, target_col, positive_label)
     start = pd.to_datetime(lead_cfg["test_start"])
     ts_conv_rate_train = ts_conv[:start]
     ts_conv_rate_test = ts_conv[start:]
