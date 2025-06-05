@@ -69,11 +69,14 @@ def _run_hyperparameter_search(
         n_iter=20,
     )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        fut_grid = ex.submit(grid.fit, X_train, y_train)
-        fut_bayes = ex.submit(bayes.fit, X_train, y_train)
-        fut_grid.result()
-        fut_bayes.result()
+    # NOTE: Joblib-based parallelism used by ``fit`` calls can conflict with
+    # nested ``ThreadPoolExecutor`` usage, leading to ``ShutdownExecutorError``
+    # on some platforms. Running the hyperparameter searches sequentially
+    # avoids the issue while keeping internal parallelism enabled via
+    # ``n_jobs``.
+
+    grid.fit(X_train, y_train)
+    bayes.fit(X_train, y_train)
 
     if bayes.best_score_ >= grid.best_score_:
         return bayes.best_params_
