@@ -309,7 +309,9 @@ def _conversion_time_series(
         logger.warning(
             "Date column '%s' missing; conversion rate time series empty", date_col
         )
-        return pd.DataFrame(columns=["sum", "count", "conv_rate"])
+        empty = pd.DataFrame(columns=["sum", "count", "conv_rate"])
+        empty.index = pd.DatetimeIndex([], name=date_col)
+        return empty
 
     if "is_won" in df.columns:
         df_closed = df.dropna(subset=[date_col, "is_won"]).copy()
