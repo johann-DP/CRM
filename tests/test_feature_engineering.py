@@ -143,6 +143,18 @@ def test_reduce_categorical_levels(sample_data):
     assert list(test["category"]) == ["B", "Autre"]
 
 
+def test_reduce_categorical_levels_with_nan():
+    train = pd.DataFrame({"category": ["A", "B", np.nan, "B", np.nan]})
+    val = train.iloc[:2].copy()
+    test = train.iloc[2:].copy()
+
+    fe.reduce_categorical_levels(train, val, test, "category", min_freq=2)
+
+    for df in (train, val, test):
+        assert not df["category"].isna().any()
+        assert set(df["category"].cat.categories) == {"B", "Autre"}
+
+
 def test_enrich_with_sirene(sample_data, monkeypatch):
     train, val, test = sample_data
     sirene_calls, geo_calls = _fake_requests(monkeypatch)
