@@ -550,6 +550,11 @@ def train_arima_conv_rate(
     cfg : dict
         Configuration dictionary containing ``lead_scoring`` settings. The
         ``arima_params`` section may define ``n_jobs`` for parallel order search.
+
+    Raises
+    ------
+    ValueError
+        If ``ts_conv_rate_train`` or ``ts_conv_rate_test`` is empty.
     """
 
     lead_cfg = cfg.get("lead_scoring", {})
@@ -569,6 +574,12 @@ def train_arima_conv_rate(
 
     ts_conv_rate_train = ts_conv_rate_train.fillna(0.0)
     ts_conv_rate_test = ts_conv_rate_test.fillna(0.0)
+
+    if ts_conv_rate_train.empty or ts_conv_rate_test.empty:
+        raise ValueError(
+            "Conversion rate time series is empty. "
+            f"train={len(ts_conv_rate_train)}, test={len(ts_conv_rate_test)}."
+        )
 
     # Determine ARIMA order either from config or via automatic search
     order = lead_cfg.get("arima_order")
