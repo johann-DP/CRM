@@ -64,14 +64,14 @@ def _run_hyperparameter_search(
         param_grid=param_grid,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=1,
+        n_jobs=-1,
     )
     bayes = BayesSearchCV(
         model,
         search_spaces=bayes_space,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=1,
+        n_jobs=-1,
         n_iter=40,
     )
 
@@ -92,13 +92,13 @@ def _run_hyperparameter_search(
 def _apply_imbalance_strategy(X: pd.DataFrame, y: pd.Series, strategy: str):
     """Return resampled ``X`` and ``y`` according to the chosen strategy."""
     if strategy == "smote":
-        sampler = SMOTE(random_state=0)
+        sampler = SMOTE(random_state=0, n_jobs=-1)
         return sampler.fit_resample(X, y)
     if strategy == "undersample":
         sampler = RandomUnderSampler(random_state=0)
         return sampler.fit_resample(X, y)
     if strategy == "both":
-        smote = SMOTE(random_state=0)
+        smote = SMOTE(random_state=0, n_jobs=-1)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X, y)
         return under.fit_resample(X_tmp, y_tmp)
@@ -132,9 +132,10 @@ def train_mlp_lead(
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
     mlp_params = lead_cfg.get("mlp_params", {}).copy()
-    default_threads = max(1, mp.cpu_count())
+    default_threads = mp.cpu_count()
     mlp_params.setdefault("intra_threads", default_threads)
     mlp_params.setdefault("inter_threads", default_threads)
+    mlp_params.setdefault("verbose", 0)
     cross_val = lead_cfg.get("cross_val", False)
 
     # ------------------------------------------------------------------
@@ -160,12 +161,8 @@ def train_mlp_lead(
     y_val = np.asarray(y_val, dtype=int).ravel()
 
     # Configure TensorFlow threading
-    tf.config.threading.set_intra_op_parallelism_threads(
-        mlp_params.get("intra_threads", 0)
-    )
-    tf.config.threading.set_inter_op_parallelism_threads(
-        mlp_params.get("inter_threads", 0)
-    )
+    tf.config.threading.set_intra_op_parallelism_threads(default_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(default_threads)
 
     device = "/GPU:0" if tf.config.list_physical_devices("GPU") else "/CPU:0"
 
@@ -289,6 +286,55 @@ def train_mlp_lead(
     return model_mlp, metrics_summary
 
 
+def train_logistic_lead(
+    cfg: Dict[str, Dict],
+    X_train: Optional[pd.DataFrame] = None,
+    y_train: Optional[pd.Series] = None,
+    X_val: Optional[pd.DataFrame] = None,
+    y_val: Optional[pd.Series] = None,
+) -> tuple[LogisticRegression, Dict[str, float]]:
+    """Train a logistic regression classifier with optional hyperparameter search."""
+
+    lead_cfg = cfg.get("lead_scoring", {})
+    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
+    data_dir = out_dir / "data_cache"
+
+    if X_train is None or y_train is None:
+        X_train = pd.read_csv(data_dir / "X_train.csv")
+        y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
+    if X_val is None or y_val is None:
+        X_val = pd.read_csv(data_dir / "X_val.csv")
+        y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+
+    X_train = X_train.loc[y_train.index]
+    X_val = X_val.loc[y_val.index]
+
+    params = lead_cfg.get("logistic_params", {}).copy()
+    params.setdefault("n_jobs", -1)
+
+    if lead_cfg.get("fine_tuning", False):
+        grid = {"C": [0.001, 0.01, 0.1, 1, 10, 100]}
+        space = {"C": Real(1e-4, 100, prior="log-uniform")}
+        base_model = LogisticRegression(max_iter=1000, **params)
+        best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
+        params.update(best_params)
+
+    model_log = LogisticRegression(max_iter=1000, **params)
+    model_log.fit(X_train, y_train)
+
+    model_path = out_dir / "models" / "lead_logistic.pkl"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model_log, model_path)
+
+    val_pred = model_log.predict_proba(X_val)[:, 1]
+    pd.Series(val_pred).to_csv(data_dir / "proba_logistic.csv", index=False)
+    metrics = {
+        "logloss": log_loss(y_val, val_pred),
+        "auc": roc_auc_score(y_val, val_pred),
+    }
+    return model_log, metrics
+
+
 def train_xgboost_lead(
     cfg: Dict[str, Dict],
     X_train: Optional[pd.DataFrame] = None,
@@ -318,6 +364,7 @@ def train_xgboost_lead(
 
     params = lead_cfg.get("xgb_params", {}).copy()
     params.setdefault("n_jobs", -1)
+    params.setdefault("verbosity", 0)
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
@@ -437,6 +484,8 @@ def train_catboost_lead(
 
     params = lead_cfg.get("catboost_params", {}).copy()
     params.setdefault("thread_count", mp.cpu_count())
+    params.setdefault("silent", True)
+    params.setdefault("logging_level", "Silent")
     # Ensure CatBoost does not spam progress lines to stdout
     if not any(
         key in params for key in ("verbose", "verbose_eval", "silent", "logging_level")
@@ -540,6 +589,7 @@ def train_logistic_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("logreg_params", {})
+    params.setdefault("n_jobs", -1)
     strategy = lead_cfg.get("imbalance_strategy", "none")
     if strategy != "none":
         params.setdefault("class_weight", "balanced")

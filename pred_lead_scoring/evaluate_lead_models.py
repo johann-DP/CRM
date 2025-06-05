@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import pickle
 import logging
+import concurrent.futures
+import multiprocessing as mp
 
 import joblib
 import numpy as np
@@ -33,6 +35,35 @@ def _safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     if mask.sum() == 0:
         return np.nan
     return np.mean(np.abs((y_pred[mask] - y_true[mask]) / y_true[mask])) * 100
+
+
+def _clf_metrics(name: str, proba: np.ndarray, y_true: np.ndarray, out_dir: Path) -> Dict:
+    """Compute classification metrics for a single model."""
+    pd.Series(proba).to_csv(out_dir / f"proba_{name}.csv", index=False)
+    logloss = log_loss(y_true, proba)
+    auc = roc_auc_score(y_true, proba)
+    pred = proba > 0.5
+    prec, rec, f1, _ = precision_recall_fscore_support(y_true, pred, average="binary")
+    tn, fp, fn, tp = confusion_matrix(y_true, pred).ravel()
+    lost_rec = tn / (tn + fp) if (tn + fp) > 0 else np.nan
+    bal_acc = (rec + lost_rec) / 2
+    brier = brier_score_loss(y_true, proba)
+    return {
+        "model": name,
+        "model_type": "classifier",
+        "logloss": logloss,
+        "auc": auc,
+        "precision": prec,
+        "recall": rec,
+        "lost_recall": lost_rec,
+        "balanced_accuracy": bal_acc,
+        "f1": f1,
+        "brier": brier,
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
+    }
 
 
 def evaluate_lead_models(
@@ -82,49 +113,24 @@ def evaluate_lead_models(
     # ------------------------------------------------------------------
     # Classification models
     # ------------------------------------------------------------------
-    def _add_clf(name: str, proba: np.ndarray) -> None:
-        pd.Series(proba).to_csv(data_dir / f"proba_{name}.csv", index=False)
-        logloss = log_loss(y_test, proba)
-        auc = roc_auc_score(y_test, proba)
-        pred = proba > 0.5
-        prec, rec, f1, _ = precision_recall_fscore_support(
-            y_test, pred, average="binary"
-        )
-        tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()
-        lost_rec = tn / (tn + fp) if (tn + fp) > 0 else np.nan
-        bal_acc = (rec + lost_rec) / 2
-        brier = brier_score_loss(y_test, proba)
-        metrics.append(
-            {
-                "model": name,
-                "model_type": "classifier",
-                "logloss": logloss,
-                "auc": auc,
-                "precision": prec,
-                "recall": rec,
-                "lost_recall": lost_rec,
-                "balanced_accuracy": bal_acc,
-                "f1": f1,
-                "brier": brier,
-                "tn": int(tn),
-                "fp": int(fp),
-                "fn": int(fn),
-                "tp": int(tp),
-            }
-        )
-
     # Avant de passer X_test à XGBoost, s'assurer que les colonnes object sont en 'category'
     for col in X_test.select_dtypes(include="object").columns:
         X_test[col] = X_test[col].astype("category")
 
-    _add_clf("xgboost", xgb_model.predict_proba(X_test)[:, 1])
-    _add_clf("catboost", cat_model.predict_proba(X_test)[:, 1])
-    _add_clf("logistic", log_model.predict_proba(X_test)[:, 1])
-    _add_clf("mlp", mlp_model.predict(X_test).ravel())
-    ensemble_proba = (
-        xgb_model.predict_proba(X_test)[:, 1] + cat_model.predict_proba(X_test)[:, 1]
-    ) / 2
-    _add_clf("ensemble", ensemble_proba)
+    preds = {
+        "xgboost": xgb_model.predict_proba(X_test)[:, 1],
+        "catboost": cat_model.predict_proba(X_test)[:, 1],
+        "logistic": log_model.predict_proba(X_test)[:, 1],
+        "mlp": mlp_model.predict(X_test).ravel(),
+    }
+    preds["ensemble"] = (preds["xgboost"] + preds["catboost"]) / 2
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=mp.cpu_count()) as ex:
+        futures = [
+            ex.submit(_clf_metrics, name, proba, y_test.values, data_dir)
+            for name, proba in preds.items()
+        ]
+        metrics.extend(f.result() for f in futures)
 
     # ------------------------------------------------------------------
     # Forecast models
