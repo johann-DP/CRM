@@ -51,21 +51,26 @@ def _run_hyperparameter_search(
     X_train: pd.DataFrame,
     y_train: pd.Series,
 ) -> dict:
-    """Run GridSearchCV and BayesSearchCV in parallel and return best params."""
+    """Run GridSearchCV and BayesSearchCV sequentially and return best params.
+
+    Both searches keep their internal joblib parallelism limited to a single
+    process to avoid conflicts when this function is executed inside a
+    ``ThreadPoolExecutor``.
+    """
     cv = TimeSeriesSplit(n_splits=5)
     grid = GridSearchCV(
         model,
         param_grid=param_grid,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=-1,
+        n_jobs=1,
     )
     bayes = BayesSearchCV(
         model,
         search_spaces=bayes_space,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=-1,
+        n_jobs=1,
         n_iter=20,
     )
 
