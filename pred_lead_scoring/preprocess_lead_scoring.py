@@ -10,7 +10,6 @@ import numpy as np
 
 import pandas as pd
 import yaml
-from joblib import dump, load
 from .logging_utils import setup_logging
 
 try:  # optional dependency for large datasets
@@ -371,6 +370,10 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         len(test),
     )
 
+    y_train = train["is_won"]
+    y_val = val["is_won"]
+    y_test = test["is_won"]
+
     # === DÉBUT BLOC NETTOYAGE ET VALIDATION DES FEATURES ===
     raw_cat_features = lead_cfg.get("cat_features") or []
     raw_num_features = lead_cfg.get("numeric_features") or []
@@ -393,24 +396,19 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     lead_cfg["cat_features"] = cat_features
     lead_cfg["numeric_features"] = num_features
 
-    # 5) Appeler _encode_features (avec cache)
-    cache_file = data_dir / "encoded_features.joblib"
-    if cache_file.exists():
-        X_train, X_val, X_test = load(cache_file)
+    # 5) Feature engineering / encoding
+    if lead_cfg.get("feat_eng", False):
+        from .feature_engineering import advanced_feature_engineering
+        X_train, X_val, X_test = advanced_feature_engineering(train, val, test, lead_cfg)
     else:
         X_train, X_val, X_test = _encode_features(
             train,
             val,
             test,
-            cat_features,
-            num_features,
+            lead_cfg["cat_features"],
+            lead_cfg["numeric_features"],
         )
-        dump((X_train, X_val, X_test), cache_file)
     # === FIN BLOC NETTOYAGE ET VALIDATION DES FEATURES ===
-
-    y_train = train["is_won"]
-    y_val = val["is_won"]
-    y_test = test["is_won"]
 
 
     # Conversion rate time series
