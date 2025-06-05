@@ -228,7 +228,7 @@ lead_scoring:
   date_col: "Date de fin actualisée"
 
   # Fonctionnalités à mettre en oeuvre
-  imbal_target: true
+  imbalance_strategy: both
   fine_tuning: true
   cross_val: false # redondante si fine_tuning à true
   feat_eng: true  # Active le pipeline avancé de feature engineering (module feature_engineering.py)
@@ -261,7 +261,7 @@ lead_scoring:
   logistic_params:
    C: 1.0
 
-  lstm_params:
+  mlp_params:
    batch_size: 32
    epochs: 50
    patience: 5
