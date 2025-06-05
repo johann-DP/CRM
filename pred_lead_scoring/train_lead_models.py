@@ -24,6 +24,7 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from skopt import BayesSearchCV
 from skopt.space import Integer, Real
 import concurrent.futures
+import multiprocessing as mp
 
 import tensorflow as tf
 from keras import layers, Model
@@ -63,14 +64,14 @@ def _run_hyperparameter_search(
         param_grid=param_grid,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=1,
+        n_jobs=-1,
     )
     bayes = BayesSearchCV(
         model,
         search_spaces=bayes_space,
         scoring="roc_auc",
         cv=cv,
-        n_jobs=1,
+        n_jobs=-1,
         n_iter=40,
     )
 
@@ -91,13 +92,13 @@ def _run_hyperparameter_search(
 def _apply_imbalance_strategy(X: pd.DataFrame, y: pd.Series, strategy: str):
     """Return resampled ``X`` and ``y`` according to the chosen strategy."""
     if strategy == "smote":
-        sampler = SMOTE(random_state=0)
+        sampler = SMOTE(random_state=0, n_jobs=-1)
         return sampler.fit_resample(X, y)
     if strategy == "undersample":
         sampler = RandomUnderSampler(random_state=0)
         return sampler.fit_resample(X, y)
     if strategy == "both":
-        smote = SMOTE(random_state=0)
+        smote = SMOTE(random_state=0, n_jobs=-1)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X, y)
         return under.fit_resample(X_tmp, y_tmp)
@@ -130,7 +131,11 @@ def train_mlp_lead(
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
-    mlp_params = lead_cfg.get("mlp_params", {})
+    mlp_params = lead_cfg.get("mlp_params", {}).copy()
+    default_threads = mp.cpu_count()
+    mlp_params.setdefault("intra_threads", default_threads)
+    mlp_params.setdefault("inter_threads", default_threads)
+    mlp_params.setdefault("verbose", 0)
     cross_val = lead_cfg.get("cross_val", False)
 
     # ------------------------------------------------------------------
@@ -156,12 +161,8 @@ def train_mlp_lead(
     y_val = np.asarray(y_val, dtype=int).ravel()
 
     # Configure TensorFlow threading
-    tf.config.threading.set_intra_op_parallelism_threads(
-        mlp_params.get("intra_threads", 0)
-    )
-    tf.config.threading.set_inter_op_parallelism_threads(
-        mlp_params.get("inter_threads", 0)
-    )
+    tf.config.threading.set_intra_op_parallelism_threads(default_threads)
+    tf.config.threading.set_inter_op_parallelism_threads(default_threads)
 
     device = "/GPU:0" if tf.config.list_physical_devices("GPU") else "/CPU:0"
 
@@ -309,6 +310,7 @@ def train_logistic_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("logistic_params", {}).copy()
+    params.setdefault("n_jobs", -1)
 
     if lead_cfg.get("fine_tuning", False):
         grid = {"C": [0.001, 0.01, 0.1, 1, 10, 100]}
@@ -361,7 +363,8 @@ def train_xgboost_lead(
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
 
     params = lead_cfg.get("xgb_params", {}).copy()
-    params.setdefault("n_jobs", lead_cfg.get("xgb_params", {}).get("n_jobs", 1))
+    params.setdefault("n_jobs", -1)
+    params.setdefault("verbosity", 0)
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
@@ -487,9 +490,9 @@ def train_catboost_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("catboost_params", {}).copy()
-    params.setdefault(
-        "thread_count", lead_cfg.get("catboost_params", {}).get("thread_count", 1)
-    )
+    params.setdefault("thread_count", mp.cpu_count())
+    params.setdefault("silent", True)
+    params.setdefault("logging_level", "Silent")
     # Ensure CatBoost does not spam progress lines to stdout
     if not any(
         key in params for key in ("verbose", "verbose_eval", "silent", "logging_level")
@@ -587,6 +590,7 @@ def train_logistic_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("logreg_params", {})
+    params.setdefault("n_jobs", -1)
     strategy = lead_cfg.get("imbalance_strategy", "none")
     if strategy != "none":
         params.setdefault("class_weight", "balanced")

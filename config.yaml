@@ -251,22 +251,24 @@ lead_scoring:
 
   # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
   xgb_params:
-   n_estimators: 100
-   max_depth: 5
+  n_estimators: 100
+  max_depth: 5
+  n_jobs: -1
 
   catboost_params:
    learning_rate: 0.1
-   thread_count: 4
+   thread_count: 24
 
   logistic_params:
    C: 1.0
+   n_jobs: -1
 
   mlp_params:
    batch_size: 32
    epochs: 50
    patience: 5
-   intra_threads: 1
-   inter_threads: 1
+   intra_threads: 24
+   inter_threads: 24
    learning_rate: 0.001
 
   arima_params:
