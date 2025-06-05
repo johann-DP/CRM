@@ -227,6 +227,7 @@ lead_scoring:
   # Colonne date utilisée pour le split chronologique
   date_col: "Date de fin actualisée"
   cross_val: true
+  feat_eng: true  # Active le pipeline avancé de feature engineering (module feature_engineering.py)
 
   # 4) Liste des variables catégorielles
   cat_features:
