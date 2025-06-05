@@ -72,13 +72,14 @@ def reduce_categorical_levels(
             continue
         counts = train[col].value_counts(dropna=False)
         frequent = set(counts[counts >= min_freq].index)
+        frequent_no_nan = [x for x in frequent if pd.notna(x)]
 
         for df in (train, val, test):
             if col not in df.columns:
                 continue
             series = df[col]
-            series = series.where(series.isin(frequent), "Autre")
-            df[col] = pd.Categorical(series, categories=list(frequent) + ["Autre"])
+            series = series.where(series.isin(frequent_no_nan), "Autre")
+            df[col] = pd.Categorical(series, categories=frequent_no_nan + ["Autre"])
 
 
 def enrich_with_sirene(
