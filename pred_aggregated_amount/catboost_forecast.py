@@ -109,6 +109,7 @@ def rolling_forecast_catboost(
             depth=6,
             random_seed=42,
             verbose=False,
+            logging_level="Silent",
             thread_count=os.cpu_count(),
         )
         model.fit(X_train, y_train, cat_features=cat_feat)
@@ -172,6 +173,7 @@ def forecast_future_catboost(
         depth=6,
         random_seed=42,
         verbose=False,
+        logging_level="Silent",
         thread_count=os.cpu_count(),
     )
     model_full.fit(X_full, y_full, cat_features=cat_feat)
