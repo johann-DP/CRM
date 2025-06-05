@@ -453,8 +453,10 @@ def train_catboost_lead(
         "thread_count", lead_cfg.get("catboost_params", {}).get("thread_count", 1)
     )
     # Ensure CatBoost does not spam progress lines to stdout
-    params.setdefault("verbose", False)
-    params.setdefault("logging_level", "Silent")
+    if not any(
+        key in params for key in ("verbose", "verbose_eval", "silent", "logging_level")
+    ):
+        params["verbose"] = False
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
