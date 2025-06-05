@@ -11,7 +11,6 @@ import joblib
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier
-from sklearn.linear_model import LogisticRegression
 from prophet import Prophet
 from sklearn.metrics import (
     log_loss,
@@ -19,6 +18,8 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
     mean_absolute_error,
     mean_squared_error,
+    confusion_matrix,
+    brier_score_loss,
 )
 import tensorflow as tf
 from .logging_utils import setup_logging
@@ -85,9 +86,14 @@ def evaluate_lead_models(
         pd.Series(proba).to_csv(data_dir / f"proba_{name}.csv", index=False)
         logloss = log_loss(y_test, proba)
         auc = roc_auc_score(y_test, proba)
+        pred = proba > 0.5
         prec, rec, f1, _ = precision_recall_fscore_support(
-            y_test, proba > 0.5, average="binary"
+            y_test, pred, average="binary"
         )
+        tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()
+        lost_rec = tn / (tn + fp) if (tn + fp) > 0 else np.nan
+        bal_acc = (rec + lost_rec) / 2
+        brier = brier_score_loss(y_test, proba)
         metrics.append(
             {
                 "model": name,
@@ -96,7 +102,14 @@ def evaluate_lead_models(
                 "auc": auc,
                 "precision": prec,
                 "recall": rec,
+                "lost_recall": lost_rec,
+                "balanced_accuracy": bal_acc,
                 "f1": f1,
+                "brier": brier,
+                "tn": int(tn),
+                "fp": int(fp),
+                "fn": int(fn),
+                "tp": int(tp),
             }
         )
 

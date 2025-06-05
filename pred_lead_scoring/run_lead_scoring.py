@@ -25,6 +25,7 @@ import logging
 import multiprocessing as mp
 from pathlib import Path
 import yaml
+import pandas as pd
 
 from .logging_utils import setup_logging
 
@@ -34,7 +35,6 @@ from .train_lead_models import (
     train_catboost_lead,
     train_logistic_lead,
     train_lstm_lead,
-    train_logistic_lead,
     train_arima_conv_rate,
     train_prophet_conv_rate,
 )
@@ -104,13 +104,49 @@ def main(argv: list[str] | None = None) -> None:
         fut_prophet.result()
 
     df_metrics = evaluate_lead_models(cfg, X_test, y_test, ts_conv_test["conv_rate"])
-    logger.info("\n%s", df_metrics.to_string(index=False))
+
+    def _format_report(df: pd.DataFrame) -> str:
+        if "model_type" not in df.columns:
+            return df.to_string(index=False)
+
+        lines: list[str] = []
+        for mtype, grp in df.groupby("model_type"):
+            lines.append(f"{mtype.capitalize()} models")
+            metrics_cols = [
+                c
+                for c in grp.columns
+                if c not in {"model", "model_type", "tn", "fp", "fn", "tp"}
+            ]
+            best_idx = {}
+            for col in metrics_cols:
+                if col in {"logloss", "brier", "mae", "rmse", "mape"}:
+                    best_idx[col] = grp[col].idxmin()
+                else:
+                    best_idx[col] = grp[col].idxmax()
+            for idx, row in grp.iterrows():
+                lines.append(f"  {row['model']}")
+                for col in metrics_cols:
+                    val = row[col]
+                    star = "*" if idx == best_idx[col] else ""
+                    if col in {"precision", "recall", "lost_recall", "balanced_accuracy", "f1"}:
+                        lines.append(f"    {col}: {val*100:.2f}%{star}")
+                    else:
+                        lines.append(f"    {col}: {val:.3f}{star}")
+                if {"tn", "fp", "fn", "tp"} <= set(grp.columns):
+                    lines.append(
+                        f"    TN={row['tn']} FP={row['fp']} FN={row['fn']} TP={row['tp']}"
+                    )
+                lines.append("")
+        return "\n".join(lines)
+
+    report_text = _format_report(df_metrics)
+    logger.info("\n%s", report_text)
 
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     report_file = out_dir / "lead_scoring_report.txt"
     try:
-        report_file.write_text(df_metrics.to_string(index=False))
+        report_file.write_text(report_text)
     except Exception:
         pass
 
