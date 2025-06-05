@@ -18,9 +18,7 @@ try:  # optional dependency for large datasets
 except Exception:  # pragma: no cover - dask not installed
     dd = None
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler, MinMaxScaler
-# Import after optional dask dependency to satisfy flake8 ordering
-from sklearn.feature_selection import chi2, mutual_info_classif
+from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -414,76 +412,6 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
     y_val = val["is_won"]
     y_test = test["is_won"]
 
-    if lead_cfg.get("feat_eng", False):
-        new_features = []
-
-        ca_col = "Total recette réalisé"
-        budget_col = "Budget client estimé"
-        if {ca_col, budget_col} <= set(train.columns):
-            for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
-                denom = raw[budget_col].replace(0, np.nan)
-                ratio = (raw[ca_col] / denom).replace([np.inf, -np.inf], np.nan)
-                enc["ratio_ca_budget"] = ratio.fillna(0.0)
-            new_features.append("ratio_ca_budget")
-
-        if date_col in train.columns:
-            for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
-                enc["month"] = raw[date_col].dt.month.astype(float)
-                enc["year"] = raw[date_col].dt.year.astype(float)
-            new_features.extend(["month", "year"])
-
-        if {"Date de début actualisée", "Date de fin réelle"} <= set(train.columns):
-            for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
-                raw["Date de début actualisée"] = pd.to_datetime(
-                    raw["Date de début actualisée"], dayfirst=True, errors="coerce"
-                )
-                raw["Date de fin réelle"] = pd.to_datetime(
-                    raw["Date de fin réelle"], dayfirst=True, errors="coerce"
-                )
-
-                duration = (
-                    raw["Date de fin réelle"] - raw["Date de début actualisée"]
-                ).dt.days
-                enc["duree_entre_debut_fin"] = duration
-            new_features.append("duree_entre_debut_fin")
-
-        if "ratio_ca_budget" in new_features:
-            for enc in [X_train, X_val, X_test]:
-                enc["ratio_month_inter"] = enc["ratio_ca_budget"] * enc.get("month", 0)
-            new_features.append("ratio_month_inter")
-
-        lead_cfg["numeric_features"] = lead_cfg.get("numeric_features", []) + new_features
-
-        num_cols = [c for c in lead_cfg["numeric_features"] if c in X_train.columns]
-
-        for df in [X_train, X_val, X_test]:
-            df[num_cols] = df[num_cols].fillna(0.0)
-
-        mi = mutual_info_classif(X_train[num_cols], y_train)
-        mm = MinMaxScaler()
-        chi_data = mm.fit_transform(X_train[num_cols])
-        chi_scores, _ = chi2(chi_data, y_train)
-
-        k = min(20, len(num_cols))
-        mi_idx = np.argsort(mi)[::-1][:k]
-        chi_idx = np.argsort(chi_scores)[::-1][:k]
-        selected_idx = np.union1d(mi_idx, chi_idx)
-        selected_cols = [num_cols[i] for i in selected_idx]
-
-        drop_cols = [c for c in num_cols if c not in selected_cols]
-        if drop_cols:
-            X_train.drop(columns=drop_cols, inplace=True)
-            X_val.drop(columns=drop_cols, inplace=True)
-            X_test.drop(columns=drop_cols, inplace=True)
-            lead_cfg["numeric_features"] = [
-                c for c in lead_cfg["numeric_features"] if c in selected_cols
-            ]
-            num_cols = selected_cols
-
-        scaler_extra = StandardScaler()
-        X_train[num_cols] = scaler_extra.fit_transform(X_train[num_cols])
-        X_val[num_cols] = scaler_extra.transform(X_val[num_cols])
-        X_test[num_cols] = scaler_extra.transform(X_test[num_cols])
 
     # Conversion rate time series
     ts_conv = _conversion_time_series(df, date_col, target_col, positive_label)
