@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from typing import Iterable, List, Tuple, Dict
 
+import json
+import os
+import warnings
+import ntpath
+import tempfile
+
 import pandas as pd
 import requests
 
 SIRENE_CACHE: Dict[str, Tuple[str, str]] = {}
 GEO_CACHE: Dict[str, Tuple[int, str]] = {}
+
+# hardcoded cache file locations
+_SIRENE_CACHE_FILE = r"C:\Users\johan\Documents\sirene_cache.json"
+_GEO_CACHE_FILE = r"C:\Users\johan\Documents\geo_cache.json"
 
 from .preprocess_lead_scoring import _encode_features
 
@@ -27,6 +37,98 @@ def clear_caches() -> None:
     """Clear cached API responses used during enrichment."""
     SIRENE_CACHE.clear()
     GEO_CACHE.clear()
+    for path in (_SIRENE_CACHE_FILE, _GEO_CACHE_FILE):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:  # pragma: no cover - non critical
+            warnings.warn(f"Could not remove cache file {path}: {e}")
+
+
+def _load_cache(file_path: str) -> dict:
+    """Load cache data from ``file_path`` if possible."""
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            warnings.warn(f"Cache file {file_path} has invalid format; ignoring.")
+            return {}
+        for k, v in data.items():
+            if isinstance(v, list):
+                data[k] = tuple(v)
+        return data
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        warnings.warn(
+            f"Cache file {file_path} is corrupted or unreadable; starting fresh cache."
+        )
+        return {}
+    except Exception as e:  # pragma: no cover - unexpected errors
+        warnings.warn(f"Could not load cache file {file_path}: {e}; ignoring cache.")
+        return {}
+
+
+def _save_cache(file_path: str, data: dict) -> None:
+    """Atomically save ``data`` to ``file_path`` and merge concurrent updates."""
+    dir_path = ntpath.dirname(file_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r") as f:
+                current = json.load(f)
+            if isinstance(current, dict):
+                for k, v in current.items():
+                    if k not in data:
+                        data[k] = v
+        except Exception:
+            pass
+
+    temp_path = file_path + ".tmp"
+    try:
+        with open(temp_path, "w") as f:
+            json.dump(data, f)
+        os.replace(temp_path, file_path)
+    except Exception as e:  # pragma: no cover - difficult to trigger
+        warnings.warn(f"Failed to write cache file {file_path}: {e}")
+
+
+def _fetch_sirene_data(siren: str) -> Tuple[str, str]:
+    """Fetch SIRENE info for ``siren`` via API."""
+    url = f"https://entreprise.data.gouv.fr/api/sirene/v3/etablissements/{siren}"
+    try:
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json().get("unite_legale", {}) or {}
+            ap = data.get("activite_principale", "inconnu")
+            te = data.get("tranche_effectifs") or data.get("tranche_effectif") or "inconnu"
+            return (ap, te)
+        return ("inconnu", "inconnu")
+    except Exception:
+        return ("inconnu", "inconnu")
+
+
+def _fetch_geo_data(cp: str) -> Tuple[int, str]:
+    """Fetch GEO info for postal code ``cp`` via API."""
+    url = (
+        "https://geo.api.gouv.fr/communes?codePostal="
+        f"{cp}&fields=population,codeRegion&format=json"
+    )
+    try:
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list) and data:
+                pop = data[0].get("population", 0)
+                reg = data[0].get("codeRegion")
+                return (int(pop or 0), str(reg or "nc"))
+            return (0, "nc")
+        return (0, "nc")
+    except Exception:
+        return (0, "nc")
 
 
 def create_internal_features(
@@ -110,34 +212,36 @@ def reduce_categorical_levels(
 def enrich_with_sirene(
     train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame
 ) -> None:
-    """Enrich datasets with basic SIRENE information.
+    """Enrich datasets with basic SIRENE information using local caching.
 
     Gracefully handles the absence of the ``SIREN`` column by populating the
     target columns with ``"inconnu"``.
     """
 
+    # load existing cache once
+    existing = _load_cache(_SIRENE_CACHE_FILE)
+    if existing:
+        SIRENE_CACHE.update(existing)
+
     series_list = [s for s in (train.get("SIREN"), val.get("SIREN"), test.get("SIREN")) if s is not None]
     sirens = pd.concat(series_list).dropna().unique() if series_list else []
 
     info: Dict[str, Tuple[str, str]] = {}
+    missing: List[str] = []
     for siren in sirens:
         key = str(siren)
         if key in SIRENE_CACHE:
             info[key] = SIRENE_CACHE[key]
-            continue
-        url = f"https://entreprise.data.gouv.fr/api/sirene/v3/etablissements/{siren}"
-        try:
-            resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json().get("unite_legale", {})
-                ap = data.get("activite_principale", "inconnu")
-                te = data.get("tranche_effectifs") or data.get("tranche_effectif") or "inconnu"
-                info[key] = (ap, te)
-            else:
-                info[key] = ("inconnu", "inconnu")
-        except Exception:
-            info[key] = ("inconnu", "inconnu")
-        SIRENE_CACHE[key] = info[key]
+        else:
+            missing.append(key)
+
+    for key in missing:
+        data = _fetch_sirene_data(key)
+        info[key] = data
+        SIRENE_CACHE[key] = data
+
+    if missing or not os.path.exists(_SIRENE_CACHE_FILE):
+        _save_cache(_SIRENE_CACHE_FILE, SIRENE_CACHE)
 
     for df in (train, val, test):
         s = df.get("SIREN")
@@ -152,38 +256,33 @@ def enrich_with_sirene(
 def enrich_with_geo_data(
     train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame
 ) -> None:
-    """Add population and region code based on postal code.
+    """Add population and region code based on postal code using local caching.
 
     Works even if the ``Code postal`` column is missing from the datasets.
     """
 
+    existing = _load_cache(_GEO_CACHE_FILE)
+    if existing:
+        GEO_CACHE.update(existing)
+
     series_list = [s for s in (train.get("Code postal"), val.get("Code postal"), test.get("Code postal")) if s is not None]
     cps = pd.concat(series_list).dropna().unique() if series_list else []
     info: Dict[str, Tuple[int, str]] = {}
+    missing: List[str] = []
     for cp in cps:
         key = str(cp)
         if key in GEO_CACHE:
             info[key] = GEO_CACHE[key]
-            continue
-        url = (
-            "https://geo.api.gouv.fr/communes?codePostal="
-            f"{cp}&fields=population,codeRegion&format=json"
-        )
-        try:
-            resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and data:
-                    pop = data[0].get("population", 0)
-                    reg = data[0].get("codeRegion")
-                else:
-                    pop, reg = 0, "nc"
-                info[key] = (int(pop or 0), reg or "nc")
-            else:
-                info[key] = (0, "nc")
-        except Exception:
-            info[key] = (0, "nc")
-        GEO_CACHE[key] = info[key]
+        else:
+            missing.append(key)
+
+    for key in missing:
+        data = _fetch_geo_data(key)
+        info[key] = data
+        GEO_CACHE[key] = data
+
+    if missing or not os.path.exists(_GEO_CACHE_FILE):
+        _save_cache(_GEO_CACHE_FILE, GEO_CACHE)
 
     for df in (train, val, test):
         cp = df.get("Code postal")
