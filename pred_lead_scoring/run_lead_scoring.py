@@ -34,7 +34,6 @@ from .train_lead_models import (
     train_xgboost_lead,
     train_catboost_lead,
     train_logistic_lead,
-    train_lstm_lead,
     train_arima_conv_rate,
     train_prophet_conv_rate,
 )
