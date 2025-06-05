@@ -513,6 +513,12 @@ def train_catboost_lead(
 
     cat_cols = lead_cfg.get("cat_features", [])
     cat_indices = [X_train.columns.get_loc(c) for c in cat_cols if c in X_train.columns]
+
+    # Cast encoded categorical columns to integer for CatBoost compatibility
+    for df_ in (X_train, X_val):
+        for col in cat_cols:
+            if col in df_.columns:
+                df_[col] = df_[col].astype(int)
     model_cat = CatBoostClassifier(**params)
 
     if lead_cfg.get("cross_val", False):
