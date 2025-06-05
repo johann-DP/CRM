@@ -13,16 +13,16 @@ import yaml
 from joblib import dump, load
 from .logging_utils import setup_logging
 
-logger = logging.getLogger(__name__)
-
 try:  # optional dependency for large datasets
     import dask.dataframe as dd
 except Exception:  # pragma: no cover - dask not installed
     dd = None
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler, MinMaxScaler
+# Import after optional dask dependency to satisfy flake8 ordering
 from sklearn.feature_selection import chi2, mutual_info_classif
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data loading and filtering
@@ -104,11 +104,23 @@ def _filter_status(
     target_col: str,
     positive_label: str,
 ) -> pd.DataFrame:
-    """Keep only won/lost opportunities and add ``is_won`` column."""
+    """Keep only won/lost opportunities and add ``is_won`` column.
 
-    df = df[df[target_col].isin([positive_label, "Perdu"])]
-    df = df.dropna(subset=[date_col, target_col]).copy()
-    df["is_won"] = (df[target_col] == positive_label).astype(int)
+    This helper normally derives ``is_won`` from ``target_col``.  Some
+    pre-cleaned datasets may already include ``is_won`` and omit the original
+    target column.  In that case, the function simply ensures the date column is
+    present and drops rows with missing values.
+    """
+
+    if target_col in df.columns:
+        df = df[df[target_col].isin([positive_label, "Perdu"])]
+        df = df.dropna(subset=[date_col, target_col]).copy()
+        df["is_won"] = (df[target_col] == positive_label).astype(int)
+    elif "is_won" in df.columns:
+        df = df.dropna(subset=[date_col, "is_won"]).copy()
+    else:
+        raise KeyError(f"Missing both '{target_col}' and 'is_won' columns")
+
     return df
 
 
@@ -238,19 +250,19 @@ def _encode_features(
     # 3) Concaténer (numérique | cat) pour obtenir le DataFrame final
     cols = num_features + cat_features
     X_train = pd.DataFrame(
-         np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
-         columns = cols,
-         index = train.index,
+        np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(train), 0)),
+        columns=cols,
+        index=train.index,
     )
     X_val = pd.DataFrame(
-         np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(val), 0)),
-         columns = cols,
-         index = val.index,
+        np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(val), 0)),
+        columns=cols,
+        index=val.index,
     )
     X_test = pd.DataFrame(
-         np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(test), 0)),
-         columns = cols,
-         index = test.index,
+        np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(test), 0)),
+        columns=cols,
+        index=test.index,
     )
 
     return X_train, X_val, X_test
@@ -404,10 +416,12 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
 
         if {"Date de début actualisée", "Date de fin réelle"} <= set(train.columns):
             for raw, enc in zip([train, val, test], [X_train, X_val, X_test]):
-                raw["Date de début actualisée"] = pd.to_datetime(raw["Date de début actualisée"], dayfirst=True,
-                                                                 errors="coerce")
-                raw["Date de fin réelle"] = pd.to_datetime(raw["Date de fin réelle"], dayfirst=True,
-                                                                 errors="coerce")
+                raw["Date de début actualisée"] = pd.to_datetime(
+                    raw["Date de début actualisée"], dayfirst=True, errors="coerce"
+                )
+                raw["Date de fin réelle"] = pd.to_datetime(
+                    raw["Date de fin réelle"], dayfirst=True, errors="coerce"
+                )
 
                 duration = (
                     raw["Date de fin réelle"] - raw["Date de début actualisée"]
