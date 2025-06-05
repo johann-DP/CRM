@@ -285,54 +285,6 @@ def train_mlp_lead(
     return model_mlp, metrics_summary
 
 
-def train_logistic_lead(
-    cfg: Dict[str, Dict],
-    X_train: Optional[pd.DataFrame] = None,
-    y_train: Optional[pd.Series] = None,
-    X_val: Optional[pd.DataFrame] = None,
-    y_val: Optional[pd.Series] = None,
-) -> tuple[LogisticRegression, Dict[str, float]]:
-    """Train a logistic regression classifier with optional hyperparameter search."""
-
-    lead_cfg = cfg.get("lead_scoring", {})
-    out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
-    data_dir = out_dir / "data_cache"
-
-    if X_train is None or y_train is None:
-        X_train = pd.read_csv(data_dir / "X_train.csv")
-        y_train = pd.read_csv(data_dir / "y_train.csv").squeeze()
-    if X_val is None or y_val is None:
-        X_val = pd.read_csv(data_dir / "X_val.csv")
-        y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
-
-    X_train = X_train.loc[y_train.index]
-    X_val = X_val.loc[y_val.index]
-
-    params = lead_cfg.get("logistic_params", {}).copy()
-
-    if lead_cfg.get("fine_tuning", False):
-        grid = {"C": [0.001, 0.01, 0.1, 1, 10, 100]}
-        space = {"C": Real(1e-4, 100, prior="log-uniform")}
-        base_model = LogisticRegression(max_iter=1000, **params)
-        best_params = _run_hyperparameter_search(base_model, grid, space, X_train, y_train)
-        params.update(best_params)
-
-    model_log = LogisticRegression(max_iter=1000, **params)
-    model_log.fit(X_train, y_train)
-
-    model_path = out_dir / "models" / "lead_logistic.pkl"
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model_log, model_path)
-
-    val_pred = model_log.predict_proba(X_val)[:, 1]
-    pd.Series(val_pred).to_csv(data_dir / "proba_logistic.csv", index=False)
-    metrics = {
-        "logloss": log_loss(y_val, val_pred),
-        "auc": roc_auc_score(y_val, val_pred),
-    }
-    return model_log, metrics
-
-
 def train_xgboost_lead(
     cfg: Dict[str, Dict],
     X_train: Optional[pd.DataFrame] = None,

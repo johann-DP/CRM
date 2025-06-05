@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple, Dict
 
+from .aggregate_revenue import aggregate_revenue
+
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
@@ -129,16 +131,6 @@ def filter_won(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def aggregate_revenue(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """Aggregate revenue into monthly, quarterly and yearly sums."""
-    df = df.set_index("Date de fin actualisée")
-    # ``M``, ``Q`` and ``A`` are deprecated aliases; use ``ME``/``QE``/``YE``
-    monthly = df["Total recette réalisé"].resample("ME").sum().fillna(0)
-    quarterly = df["Total recette réalisé"].resample("QE").sum().fillna(0)
-    yearly = df["Total recette réalisé"].resample("YE").sum().fillna(0)
-    return monthly, quarterly, yearly
-
-
 # ---------------------------------------------------------------------------
 # Visualisation helpers
 # ---------------------------------------------------------------------------
@@ -204,7 +196,7 @@ def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir"
     imputed_model = impute_with_model(df, reg, features)
 
     df_won = filter_won(df)
-    monthly, quarterly, yearly = aggregate_revenue(df_won)
+    monthly, quarterly, yearly = aggregate_revenue(df_won, "Total recette réalisé")
 
     ts_before = (
         df_before.set_index("Date de fin actualisée")["Total recette réalisé"].resample("ME").sum().fillna(0)
@@ -236,7 +228,6 @@ __all__ = [
     "train_duration_model",
     "impute_with_model",
     "filter_won",
-    "aggregate_revenue",
     "plot_histograms",
     "plot_before_after",
     "save_summary",
