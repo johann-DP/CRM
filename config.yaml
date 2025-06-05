@@ -226,7 +226,11 @@ lead_scoring:
 
   # Colonne date utilisée pour le split chronologique
   date_col: "Date de fin actualisée"
-  cross_val: true
+
+  # Fonctionnalités à mettre en oeuvre
+  imbal_target: true
+  fine_tuning: true
+  cross_val: false # redondante si fine_tuning à true
   feat_eng: true  # Active le pipeline avancé de feature engineering (module feature_engineering.py)
 
   # 4) Liste des variables catégorielles
@@ -245,7 +249,6 @@ lead_scoring:
     - "Budget client estimé" # s’il est mis à jour différemment une fois la vente conclue, il peut trahir le statut.
     # Pas de leakage car pas de différence entre avec et sans
 
-
   # 6) Paramètres spécifiques XGBoost / CatBoost / LSTM / ARIMA / Prophet
   xgb_params:
    n_estimators: 100
@@ -257,8 +260,6 @@ lead_scoring:
 
   logistic_params:
    C: 1.0
-
-  fine_tuning: true
 
   lstm_params:
    batch_size: 32
@@ -275,4 +276,4 @@ lead_scoring:
   prophet_params:
    changepoint_prior_scale: 0.05
   prophet_forecast_periods: 12
-  imbal_target: true
+

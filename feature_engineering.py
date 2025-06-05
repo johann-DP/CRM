@@ -8,45 +8,36 @@ encoding strategies.
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, List
 
 import logging
 
+import numpy as np
 import pandas as pd
-import requests
+
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, MinMaxScaler, StandardScaler
+from sklearn.feature_selection import mutual_info_classif, chi2
+
+logger = logging.getLogger(__name__)
 
 
-def create_internal_features(
+def create_temporal_features(
     train: pd.DataFrame,
     val: pd.DataFrame,
     test: pd.DataFrame,
     lead_cfg: dict,
 ) -> None:
-    """Create additional features directly from the input datasets.
+    """Create month, year, and duration features based on date columns.
 
-    Parameters
-    ----------
-    train, val, test : pd.DataFrame
-        Raw datasets split into training, validation and testing sets.
-    lead_cfg : dict
-        Configuration dictionary describing the lead scoring setup. The
-        function is designed to augment ``train``, ``val`` and ``test`` in
-        place with new descriptive variables that do not depend on the target
-        column.
+    New columns added:
+        - 'month': month extracted from lead_cfg['date_col']
+        - 'year': year extracted from lead_cfg['date_col']
+        - 'duree_entre_debut_fin': duration in days between
+          'Date de début actualisée' and 'Date de fin réelle'.
 
-    Notes
-    -----
-    The following features are created when the relevant columns are present:
-
-    ``month`` and ``year``
-        Extracted from ``lead_cfg["date_col"]``.
-
-    ``duree_entre_debut_fin``
-        Number of days between ``Date de début actualisée`` and
-        ``Date de fin réelle``.
-
-    Missing values are replaced with ``0`` so that subsequent encoding steps do
-    not produce NaNs. ``lead_cfg['numeric_features']`` is updated with the names
+    Missing values are replaced with 0 so that subsequent encoding steps do
+    not produce NaNs. lead_cfg['numeric_features'] is updated with the names
     of the newly created features if necessary.
     """
     if not isinstance(lead_cfg, dict):
@@ -82,377 +73,203 @@ def reduce_categorical_levels(
     X_train: pd.DataFrame,
     X_val: pd.DataFrame,
     X_test: pd.DataFrame,
-    cat_cols: list[str],
-    min_freq: int,
+    col: str,
+    min_freq: int = 5,
 ) -> None:
-    """Reduce the number of modalities for categorical variables.
+    """Group rare categories into 'Autre' for a given column.
 
-    This function groups rare categories together based on ``min_freq``
-    occurrences in ``X_train`` and applies the mapping to the validation
-    and test sets.
+    Any category appearing fewer than min_freq times in X_train is
+    replaced by 'Autre' in all datasets. Ensures 'Autre' is present
+    in the category index.
     """
-    if not cat_cols:
+    if col not in X_train.columns:
         return
 
-    for col in cat_cols:
-        if col not in X_train.columns:
+    train_series = X_train[col].astype("category")
+    counts = train_series.value_counts(dropna=False)
+
+    threshold = min_freq
+    frequent = set(counts[counts >= threshold].index)
+
+    for df in (X_train, X_val, X_test):
+        if col not in df.columns:
             continue
-
-        train_series = X_train[col].astype("category")
-        counts = train_series.value_counts(dropna=False)
-
-        threshold = 0 if len(train_series) < min_freq else min_freq
-        frequent = set(counts[counts >= threshold].index)
-
-        # Ensure "Autre" exists as a category in all datasets
-        for df in (X_train, X_val, X_test):
-            if col in df.columns:
-                if not pd.api.types.is_categorical_dtype(df[col]):
-                    df[col] = df[col].astype("category")
-                if "Autre" not in df[col].cat.categories:
-                    df[col] = df[col].cat.add_categories(["Autre"])
-
-        # Replace rare modalities in the training set
-        mask_train = ~X_train[col].isin(frequent)
-        if mask_train.any():
-            X_train.loc[mask_train, col] = "Autre"
-
-        # Apply the same mapping to validation and test sets
-        for df in (X_val, X_test):
-            if col not in df.columns:
-                continue
-            mask = ~df[col].isin(frequent)
-            if mask.any():
-                df.loc[mask, col] = "Autre"
-
-        # Cast back to category dtype
-        X_train[col] = X_train[col].astype("category")
-        if col in X_val.columns:
-            X_val[col] = X_val[col].astype("category")
-        if col in X_test.columns:
-            X_test[col] = X_test[col].astype("category")
+        df[col] = df[col].astype("category")
+        if "Autre" not in df[col].cat.categories:
+            df[col] = df[col].cat.add_categories(["Autre"])
+        df[col] = df[col].apply(lambda x: x if x in frequent else "Autre")
+        df[col] = df[col].cat.remove_unused_categories()
 
 
-def enrich_with_sirene(
+def encode_features(
     X_train: pd.DataFrame,
     X_val: pd.DataFrame,
     X_test: pd.DataFrame,
-    lead_cfg: dict | None = None,
-) -> None:
-    """Augment the datasets with company information from the SIRENE API.
+    cat_feats: List[str],
+    num_feats: List[str],
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Apply imputation, scaling, and encoding to both categorical and numeric features.
 
-    The function looks for a ``SIREN`` or ``SIRET`` column in ``X_train``
-    and queries the `SIRENE open-data API <https://entreprise.data.gouv.fr/>`_
-    to retrieve two attributes about the corresponding company:
-
-    * ``secteur_activite`` – the main activity code (NAF)
-    * ``tranche_effectif`` – the employee count bracket
-
-    Results are cached locally to minimise the number of HTTP requests.  In
-    case of network failure or missing data, the value ``"inconnu"`` is used.
-    When ``lead_cfg`` is provided, the added column names are appended to
-    ``lead_cfg["cat_features"]``.
-
-    Parameters
-    ----------
-    X_train, X_val, X_test : pd.DataFrame
-        Datasets that must contain either a ``SIREN`` or ``SIRET`` column.
-    lead_cfg : dict, optional
-        Configuration dictionary updated in-place with the newly created
-        categorical features.
+    Steps:
+    1. Impute numeric features with median.
+    2. Scale numeric features using StandardScaler.
+    3. Impute categorical features with constant 'missing', then apply
+       OrdinalEncoder to categories, followed by OneHotEncoder for
+       high-cardinality variables if needed.
+    4. Return transformed X_train, X_val, X_test DataFrames.
     """
+    # Numeric pipeline
+    if num_feats:
+        num_imputer = SimpleImputer(strategy="median")
+        num_scaler = StandardScaler()
 
-    if "SIREN" in X_train.columns:
-        col = "SIREN"
-    elif "SIRET" in X_train.columns:
-        col = "SIRET"
+        X_train_num = num_imputer.fit_transform(X_train[num_feats])
+        X_train_num = num_scaler.fit_transform(X_train_num)
+
+        X_val_num = num_imputer.transform(X_val[num_feats])
+        X_val_num = num_scaler.transform(X_val_num)
+
+        X_test_num = num_imputer.transform(X_test[num_feats])
+        X_test_num = num_scaler.transform(X_test_num)
+
+        X_train_num = pd.DataFrame(X_train_num, columns=num_feats, index=X_train.index)
+        X_val_num = pd.DataFrame(X_val_num, columns=num_feats, index=X_val.index)
+        X_test_num = pd.DataFrame(X_test_num, columns=num_feats, index=X_test.index)
     else:
+        X_train_num = pd.DataFrame(index=X_train.index)
+        X_val_num = pd.DataFrame(index=X_val.index)
+        X_test_num = pd.DataFrame(index=X_test.index)
+
+    # Categorical pipeline
+    X_train_cat = pd.DataFrame(index=X_train.index)
+    X_val_cat = pd.DataFrame(index=X_val.index)
+    X_test_cat = pd.DataFrame(index=X_test.index)
+
+    if cat_feats:
+        # Impute missing categories
+        for col in cat_feats:
+            X_train[col] = X_train[col].fillna("missing").astype("category")
+            X_val[col] = X_val[col].fillna("missing").astype("category")
+            X_test[col] = X_test[col].fillna("missing").astype("category")
+
+            # Reduce rare levels
+            reduce_categorical_levels(X_train, X_val, X_test, col)
+
+        # Ordinal encoding followed by one-hot
+        ord_enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        X_train_ord = ord_enc.fit_transform(X_train[cat_feats])
+        X_val_ord = ord_enc.transform(X_val[cat_feats])
+        X_test_ord = ord_enc.transform(X_test[cat_feats])
+
+        X_train_ord = pd.DataFrame(X_train_ord, columns=cat_feats, index=X_train.index)
+        X_val_ord = pd.DataFrame(X_val_ord, columns=cat_feats, index=X_val.index)
+        X_test_ord = pd.DataFrame(X_test_ord, columns=cat_feats, index=X_test.index)
+
+        # One-hot encode ordinal labels
+        onehot_enc = OneHotEncoder(sparse=False, handle_unknown="ignore")
+        X_train_ohe = onehot_enc.fit_transform(X_train_ord)
+        X_val_ohe = onehot_enc.transform(X_val_ord)
+        X_test_ohe = onehot_enc.transform(X_test_ord)
+
+        ohe_cols = onehot_enc.get_feature_names_out(cat_feats)
+        X_train_cat = pd.DataFrame(X_train_ohe, columns=ohe_cols, index=X_train.index)
+        X_val_cat = pd.DataFrame(X_val_ohe, columns=ohe_cols, index=X_val.index)
+        X_test_cat = pd.DataFrame(X_test_ohe, columns=ohe_cols, index=X_test.index)
+
+    # Concatenate numeric and categorical
+    X_train_final = pd.concat([X_train_num, X_train_cat], axis=1)
+    X_val_final = pd.concat([X_val_num, X_val_cat], axis=1)
+    X_test_final = pd.concat([X_test_num, X_test_cat], axis=1)
+
+    return X_train_final, X_val_final, X_test_final
+
+
+def select_features_univariate(
+    X: pd.DataFrame,
+    y: pd.Series,
+    k: int = 10,
+    method: str = "mutual_info",
+) -> List[str]:
+    """Select top-k features based on univariate statistical tests.
+
+    Arguments:
+        X: DataFrame of features.
+        y: Target binary Series (0/1).
+        k: Number of features to select.
+        method: 'mutual_info' or 'chi2'.
+
+    Returns:
+        List of top-k feature names.
+    """
+    if method == "mutual_info":
+        scores = mutual_info_classif(X, y, discrete_features="auto")
+    elif method == "chi2":
+        # chi2 requires non-negative features; ensure X >= 0
+        X_nonneg = X.copy()
+        for col in X_nonneg.columns:
+            if X_nonneg[col].min() < 0:
+                X_nonneg[col] = X_nonneg[col] - X_nonneg[col].min()
+        scores = chi2(X_nonneg, y)[0]
+    else:
+        raise ValueError("method must be 'mutual_info' or 'chi2'")
+
+    feature_scores = pd.Series(scores, index=X.columns)
+    topk = feature_scores.sort_values(ascending=False).index[:k].tolist()
+    return topk
+
+
+def bin_numerical_feature(
+    X_train: pd.DataFrame,
+    X_val: pd.DataFrame,
+    X_test: pd.DataFrame,
+    col: str,
+    n_bins: int = 4,
+) -> None:
+    """Discretize a numerical column into quantile-based bins and update datasets.
+
+    The new column will be named '{col}_bin'. Original column remains unchanged.
+    """
+    if col not in X_train.columns:
         return
 
-    def _fetch_from_api(siren: str, cache: dict[str, tuple[str, str]]) -> tuple[str, str]:
-        if siren in cache:
-            return cache[siren]
+    # Compute bin edges on X_train
+    edges = pd.qcut(X_train[col], q=n_bins, duplicates="drop", retbins=True)[1]
+    bin_labels = [f"{col}_bin_{i}" for i in range(len(edges) - 1)]
 
-        url = f"https://entreprise.data.gouv.fr/api/sirene/v3/unites_legales/{siren}"
-        secteur = "inconnu"
-        effectif = "inconnu"
-        try:
-            resp = requests.get(url, timeout=2)
-            if resp.status_code == 200:
-                payload = resp.json().get("unite_legale", {})
-                secteur = payload.get("activite_principale") or "inconnu"
-                effectif = (
-                    payload.get("tranche_effectifs")
-                    or payload.get("tranche_effectifs_salaries")
-                    or "inconnu"
-                )
-        except requests.RequestException:
-            pass
-
-        cache[siren] = (secteur, effectif)
-        return secteur, effectif
-
-    cache: dict[str, tuple[str, str]] = {}
-
-    sirens = (
-        pd.concat([X_train[col], X_val[col], X_test[col]])
-        .dropna()
-        .astype(str)
-        .str[:9]
-        .unique()
-    )
-
-    for siren in sirens:
-        _fetch_from_api(siren, cache)
-
+    # Apply binning to each DataFrame
     for df in (X_train, X_val, X_test):
-        df["secteur_activite"] = (
-            df[col]
-            .map(lambda x: cache.get(str(x)[:9], ("inconnu", "inconnu"))[0])
-            .fillna("inconnu")
-        )
-        df["tranche_effectif"] = (
-            df[col]
-            .map(lambda x: cache.get(str(x)[:9], ("inconnu", "inconnu"))[1])
-            .fillna("inconnu")
-        )
-
-    if lead_cfg is not None:
-        cat_feats = list(lead_cfg.get("cat_features", []))
-        for feat in ["secteur_activite", "tranche_effectif"]:
-            if feat not in cat_feats:
-                cat_feats.append(feat)
-        lead_cfg["cat_features"] = cat_feats
+        if col in df.columns:
+            df[f"{col}_bin"] = pd.cut(df[col], bins=edges, labels=bin_labels, include_lowest=True)
+            df[f"{col}_bin"] = df[f"{col}_bin"].cat.add_categories(["missing"]).fillna("missing")
 
 
-def enrich_with_geo_data(
-    X_train: pd.DataFrame,
-    X_val: pd.DataFrame,
-    X_test: pd.DataFrame,
-    lead_cfg: dict | None = None,
-) -> None:
-    """Add geographic information based on the French GEO API.
-
-    This helper queries `https://geo.api.gouv.fr` using the client's postal
-    code (``"Code postal"`` column) to retrieve two open data attributes:
-
-    ``population_commune``
-        Population of the commune associated with the postal code.
-    ``code_region``
-        Administrative region code of that commune.
-
-    The function adds these columns to ``X_train``, ``X_val`` and
-    ``X_test``.  Missing or invalid postal codes yield ``population_commune = 0``
-    and ``code_region = "inconnu"``. The external data only describes the
-    environment of a lead and therefore does not introduce target leakage.
-
-    Parameters
-    ----------
-    X_train, X_val, X_test : pd.DataFrame
-        Datasets to enrich with geographic information.
-    lead_cfg : dict | None
-        Lead scoring configuration updated in-place with the new feature names.
-    """
-
-    postal_col = "Code postal"
-    for df in (X_train, X_val, X_test):
-        if postal_col not in df.columns:
-            raise KeyError(f"'{postal_col}' column missing from dataset")
-
-    cache: dict[str, tuple[int, str]] = {}
-
-    def _lookup(cp: str | float | int) -> tuple[int, str]:
-        if pd.isna(cp):
-            return 0, "inconnu"
-
-        code = str(cp).strip()
-        # Normalise CPs that may be stored as floats
-        if code.endswith('.0'):
-            code = code[:-2]
-
-        if code in cache:
-            return cache[code]
-
-        url = (
-            "https://geo.api.gouv.fr/communes?codePostal="
-            f"{code}&fields=population,codeRegion&format=json"
-        )
-        try:
-            resp = requests.get(url, timeout=5)
-            resp.raise_for_status()
-            data = resp.json() or []
-        except Exception:
-            data = []
-
-        if not isinstance(data, list) or not data:
-            result = (0, "inconnu")
-        else:
-            # Choose commune with highest population
-            best = max(data, key=lambda d: d.get("population") or 0)
-            pop = int(best.get("population") or 0)
-            region = str(best.get("codeRegion") or "inconnu")
-            result = (pop, region)
-
-        cache[code] = result
-        return result
-
-    for df in (X_train, X_val, X_test):
-        pops, regs = zip(*df[postal_col].apply(_lookup))
-        df["population_commune"] = np.array(pops, dtype=int)
-        df["code_region"] = np.array(regs, dtype=object)
-
-    if lead_cfg is not None:
-        lead_cfg.setdefault("numeric_features", [])
-        lead_cfg.setdefault("cat_features", [])
-        if "population_commune" not in lead_cfg["numeric_features"]:
-            lead_cfg["numeric_features"].append("population_commune")
-        if "code_region" not in lead_cfg["cat_features"]:
-            lead_cfg["cat_features"].append("code_region")
-
-
-def advanced_feature_engineering(
+def run_full_feature_engineering(
     train: pd.DataFrame,
     val: pd.DataFrame,
     test: pd.DataFrame,
     lead_cfg: dict,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return the fully engineered feature matrices.
+    """Run the complete feature engineering pipeline on train, val, and test sets.
 
-    This high-level helper orchestrates the various feature engineering
-    steps defined in this module and returns processed copies of the
-    ``train``, ``val`` and ``test`` datasets.
+    Steps executed in order:
+        1. Create temporal features (month, year, duration).
+        2. Bin/quantize selected numeric features if specified in lead_cfg.
+        3. Encode categorical and numeric features fully.
+
+    Returns:
+        Transformed (X_train, X_val, X_test).
     """
+    # 1. Temporal features
+    create_temporal_features(train, val, test, lead_cfg)
 
-    logger = logging.getLogger(__name__)
+    # 2. Binning if requested
+    bin_features = lead_cfg.get("binning_features", [])
+    for col in bin_features:
+        bin_numerical_feature(train, val, test, col, n_bins=lead_cfg.get("n_bins", 4))
 
-    # Work on copies to avoid modifying the original inputs
-    X_train = train.copy()
-    X_val = val.copy()
-    X_test = test.copy()
+    # 3. Encoding
+    cat_feats = lead_cfg.get("cat_features", [])
+    num_feats = lead_cfg.get("numeric_features", [])
+    X_train_fe, X_val_fe, X_test_fe = encode_features(train, val, test, cat_feats, num_feats)
 
-    # Target extraction (removed from feature matrices)
-    y_train = X_train.pop("is_won") if "is_won" in X_train.columns else None
-    _ = X_val.pop("is_won") if "is_won" in X_val.columns else None
-    _ = X_test.pop("is_won") if "is_won" in X_test.columns else None
-
-    # ------------------------------------------------------------------
-    # 1) Feature generation steps
-    # ------------------------------------------------------------------
-    create_internal_features(X_train, X_val, X_test, lead_cfg)
-
-    cat_cols = lead_cfg.get("cat_features", [])
-    min_freq = lead_cfg.get("min_cat_freq", 10)
-    reduce_categorical_levels(X_train, X_val, X_test, cat_cols, min_freq)
-
-    enrich_with_sirene(X_train, X_val, X_test)
-    enrich_with_geo_data(X_train, X_val, X_test)
-
-    # ------------------------------------------------------------------
-    # 2) Update feature lists after enrichment
-    # ------------------------------------------------------------------
-    target_col = lead_cfg.get("target_col", "Statut commercial")
-    exclude = {target_col}
-
-    numeric_features: list[str] = []
-    cat_features: list[str] = []
-    for col in X_train.columns:
-        if col in exclude:
-            continue
-        if pd.api.types.is_numeric_dtype(X_train[col]):
-            numeric_features.append(col)
-        else:
-            cat_features.append(col)
-
-    lead_cfg["numeric_features"] = numeric_features
-    lead_cfg["cat_features"] = cat_features
-
-    # ------------------------------------------------------------------
-    # 3) Imputation + categorical encoding
-    # ------------------------------------------------------------------
-    if numeric_features:
-        num_imp = SimpleImputer(strategy="median")
-        X_train_num = num_imp.fit_transform(X_train[numeric_features])
-        if len(X_val):
-            X_val_num = num_imp.transform(X_val[numeric_features])
-        else:
-            X_val_num = np.empty((0, len(numeric_features)))
-        if len(X_test):
-            X_test_num = num_imp.transform(X_test[numeric_features])
-        else:
-            X_test_num = np.empty((0, len(numeric_features)))
-    else:
-        X_train_num = np.empty((len(X_train), 0))
-        X_val_num = np.empty((len(X_val), 0))
-        X_test_num = np.empty((len(X_test), 0))
-
-    if cat_features:
-        enc = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
-        X_train_cat = enc.fit_transform(X_train[cat_features].astype(str))
-        if len(X_val):
-            X_val_cat = enc.transform(X_val[cat_features].astype(str))
-        else:
-            X_val_cat = np.empty((0, len(cat_features)))
-        if len(X_test):
-            X_test_cat = enc.transform(X_test[cat_features].astype(str))
-        else:
-            X_test_cat = np.empty((0, len(cat_features)))
-    else:
-        X_train_cat = np.empty((len(X_train), 0))
-        X_val_cat = np.empty((len(X_val), 0))
-        X_test_cat = np.empty((len(X_test), 0))
-
-    # ------------------------------------------------------------------
-    # 4) Advanced feature selection on numeric variables
-    # ------------------------------------------------------------------
-    selected_numeric_features = []
-    if numeric_features:
-        mi_scores = mutual_info_classif(X_train_num, y_train, discrete_features=False)
-
-        scaler_mm = MinMaxScaler()
-        X_train_num_mm = scaler_mm.fit_transform(X_train_num)
-        chi2_scores, _ = chi2(X_train_num_mm, y_train)
-
-        mi_ranks = (-mi_scores).argsort().argsort()
-        chi2_ranks = (-chi2_scores).argsort().argsort()
-        combined = mi_ranks + chi2_ranks
-        top_idx = np.argsort(combined)[: min(20, len(numeric_features))]
-        selected_numeric_features = [numeric_features[i] for i in top_idx]
-
-        # keep only selected columns
-        X_train_num = X_train_num[:, top_idx]
-        X_val_num = X_val_num[:, top_idx] if len(X_val) else np.empty((0, len(top_idx)))
-        X_test_num = X_test_num[:, top_idx] if len(X_test) else np.empty((0, len(top_idx)))
-
-        lead_cfg["numeric_features"] = selected_numeric_features
-        logger.debug("Selected %d numeric features", len(selected_numeric_features))
-
-    # ------------------------------------------------------------------
-    # 5) Final scaling of numeric variables
-    # ------------------------------------------------------------------
-    if selected_numeric_features:
-        scaler = StandardScaler()
-        X_train_num = scaler.fit_transform(X_train_num)
-        X_val_num = scaler.transform(X_val_num) if len(X_val) else X_val_num
-        X_test_num = scaler.transform(X_test_num) if len(X_test) else X_test_num
-
-    # ------------------------------------------------------------------
-    # 6) Assemble final DataFrames
-    # ------------------------------------------------------------------
-    cols = selected_numeric_features + cat_features
-    X_train_final = pd.DataFrame(
-        np.column_stack([X_train_num, X_train_cat]) if cols else np.empty((len(X_train), 0)),
-        columns=cols,
-        index=X_train.index,
-    )
-    X_val_final = pd.DataFrame(
-        np.column_stack([X_val_num, X_val_cat]) if cols else np.empty((len(X_val), 0)),
-        columns=cols,
-        index=X_val.index,
-    )
-    X_test_final = pd.DataFrame(
-        np.column_stack([X_test_num, X_test_cat]) if cols else np.empty((len(X_test), 0)),
-        columns=cols,
-        index=X_test.index,
-    )
-
-    return X_train_final, X_val_final, X_test_final
+    return X_train_fe, X_val_fe, X_test_fe
