@@ -24,6 +24,7 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 from skopt import BayesSearchCV
 from skopt.space import Integer, Real
 import concurrent.futures
+import multiprocessing as mp
 
 import tensorflow as tf
 from keras import layers, Model
@@ -130,7 +131,10 @@ def train_mlp_lead(
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
     data_dir = out_dir / "data_cache"
-    mlp_params = lead_cfg.get("mlp_params", {})
+    mlp_params = lead_cfg.get("mlp_params", {}).copy()
+    default_threads = max(1, mp.cpu_count())
+    mlp_params.setdefault("intra_threads", default_threads)
+    mlp_params.setdefault("inter_threads", default_threads)
     cross_val = lead_cfg.get("cross_val", False)
 
     # ------------------------------------------------------------------
@@ -361,7 +365,7 @@ def train_xgboost_lead(
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
 
     params = lead_cfg.get("xgb_params", {}).copy()
-    params.setdefault("n_jobs", lead_cfg.get("xgb_params", {}).get("n_jobs", 1))
+    params.setdefault("n_jobs", -1)
 
     if lead_cfg.get("fine_tuning", False):
         grid = {
@@ -480,9 +484,7 @@ def train_catboost_lead(
     X_val = X_val.loc[y_val.index]
 
     params = lead_cfg.get("catboost_params", {}).copy()
-    params.setdefault(
-        "thread_count", lead_cfg.get("catboost_params", {}).get("thread_count", 1)
-    )
+    params.setdefault("thread_count", mp.cpu_count())
     # Ensure CatBoost does not spam progress lines to stdout
     if not any(
         key in params for key in ("verbose", "verbose_eval", "silent", "logging_level")
