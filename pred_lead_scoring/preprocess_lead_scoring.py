@@ -305,6 +305,12 @@ def _conversion_time_series(
         present. Defaults to ``"Gagné"``.
     """
 
+    if date_col not in df.columns:
+        logger.warning(
+            "Date column '%s' missing; conversion rate time series empty", date_col
+        )
+        return pd.DataFrame(columns=["sum", "count", "conv_rate"])
+
     if "is_won" in df.columns:
         df_closed = df.dropna(subset=[date_col, "is_won"]).copy()
     elif target_col in df.columns:
