@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
-    setup_logging()
+    setup_logging(log_file="training_output.txt")
     p = argparse.ArgumentParser(description="Run full lead scoring pipeline")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args(argv)
