@@ -81,9 +81,18 @@ def reduce_categorical_levels(
             df[col] = pd.Categorical(series, categories=list(frequent) + ["Autre"])
 
 
-def enrich_with_sirene(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame) -> None:
-    """Enrich datasets with basic SIRENE information."""
-    sirens = pd.concat([train.get("SIREN"), val.get("SIREN"), test.get("SIREN")]).dropna().unique()
+def enrich_with_sirene(
+    train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame
+) -> None:
+    """Enrich datasets with basic SIRENE information.
+
+    Gracefully handles the absence of the ``SIREN`` column by populating the
+    target columns with ``"inconnu"``.
+    """
+
+    series_list = [s for s in (train.get("SIREN"), val.get("SIREN"), test.get("SIREN")) if s is not None]
+    sirens = pd.concat(series_list).dropna().unique() if series_list else []
+
     info: Dict[str, Tuple[str, str]] = {}
     for siren in sirens:
         url = f"https://entreprise.data.gouv.fr/api/sirene/v3/etablissements/{siren}"
@@ -100,13 +109,25 @@ def enrich_with_sirene(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFram
             info[str(siren)] = ("inconnu", "inconnu")
 
     for df in (train, val, test):
-        df["secteur_activite"] = df.get("SIREN").map(lambda x: info.get(str(x), ("inconnu", "inconnu"))[0])
-        df["tranche_effectif"] = df.get("SIREN").map(lambda x: info.get(str(x), ("inconnu", "inconnu"))[1])
+        s = df.get("SIREN")
+        if s is not None:
+            df["secteur_activite"] = s.map(lambda x: info.get(str(x), ("inconnu", "inconnu"))[0])
+            df["tranche_effectif"] = s.map(lambda x: info.get(str(x), ("inconnu", "inconnu"))[1])
+        else:
+            df["secteur_activite"] = "inconnu"
+            df["tranche_effectif"] = "inconnu"
 
 
-def enrich_with_geo_data(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame) -> None:
-    """Add population and region code based on postal code."""
-    cps = pd.concat([train.get("Code postal"), val.get("Code postal"), test.get("Code postal")]).dropna().unique()
+def enrich_with_geo_data(
+    train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFrame
+) -> None:
+    """Add population and region code based on postal code.
+
+    Works even if the ``Code postal`` column is missing from the datasets.
+    """
+
+    series_list = [s for s in (train.get("Code postal"), val.get("Code postal"), test.get("Code postal")) if s is not None]
+    cps = pd.concat(series_list).dropna().unique() if series_list else []
     info: Dict[str, Tuple[int, str]] = {}
     for cp in cps:
         url = (
@@ -129,8 +150,13 @@ def enrich_with_geo_data(train: pd.DataFrame, val: pd.DataFrame, test: pd.DataFr
             info[str(cp)] = (0, "nc")
 
     for df in (train, val, test):
-        df["population_commune"] = df.get("Code postal").map(lambda x: info.get(str(x), (0, "nc"))[0])
-        df["code_region"] = df.get("Code postal").map(lambda x: info.get(str(x), (0, "nc"))[1])
+        cp = df.get("Code postal")
+        if cp is not None:
+            df["population_commune"] = cp.map(lambda x: info.get(str(x), (0, "nc"))[0])
+            df["code_region"] = cp.map(lambda x: info.get(str(x), (0, "nc"))[1])
+        else:
+            df["population_commune"] = 0
+            df["code_region"] = "nc"
 
 
 def advanced_feature_engineering(
