@@ -51,8 +51,8 @@ def scale_lstm_data(X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarra
 
 def build_lstm_model(window_size: int):
     """Return a simple LSTM model with 50 units followed by a Dense output."""
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import Input, LSTM, Dense
+    from keras.models import Sequential
+    from keras.layers import Input, LSTM, Dense
 
     model = Sequential([
         Input(shape=(window_size, 1)),

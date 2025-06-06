@@ -170,8 +170,8 @@ def tune_lstm(
     X_val, y_val = create_lstm_sequences(tail, window)
     X_val_s = scaler.transform(X_val.reshape(-1, 1)).reshape(X_val.shape)
 
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense
+    from keras.models import Sequential
+    from keras.layers import LSTM, Dense
 
     best_mape = float("inf")
     best = {}

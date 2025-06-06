@@ -42,6 +42,7 @@ from .evaluate_models import (
     _evaluate_arima,
     _evaluate_prophet,
     _evaluate_xgb,
+    _evaluate_catboost,
     _evaluate_lstm,
     _compute_metrics,
     _ts_cross_val,
