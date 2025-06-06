@@ -602,6 +602,10 @@ def train_ensemble_lead(
     if X_val is None or y_val is None:
         X_val = pd.read_csv(data_dir / "X_val.csv")
         y_val = pd.read_csv(data_dir / "y_val.csv").squeeze()
+    cat_cols = lead_cfg.get("cat_features", [])
+    for col in cat_cols:
+        if col in X_val.columns:
+            X_val[col] = X_val[col].astype(int)
 
     xgb = joblib.load(models_dir / "lead_xgb.pkl")
     cat = CatBoostClassifier()
