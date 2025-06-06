@@ -13,7 +13,13 @@ from xgboost import XGBRegressor
 # Supervised transformation
 # ---------------------------------------------------------------------------
 
-def _to_supervised(series: pd.Series, n_lags: int, *, add_time_features: bool = False) -> Tuple[pd.DataFrame, pd.Series]:
+def _to_supervised(
+    series: pd.Series,
+    n_lags: int,
+    *,
+    add_time_features: bool = False,
+    exog: pd.DataFrame | None = None,
+) -> Tuple[pd.DataFrame, pd.Series]:
     """Convert ``series`` to a supervised learning dataset.
 
     Parameters
@@ -30,6 +36,9 @@ def _to_supervised(series: pd.Series, n_lags: int, *, add_time_features: bool = 
     for i in range(1, n_lags + 1):
         df[f"lag{i}"] = series.shift(i)
 
+    if exog is not None:
+        df = df.join(exog)
+
     if add_time_features:
         # Add month or quarter depending on the frequency
         if series.index.freqstr and series.index.freqstr.startswith("M"):
@@ -45,7 +54,8 @@ def _to_supervised(series: pd.Series, n_lags: int, *, add_time_features: bool = 
         time_cols = []
 
     df = df.dropna()
-    feature_cols = [f"lag{i}" for i in range(1, n_lags + 1)] + time_cols
+    exog_cols = list(exog.columns) if exog is not None else []
+    feature_cols = [f"lag{i}" for i in range(1, n_lags + 1)] + time_cols + exog_cols
     X = df[feature_cols]
     y = df["y"]
     return X, y
