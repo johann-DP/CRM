@@ -39,6 +39,10 @@ def load_won_opportunities(
     if won_values is None:
         won_values = {"Won", "Gagné"}
 
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} does not exist")
+
     df = pd.read_csv(path)
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df = df[df[status_col].isin(set(won_values))].copy()
