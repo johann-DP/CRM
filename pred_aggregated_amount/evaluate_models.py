@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.model_selection import TimeSeriesSplit
 
 
 def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -164,11 +165,41 @@ def _evaluate_lstm(series: pd.Series, test_size: int, *, window: int, epochs: in
 # CatBoost rolling forecast
 # ---------------------------------------------------------------------------
 
-def _evaluate_catboost(series: pd.Series, freq: str) -> Dict[str, float]:
+def _evaluate_catboost(
+    series: pd.Series, freq: str, *, test_size: int | None = None
+) -> Dict[str, float]:
     """Evaluate CatBoost model with rolling forecast."""
     df_sup = prepare_supervised(series, freq)
-    preds, actuals = rolling_forecast_catboost(df_sup, freq)
+    preds, actuals = rolling_forecast_catboost(df_sup, freq, test_size=test_size)
     return _compute_metrics(actuals, preds)
+
+
+# ---------------------------------------------------------------------------
+# Time series cross-validation
+# ---------------------------------------------------------------------------
+
+def _ts_cross_val(
+    series: pd.Series,
+    eval_fn: Callable[..., Dict[str, float]],
+    *,
+    n_splits: int = 5,
+    **kwargs,
+) -> Dict[str, float]:
+    """Return mean/std metrics over ``n_splits`` time series folds."""
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    fold_metrics: List[Dict[str, float]] = []
+    for _, test_idx in tscv.split(series):
+        end = test_idx[-1] + 1
+        subset = series.iloc[:end]
+        metrics = eval_fn(subset, len(test_idx), **kwargs)
+        fold_metrics.append(metrics)
+
+    df = pd.DataFrame(fold_metrics)
+    mean = df.mean()
+    std = df.std()
+    out = {k: float(mean[k]) for k in df.columns}
+    out.update({f"{k}_std": float(std[k]) for k in df.columns})
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +210,9 @@ def evaluate_all_models(
     monthly: pd.Series,
     quarterly: pd.Series,
     yearly: pd.Series,
+    *,
+    cross_val: bool = False,
+    n_splits: int = 5,
 ) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Return MAE, RMSE and MAPE for all models and granularities."""
     results: Dict[str, Dict[str, Dict[str, float]]] = {
@@ -189,29 +223,49 @@ def evaluate_all_models(
         "CatBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
     }
 
-    # Monthly: last 12 months for testing
-    results["ARIMA"]["monthly"] = _evaluate_arima(monthly, 12, seasonal=True, m=12)
-    results["Prophet"]["monthly"] = _evaluate_prophet(monthly, 12, yearly_seasonality=True)
-    results["XGBoost"]["monthly"] = _evaluate_xgb(monthly, 12, n_lags=12, add_time_features=True)
-    results["LSTM"]["monthly"] = _evaluate_lstm(monthly, 12, window=12)
-    results["CatBoost"]["monthly"] = _evaluate_catboost(monthly, "M")
+    if cross_val:
+        cv = lambda s, fn, **kw: _ts_cross_val(s, fn, n_splits=n_splits, **kw)
+        results["ARIMA"]["monthly"] = cv(monthly, _evaluate_arima, seasonal=True, m=12)
+        results["Prophet"]["monthly"] = cv(monthly, _evaluate_prophet, yearly_seasonality=True)
+        results["XGBoost"]["monthly"] = cv(monthly, _evaluate_xgb, n_lags=12, add_time_features=True)
+        results["LSTM"]["monthly"] = cv(monthly, _evaluate_lstm, window=12)
+        results["CatBoost"]["monthly"] = cv(monthly, _evaluate_catboost, freq="M")
 
-    # Quarterly: last 4 quarters for testing
-    results["ARIMA"]["quarterly"] = _evaluate_arima(quarterly, 4, seasonal=True, m=4)
-    results["Prophet"]["quarterly"] = _evaluate_prophet(quarterly, 4, yearly_seasonality=True)
-    results["XGBoost"]["quarterly"] = _evaluate_xgb(quarterly, 4, n_lags=4, add_time_features=True)
-    results["LSTM"]["quarterly"] = _evaluate_lstm(quarterly, 4, window=4)
-    results["CatBoost"]["quarterly"] = _evaluate_catboost(quarterly, "Q")
+        results["ARIMA"]["quarterly"] = cv(quarterly, _evaluate_arima, seasonal=True, m=4)
+        results["Prophet"]["quarterly"] = cv(quarterly, _evaluate_prophet, yearly_seasonality=True)
+        results["XGBoost"]["quarterly"] = cv(quarterly, _evaluate_xgb, n_lags=4, add_time_features=True)
+        results["LSTM"]["quarterly"] = cv(quarterly, _evaluate_lstm, window=4)
+        results["CatBoost"]["quarterly"] = cv(quarterly, _evaluate_catboost, freq="Q")
 
-    # Yearly: last 3 years for testing
-    results["ARIMA"]["yearly"] = _evaluate_arima(yearly, 3, seasonal=False, m=1)
-    results["Prophet"]["yearly"] = _evaluate_prophet(yearly, 3, yearly_seasonality=False)
-    results["XGBoost"]["yearly"] = _evaluate_xgb(yearly, 3, n_lags=3, add_time_features=False)
-    results["LSTM"]["yearly"] = _evaluate_lstm(yearly, 3, window=3)
-    results["CatBoost"]["yearly"] = _evaluate_catboost(yearly, "A")
+        results["ARIMA"]["yearly"] = cv(yearly, _evaluate_arima, seasonal=False, m=1)
+        results["Prophet"]["yearly"] = cv(yearly, _evaluate_prophet, yearly_seasonality=False)
+        results["XGBoost"]["yearly"] = cv(yearly, _evaluate_xgb, n_lags=3, add_time_features=False)
+        results["LSTM"]["yearly"] = cv(yearly, _evaluate_lstm, window=3)
+        results["CatBoost"]["yearly"] = cv(yearly, _evaluate_catboost, freq="A")
+    else:
+        # Monthly: last 12 months for testing
+        results["ARIMA"]["monthly"] = _evaluate_arima(monthly, 12, seasonal=True, m=12)
+        results["Prophet"]["monthly"] = _evaluate_prophet(monthly, 12, yearly_seasonality=True)
+        results["XGBoost"]["monthly"] = _evaluate_xgb(monthly, 12, n_lags=12, add_time_features=True)
+        results["LSTM"]["monthly"] = _evaluate_lstm(monthly, 12, window=12)
+        results["CatBoost"]["monthly"] = _evaluate_catboost(monthly, "M")
+
+        # Quarterly: last 4 quarters for testing
+        results["ARIMA"]["quarterly"] = _evaluate_arima(quarterly, 4, seasonal=True, m=4)
+        results["Prophet"]["quarterly"] = _evaluate_prophet(quarterly, 4, yearly_seasonality=True)
+        results["XGBoost"]["quarterly"] = _evaluate_xgb(quarterly, 4, n_lags=4, add_time_features=True)
+        results["LSTM"]["quarterly"] = _evaluate_lstm(quarterly, 4, window=4)
+        results["CatBoost"]["quarterly"] = _evaluate_catboost(quarterly, "Q")
+
+        # Yearly: last 3 years for testing
+        results["ARIMA"]["yearly"] = _evaluate_arima(yearly, 3, seasonal=False, m=1)
+        results["Prophet"]["yearly"] = _evaluate_prophet(yearly, 3, yearly_seasonality=False)
+        results["XGBoost"]["yearly"] = _evaluate_xgb(yearly, 3, n_lags=3, add_time_features=False)
+        results["LSTM"]["yearly"] = _evaluate_lstm(yearly, 3, window=3)
+        results["CatBoost"]["yearly"] = _evaluate_catboost(yearly, "A")
 
     return results
 
 
-__all__ = ["evaluate_all_models"]
+__all__ = ["evaluate_all_models", "_ts_cross_val"]
 

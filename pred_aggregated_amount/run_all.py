@@ -44,6 +44,7 @@ from .evaluate_models import (
     _evaluate_xgb,
     _evaluate_lstm,
     _compute_metrics,
+    _ts_cross_val,
 )
 from .catboost_forecast import (
     prepare_supervised,
@@ -58,7 +59,14 @@ from .make_plots import main as make_plots_main
 # ---------------------------------------------------------------------------
 
 
-def _eval_arima(m, q, y) -> Dict[str, Dict[str, float]]:
+def _eval_arima(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_arima, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, seasonal=True, m=12),
+            "quarterly": cv(q, seasonal=True, m=4),
+            "yearly": cv(y, seasonal=False, m=1),
+        }
     return {
         "monthly": _evaluate_arima(m, 12, seasonal=True, m=12),
         "quarterly": _evaluate_arima(q, 4, seasonal=True, m=4),
@@ -66,7 +74,14 @@ def _eval_arima(m, q, y) -> Dict[str, Dict[str, float]]:
     }
 
 
-def _eval_prophet(m, q, y) -> Dict[str, Dict[str, float]]:
+def _eval_prophet(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_prophet, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, yearly_seasonality=True),
+            "quarterly": cv(q, yearly_seasonality=True),
+            "yearly": cv(y, yearly_seasonality=False),
+        }
     return {
         "monthly": _evaluate_prophet(m, 12, yearly_seasonality=True),
         "quarterly": _evaluate_prophet(q, 4, yearly_seasonality=True),
@@ -74,7 +89,14 @@ def _eval_prophet(m, q, y) -> Dict[str, Dict[str, float]]:
     }
 
 
-def _eval_xgb(m, q, y) -> Dict[str, Dict[str, float]]:
+def _eval_xgb(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_xgb, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, n_lags=12, add_time_features=True),
+            "quarterly": cv(q, n_lags=4, add_time_features=True),
+            "yearly": cv(y, n_lags=3, add_time_features=False),
+        }
     return {
         "monthly": _evaluate_xgb(m, 12, n_lags=12, add_time_features=True),
         "quarterly": _evaluate_xgb(q, 4, n_lags=4, add_time_features=True),
@@ -82,7 +104,14 @@ def _eval_xgb(m, q, y) -> Dict[str, Dict[str, float]]:
     }
 
 
-def _eval_lstm(m, q, y) -> Dict[str, Dict[str, float]]:
+def _eval_lstm(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_lstm, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, window=12),
+            "quarterly": cv(q, window=4),
+            "yearly": cv(y, window=3),
+        }
     return {
         "monthly": _evaluate_lstm(m, 12, window=12),
         "quarterly": _evaluate_lstm(q, 4, window=4),
@@ -90,7 +119,19 @@ def _eval_lstm(m, q, y) -> Dict[str, Dict[str, float]]:
     }
 
 
-def _eval_catboost(m, q, y) -> Dict[str, Dict[str, float]]:
+def _eval_catboost(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, f: _ts_cross_val(
+            s,
+            lambda ser, ts, *, freq=f: _evaluate_catboost(ser, freq, test_size=ts),
+            n_splits=n_splits,
+        )
+        return {
+            "monthly": cv(m, "M"),
+            "quarterly": cv(q, "Q"),
+            "yearly": cv(y, "A"),
+        }
+
     dfm = prepare_supervised(m, freq="M")
     dfq = prepare_supervised(q, freq="Q")
     dfy = prepare_supervised(y, freq="A")
@@ -115,12 +156,23 @@ EVAL_FUNCS = {
 }
 
 
-def evaluate_all(m, q, y, *, jobs: int) -> Dict[str, Dict[str, Dict[str, float]]]:
+def evaluate_all(
+    m,
+    q,
+    y,
+    *,
+    jobs: int,
+    cross_val: bool,
+    n_splits: int = 5,
+) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Return metrics for each model in parallel when ``jobs`` > 1."""
     results: Dict[str, Dict[str, Dict[str, float]]] = {}
     if jobs > 1:
         with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as ex:
-            futs = {ex.submit(func, m, q, y): name for name, func in EVAL_FUNCS.items()}
+            futs = {
+                ex.submit(func, m, q, y, cross_val=cross_val, n_splits=n_splits): name
+                for name, func in EVAL_FUNCS.items()
+            }
             for fut in concurrent.futures.as_completed(futs):
                 name = futs[fut]
                 try:
@@ -131,7 +183,13 @@ def evaluate_all(m, q, y, *, jobs: int) -> Dict[str, Dict[str, Dict[str, float]]
     else:
         for name, func in EVAL_FUNCS.items():
             try:
-                results[name] = func(m, q, y)
+                results[name] = func(
+                    m,
+                    q,
+                    y,
+                    cross_val=cross_val,
+                    n_splits=n_splits,
+                )
             except Exception as exc:  # pragma: no cover - passthrough
                 print(f"{name} failed: {exc}")
                 results[name] = {}
@@ -153,6 +211,17 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=os.cpu_count(),
         help="Nombre de processus paralleles",
+    )
+    p.add_argument(
+        "--cross-val",
+        action="store_true",
+        help="Activer la validation croisee temporelle",
+    )
+    p.add_argument(
+        "--n-splits",
+        type=int,
+        default=5,
+        help="Nombre de segments pour la validation croisee",
     )
     args = p.parse_args(argv)
 
@@ -178,7 +247,14 @@ def main(argv: list[str] | None = None) -> None:
     # Stage 2 - generic preprocessing of the aggregated time series
     # ------------------------------------------------------------------
 
-    results = evaluate_all(monthly, quarterly, yearly, jobs=args.jobs)
+    results = evaluate_all(
+        monthly,
+        quarterly,
+        yearly,
+        jobs=args.jobs,
+        cross_val=args.cross_val,
+        n_splits=args.n_splits,
+    )
     table = build_performance_table(results)
 
     output_dir.mkdir(parents=True, exist_ok=True)
