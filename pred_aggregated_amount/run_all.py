@@ -215,6 +215,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--cross-val",
         action="store_true",
+        default=True,
         help="Activer la validation croisee temporelle",
     )
     p.add_argument(
