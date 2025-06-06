@@ -451,7 +451,6 @@ def train_catboost_lead(
 
     params = lead_cfg.get("catboost_params", {}).copy()
     params.setdefault("thread_count", mp.cpu_count())
-    params.setdefault("silent", True)
     params.setdefault("logging_level", "Silent")
     # Ensure CatBoost does not spam progress lines to stdout
     if not any(
