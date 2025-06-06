@@ -108,7 +108,6 @@ def rolling_forecast_catboost(
             learning_rate=0.1,
             depth=6,
             random_seed=42,
-            verbose=False,
             logging_level="Silent",
             thread_count=os.cpu_count() or 1,
         )
@@ -172,7 +171,6 @@ def forecast_future_catboost(
         learning_rate=0.1,
         depth=6,
         random_seed=42,
-        verbose=False,
         logging_level="Silent",
         thread_count=os.cpu_count() or 1,
     )
