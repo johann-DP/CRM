@@ -22,7 +22,7 @@ def load_csv(path: str | Path) -> pd.DataFrame:
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"{path} does not exist")
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, encoding="utf-8")
     for col in ["Date de fin actualisée", "Date de début actualisée", "Date de fin réelle"]:
         if col in df.columns:
             # The data is stored in ISO format so ``dayfirst`` should be False
