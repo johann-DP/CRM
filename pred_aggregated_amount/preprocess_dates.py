@@ -129,9 +129,11 @@ def impute_with_model(
 # ---------------------------------------------------------------------------
 
 def filter_won(df: pd.DataFrame) -> pd.DataFrame:
-    """Return copy of ``df`` only with won opportunities and valid dates."""
+    """Return subset of won opportunities with the closing date as index."""
     out = df[df["Statut commercial"] == "Gagné"].copy()
     out = out.dropna(subset=["Date de fin actualisée"])
+    out = out.sort_values("Date de fin actualisée")
+    out = out.set_index("Date de fin actualisée")
     return out
 
 
