@@ -88,13 +88,13 @@ def _run_hyperparameter_search(
 def _apply_imbalance_strategy(X: pd.DataFrame, y: pd.Series, strategy: str):
     """Return resampled ``X`` and ``y`` according to the chosen strategy."""
     if strategy == "smote":
-        sampler = SMOTE(random_state=0, n_jobs=-1)
+        sampler = SMOTE(random_state=0)
         return sampler.fit_resample(X, y)
     if strategy == "undersample":
         sampler = RandomUnderSampler(random_state=0)
         return sampler.fit_resample(X, y)
     if strategy == "both":
-        smote = SMOTE(random_state=0, n_jobs=-1)
+        smote = SMOTE(random_state=0)
         under = RandomUnderSampler(random_state=0)
         X_tmp, y_tmp = smote.fit_resample(X, y)
         return under.fit_resample(X_tmp, y_tmp)

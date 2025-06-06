@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> None:
 
     proba_xgb = pd.read_csv(data_dir / "proba_xgboost.csv").squeeze()
     proba_cat = pd.read_csv(data_dir / "proba_catboost.csv").squeeze()
-    proba_lstm = pd.read_csv(data_dir / "proba_lstm.csv").squeeze()
+    proba_lstm = pd.read_csv(data_dir / "proba_mlp.csv").squeeze()
 
     labels = ["XGBoost", "CatBoost", "LSTM"]
     probas = [proba_xgb, proba_cat, proba_lstm]

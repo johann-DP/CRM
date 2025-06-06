@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> None:
     # sufficient here and keeps the pipeline responsive.
     executor_cls = concurrent.futures.ThreadPoolExecutor
 
-    with executor_cls(max_workers=4) as ex:
+    with executor_cls(max_workers=2) as ex:
         fut_xgb = ex.submit(train_xgboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_cat = ex.submit(train_catboost_lead, cfg, X_train, y_train, X_val, y_val)
         fut_log = ex.submit(train_logistic_lead, cfg, X_train, y_train, X_val, y_val)
