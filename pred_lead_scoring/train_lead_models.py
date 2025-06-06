@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 import pickle
-import logging
 from math import sqrt
 import joblib
 
@@ -35,9 +34,6 @@ from catboost import CatBoostClassifier
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.linear_model import LogisticRegression
-from .logging_utils import setup_logging
-
-logger = logging.getLogger(__name__)
 
 try:  # Optional dependency
     from pmdarima import auto_arima as _auto_arima
@@ -209,29 +205,18 @@ def train_mlp_lead(
             preds = model_cv.predict(X_full[va]).ravel()
             classes_fold = np.unique(y_full[va])
             if len(classes_fold) < 2:
-                # Avertissement : seule une classe présente dans ce fold
-                logger.warning("Fold %d skipped: only one class (label=%s) in validation set", i + 1, classes_fold)
-                # On peut enregistrer NaN pour ces métriques
                 metrics.append({"logloss": np.nan, "auc": np.nan})
                 continue
             # Si on arrive ici, il y a au moins deux classes dans y_full[va]
             fold_logloss = log_loss(y_full[va], preds)
             fold_auc = roc_auc_score(y_full[va], preds)
             metrics.append({"logloss": fold_logloss, "auc": fold_auc})
-            logger.info("Fold %d/%d - log loss: %.4f, AUC: %.4f", i + 1, tscv.n_splits, fold_logloss, fold_auc)
 
         mean_logloss = float(np.nanmean([m["logloss"] for m in metrics]))
         std_logloss = float(np.nanstd([m["logloss"] for m in metrics]))
         mean_auc = float(np.nanmean([m["auc"] for m in metrics]))
         std_auc = float(np.nanstd([m["auc"] for m in metrics]))
 
-        logger.info(
-            "CV log loss: %.4f ± %.4f, AUC: %.4f ± %.4f",
-            mean_logloss,
-            std_logloss,
-            mean_auc,
-            std_auc,
-        )
 
         model_mlp = _build_model()
         model_mlp.fit(
@@ -273,11 +258,6 @@ def train_mlp_lead(
             "auc": roc_auc_score(y_val, val_preds),
         }
         pd.Series(val_preds).to_csv(data_dir / "proba_mlp.csv", index=False)
-        logger.info(
-            "Validation log loss: %.4f, AUC: %.4f",
-            metrics_summary["logloss"],
-            metrics_summary["auc"],
-        )
 
     model_path = out_dir / "models" / "lead_mlp.h5"
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -408,13 +388,6 @@ def train_xgboost_lead(
                 "logloss": log_loss(y_full.iloc[va], preds),
                 "auc": roc_auc_score(y_full.iloc[va], preds),
             })
-            logger.info(
-                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                metrics[-1]["logloss"],
-                metrics[-1]["auc"],
-            )
         mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
         mean_auc = float(np.mean([m["auc"] for m in metrics]))
         model_xgb.fit(X_full, y_full, eval_set=[(X_val, y_val)], verbose=params.get("verbose", False))
@@ -446,12 +419,6 @@ def train_xgboost_lead(
         "logloss": log_loss(y_val, val_pred),
         "auc": roc_auc_score(y_val, val_pred),
     }
-    logger.info(
-        "Validation log loss: %.4f, AUC: %.4f",
-        metrics_summary["logloss"],
-        metrics_summary["auc"],
-    )
-
     return model_xgb, metrics_summary
 
 
@@ -530,13 +497,6 @@ def train_catboost_lead(
                 "logloss": log_loss(y_full.iloc[va], preds),
                 "auc": roc_auc_score(y_full.iloc[va], preds),
             })
-            logger.info(
-                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                metrics[-1]["logloss"],
-                metrics[-1]["auc"],
-            )
         mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
         mean_auc = float(np.mean([m["auc"] for m in metrics]))
         model_cat.fit(X_full, y_full, cat_features=cat_indices, verbose=params.get("verbose", False))
@@ -556,11 +516,6 @@ def train_catboost_lead(
     model_path = out_dir / "models" / "lead_catboost.cbm"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model_cat.save_model(str(model_path))
-    logger.info(
-        "Validation log loss: %.4f, AUC: %.4f",
-        metrics_summary["logloss"],
-        metrics_summary["auc"],
-    )
 
     return model_cat, metrics_summary
 
@@ -612,13 +567,6 @@ def train_logistic_lead(
                     "auc": roc_auc_score(y_full.iloc[va], preds),
                 }
             )
-            logger.info(
-                "Fold %d/%d - log loss: %.4f, AUC: %.4f",
-                i + 1,
-                tscv.n_splits,
-                metrics[-1]["logloss"],
-                metrics[-1]["auc"],
-            )
         mean_logloss = float(np.mean([m["logloss"] for m in metrics]))
         mean_auc = float(np.mean([m["auc"] for m in metrics]))
         model_log.fit(X_full, y_full)
@@ -667,12 +615,6 @@ def train_ensemble_lead(
         "logloss": log_loss(y_val, proba),
         "auc": roc_auc_score(y_val, proba),
     }
-    logger.info(
-        "Ensemble validation log loss: %.4f, AUC: %.4f",
-        metrics["logloss"],
-        metrics["auc"],
-    )
-
     return None, metrics
 
 

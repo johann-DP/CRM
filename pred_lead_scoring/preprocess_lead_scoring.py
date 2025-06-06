@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import logging
 from pathlib import Path
 from typing import Dict, Tuple
 import numpy as np
 
 import pandas as pd
 import yaml
-from .logging_utils import setup_logging
 
 try:  # optional dependency for large datasets
     import dask.dataframe as dd
@@ -19,7 +17,6 @@ except Exception:  # pragma: no cover - dask not installed
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler
 
-logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data loading and filtering
@@ -116,10 +113,6 @@ def _filter_status(
     elif "is_won" in df.columns:
         df = df.dropna(subset=[date_col, "is_won"]).copy()
     else:
-        logger.warning(
-            "Columns '%s' and 'is_won' missing; assuming all opportunities are lost",
-            target_col,
-        )
         df = df.dropna(subset=[date_col]).copy()
         df["is_won"] = 0
 
@@ -153,19 +146,7 @@ def _split_sets(
     val = df_sorted[(df_sorted[date_col] >= start) & (df_sorted[date_col] <= end)].copy()
     test = df_sorted[df_sorted[date_col] > end].copy()
 
-    logger.debug(
-        "Split bounds start=%s end=%s (dataset range %s -> %s)",
-        start.date(),
-        end.date(),
-        df_sorted[date_col].min().date(),
-        df_sorted[date_col].max().date(),
-    )
-    logger.debug(
-        "Split sizes train=%d val=%d test=%d",
-        len(train),
-        len(val),
-        len(test),
-    )
+
 
     if train.empty or val.empty or test.empty:
         raise ValueError(
@@ -321,9 +302,6 @@ def _conversion_time_series(
     """
 
     if date_col not in df.columns:
-        logger.warning(
-            "Date column '%s' missing; conversion rate time series empty", date_col
-        )
         empty = pd.DataFrame(columns=["sum", "count", "conv_rate"])
         empty.index = pd.DatetimeIndex([], name=date_col)
         return empty
@@ -334,9 +312,6 @@ def _conversion_time_series(
         df_closed = df[df[target_col].notna()].copy()
         df_closed["is_won"] = (df_closed[target_col] == positive_label).astype(int)
     else:
-        logger.warning(
-            "Columns '%s' and 'is_won' missing; conversion rate set to zero", target_col
-        )
         df_closed = df.dropna(subset=[date_col]).copy()
         df_closed["is_won"] = 0
 
@@ -370,8 +345,6 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
 
     df = _load_data(csv_path, date_col, date_format=date_format, dayfirst=dayfirst)
     cleaned = _clean_closing_dates(df, date_col)
-    if cleaned:
-        logger.info("Dates hors limites remplacées: %d", cleaned)
     df = _filter_status(df, date_col, target_col, positive_label)
 
     train, val, test = _split_sets(
@@ -380,12 +353,7 @@ def preprocess_lead_scoring(cfg: Dict[str, Dict]) -> None:
         lead_cfg["test_start"],
         lead_cfg["test_end"],
     )
-    logger.debug(
-        "After split: train=%d, val=%d, test=%d",
-        len(train),
-        len(val),
-        len(test),
-    )
+
 
     y_train = train["is_won"]
     y_val = val["is_won"]
@@ -537,7 +505,6 @@ def preprocess(cfg: Dict[str, Dict]):
 
 
 def main(argv: list[str] | None = None) -> None:
-    setup_logging(log_file="training_output.txt")
     p = argparse.ArgumentParser(description="Preprocess lead scoring dataset")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args(argv)

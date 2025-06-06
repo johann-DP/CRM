@@ -21,14 +21,11 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import logging
 import multiprocessing as mp
 import os
 from pathlib import Path
 import yaml
 import pandas as pd
-
-from .logging_utils import setup_logging
 
 from .preprocess_lead_scoring import preprocess
 from .train_lead_models import (
@@ -43,11 +40,9 @@ from .train_lead_models import (
 from .evaluate_lead_models import evaluate_lead_models
 from .plot_lead_results import main as plot_results
 
-logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
-    setup_logging(log_file="training_output.txt")
     p = argparse.ArgumentParser(description="Run full lead scoring pipeline")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
     args = p.parse_args(argv)
@@ -151,7 +146,7 @@ def main(argv: list[str] | None = None) -> None:
         return "\n".join(lines)
 
     report_text = _format_report(df_metrics)
-    logger.info("\n%s", report_text)
+    print("\n" + report_text)
 
     lead_cfg = cfg.get("lead_scoring", {})
     out_dir = Path(lead_cfg.get("output_dir", cfg.get("output_dir", ".")))
