@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Tuple, Dict
+import logging
 
 from .aggregate_revenue import aggregate_revenue
 
@@ -18,6 +19,9 @@ from sklearn.ensemble import RandomForestRegressor
 
 def load_csv(path: str | Path) -> pd.DataFrame:
     """Return DataFrame parsed from ``path`` with date columns coerced."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} does not exist")
     df = pd.read_csv(path)
     for col in ["Date de fin actualisée", "Date de début actualisée", "Date de fin réelle"]:
         if col in df.columns:
@@ -182,13 +186,14 @@ def save_summary(info: Dict[str, int], out_dir: Path) -> None:
 def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir") -> Tuple[pd.Series, pd.Series, pd.Series]:
     """Full pipeline returning aggregated revenue series."""
     out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     df = load_csv(csv_path)
     df_before = df.copy()
 
     replaced_future = replace_future_dates(df)
     replaced_old = remove_old_dates(df)
-    print(f"Dates > 2025-03-01 remplacées: {replaced_future}")
-    print(f"Dates < 1995-01-01 supprimées: {replaced_old}")
+    logging.info("Dates > 2025-03-01 remplacées: %s", replaced_future)
+    logging.info("Dates < 1995-01-01 supprimées: %s", replaced_old)
     copied = copy_real_end_dates(df)
     hist, median = build_history(df)
     imputed_median = impute_with_median(df, median)

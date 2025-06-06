@@ -69,3 +69,82 @@ For each dataset and factor method the combined PDF includes:
 Additional pages such as heatmaps or segment summaries are appended after the
 per-method sections.
 
+## Utilisation du module `pred_aggregated_amount`
+
+### Installation et dépendances
+
+Installez les bibliothèques nécessaires via le fichier `requirements.txt` :
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Les dépendances majeures sont `pandas`, `numpy`, `scikit-learn`, `xgboost`,
+`catboost`, `prophet`, `tensorflow`, `statsforecast` et `matplotlib`.
+
+### Structure du dossier
+
+```
+pred_aggregated_amount/
+├── aggregate_revenue.py  # agrégation mensuelle, trimestrielle, annuelle
+├── preprocess_dates.py   # correction des dates erronées
+├── preprocess_timeseries.py  # nettoyage des séries agrégées
+├── train_xgboost.py      # entraînement du modèle XGBoost
+├── catboost_forecast.py  # prévisions CatBoost
+├── train_arima.py        # modèles ARIMA via statsforecast
+├── lstm_forecast.py      # réseau de neurones LSTM
+├── prophet_models.py     # entraînement Prophet
+├── evaluate_models.py    # évaluation rolling des modèles
+├── future_forecast.py    # génération de prévisions futures
+├── make_plots.py         # figures illustratives
+└── run_all.py            # pipeline complet
+```
+
+Les résultats sont écrits dans un `output_dir/` contenant trois sous-dossiers :
+`data/`, `models/` et `report/`.
+
+### Utilisation pas à pas
+
+1. **Préparation des données**
+
+```bash
+python data_preparation.py --input_dir path/to/raw_data --output_dir output_dir
+```
+
+2. **Entraînement des modèles**
+
+```bash
+python train_models.py --data_dir output_dir/data --models_dir output_dir/models
+```
+
+3. **Génération du rapport**
+
+```bash
+python generate_report.py --models_dir output_dir/models \
+    --data_dir output_dir/data --report_dir output_dir/report
+```
+
+Chaque commande accepte les arguments `--input_dir`, `--output_dir`,
+`--data_dir`, `--models_dir` ou `--report_dir` selon le script. Les valeurs par
+défaut utilisent `output_dir/` dans le dossier courant.
+
+### Résultats et interprétation
+
+Le dossier `output_dir/report/` contient :
+
+* `rapport_performance.txt` – tableau des métriques (MAE, RMSE, MAPE).
+* `previsions_mensuelles.png` – comparaison entre CA réel et prédit sur 12 mois.
+* `erreurs_par_modele.png` – barres d'erreur par algorithme.
+
+D'autres figures trimestrielles ou annuelles peuvent également être produites.
+
+### Anticipation des bugs et bonnes pratiques
+
+* Vérifiez l'existence des fichiers d'entrée avant exécution des scripts.
+* Exécutez dans un environnement virtuel avec les versions recommandées.
+* Nettoyez le dossier `output_dir/` entre deux lancements pour éviter les
+  collisions de fichiers.
+* Surveillez les warnings générés par pandas, CatBoost et XGBoost.
+* Activez le mode verbeux (`--verbose` ou `--debug`) pour obtenir des logs
+  détaillés en cas de problème.
+

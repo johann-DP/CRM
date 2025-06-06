@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Dict, Tuple
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,8 +12,12 @@ import pandas as pd
 def load_and_aggregate(cfg: Dict[str, str]) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """Return aggregated revenue series filtered on won opportunities."""
 
+    csv_path = Path(cfg["csv_path"])
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"{csv_path} does not exist")
+
     df = pd.read_csv(
-        cfg["csv_path"],
+        csv_path,
         parse_dates=[cfg["date_col"]],
         dayfirst=True,
         dtype={cfg["amount_col"]: float},
