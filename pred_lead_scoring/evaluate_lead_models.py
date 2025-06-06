@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 import pickle
-import logging
 import concurrent.futures
 import multiprocessing as mp
 
@@ -24,9 +23,6 @@ from sklearn.metrics import (
     brier_score_loss,
 )
 import tensorflow as tf
-from .logging_utils import setup_logging
-
-logger = logging.getLogger(__name__)
 
 
 def _safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -174,7 +170,6 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     import argparse
     import yaml
 
-    setup_logging(log_file="training_output.txt")
 
     p = argparse.ArgumentParser(description="Evaluate lead scoring models")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
@@ -183,4 +178,4 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     with open(args.config, "r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     df = evaluate_lead_models(cfg)
-    logger.info("\n%s", df.to_string(index=False))
+    print("\n" + df.to_string(index=False))
