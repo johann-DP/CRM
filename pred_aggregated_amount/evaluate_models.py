@@ -211,7 +211,7 @@ def evaluate_all_models(
     quarterly: pd.Series,
     yearly: pd.Series,
     *,
-    cross_val: bool = False,
+    cross_val: bool = True,
     n_splits: int = 5,
 ) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Return MAE, RMSE and MAPE for all models and granularities."""
