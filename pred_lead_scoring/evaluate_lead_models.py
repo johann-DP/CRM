@@ -113,6 +113,12 @@ def evaluate_lead_models(
     for col in X_test.select_dtypes(include="object").columns:
         X_test[col] = X_test[col].astype("category")
 
+    # CatBoost requiert des variables catégorielles au format entier ou chaîne
+    cat_cols = lead_cfg.get("cat_features", [])
+    for col in cat_cols:
+        if col in X_test.columns:
+            X_test[col] = X_test[col].astype(int)
+
     preds = {
         "xgboost": xgb_model.predict_proba(X_test)[:, 1],
         "catboost": cat_model.predict_proba(X_test)[:, 1],
