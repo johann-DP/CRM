@@ -134,8 +134,15 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
 # LSTM rolling forecast
 # ---------------------------------------------------------------------------
 
-def _evaluate_lstm(series: pd.Series, test_size: int, *, window: int, epochs: int = 50) -> Dict[str, float]:
-    """Evaluate LSTM with rolling forecast (no retraining during test)."""
+def _evaluate_lstm(
+    series: pd.Series,
+    test_size: int,
+    *,
+    window: int,
+    epochs: int = 50,
+    update_epochs: int = 5,
+) -> Dict[str, float]:
+    """Evaluate LSTM with rolling forecast and iterative fine-tuning."""
     train = series.iloc[:-test_size]
     test = series.iloc[-test_size:]
     X, y = create_lstm_sequences(train, window)
@@ -158,6 +165,18 @@ def _evaluate_lstm(series: pd.Series, test_size: int, *, window: int, epochs: in
         pred = scaler.inverse_transform([[pred_scaled]])[0, 0]
         preds.append(float(pred))
         history.loc[test.index[t]] = val
+
+        # Fine-tune the model on the updated history
+        X_hist, y_hist = create_lstm_sequences(history, window)
+        X_hist_s = scaler.transform(X_hist.reshape(-1, 1)).reshape(X_hist.shape)
+        y_hist_s = scaler.transform(y_hist.reshape(-1, 1)).reshape(-1)
+        model.fit(
+            X_hist_s,
+            y_hist_s,
+            epochs=update_epochs,
+            batch_size=16,
+            verbose=0,
+        )
     return _compute_metrics(test.values, preds)
 
 
@@ -344,8 +363,15 @@ def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_ti
     return pd.Series(preds, index=test.index), test
 
 
-def _rolling_preds_lstm(series: pd.Series, test_size: int, *, window: int, epochs: int = 50) -> Tuple[pd.Series, pd.Series]:
-    """Return predicted and true values of a rolling LSTM forecast."""
+def _rolling_preds_lstm(
+    series: pd.Series,
+    test_size: int,
+    *,
+    window: int,
+    epochs: int = 50,
+    update_epochs: int = 5,
+) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values of a rolling LSTM forecast with fine-tuning."""
     train = series.iloc[:-test_size]
     test = series.iloc[-test_size:]
     X, y = create_lstm_sequences(train, window)
@@ -368,6 +394,18 @@ def _rolling_preds_lstm(series: pd.Series, test_size: int, *, window: int, epoch
         pred = scaler.inverse_transform([[pred_scaled]])[0, 0]
         preds.append(float(pred))
         history.loc[test.index[t]] = val
+
+        # Fine-tune the model on the updated history
+        X_hist, y_hist = create_lstm_sequences(history, window)
+        X_hist_s = scaler.transform(X_hist.reshape(-1, 1)).reshape(X_hist.shape)
+        y_hist_s = scaler.transform(y_hist.reshape(-1, 1)).reshape(-1)
+        model.fit(
+            X_hist_s,
+            y_hist_s,
+            epochs=update_epochs,
+            batch_size=16,
+            verbose=0,
+        )
     return pd.Series(preds, index=test.index), test
 
 
