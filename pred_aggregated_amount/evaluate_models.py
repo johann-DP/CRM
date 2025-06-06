@@ -213,5 +213,205 @@ def evaluate_all_models(
     return results
 
 
-__all__ = ["evaluate_all_models"]
+
+
+
+# ---------------------------------------------------------------------------
+# Rolling forecast returning predictions
+# ---------------------------------------------------------------------------
+
+def _rolling_preds_arima(series: pd.Series, test_size: int, *, seasonal: bool, m: int) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values of a rolling ARIMA forecast."""
+    train = series.iloc[:-test_size]
+    test = series.iloc[-test_size:]
+    history = train.copy()
+    preds: List[float] = []
+    for t, val in enumerate(test):
+        season_length = m if seasonal else 1
+        model = AutoARIMA(season_length=season_length)
+        model.fit(history.values)
+        res = model.predict(h=1)
+        if isinstance(res, dict):
+            pred = float(res["mean"][0])
+        elif hasattr(res, "__getitem__"):
+            try:
+                pred = float(res[0])
+            except Exception:  # pragma: no cover - unexpected format
+                pred = float(res["mean"].iloc[0])
+        else:  # pragma: no cover - fallback
+            pred = float(res)
+        preds.append(pred)
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index), test
+
+
+def _rolling_preds_prophet(series: pd.Series, test_size: int, *, yearly_seasonality: bool) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values of a rolling Prophet forecast."""
+    train = series.iloc[:-test_size]
+    test = series.iloc[-test_size:]
+    history = train.copy()
+    preds: List[float] = []
+    freq = series.index.freqstr or "ME"
+    for t, val in enumerate(test):
+        model = Prophet(yearly_seasonality=yearly_seasonality, weekly_seasonality=False, daily_seasonality=False)
+        model.fit(_prophet_df(history))
+        future = model.make_future_dataframe(periods=1, freq=freq)
+        forecast = model.predict(future)
+        pred = forecast.iloc[-1]["yhat"]
+        preds.append(pred)
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index), test
+
+
+def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_features: bool) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values of a rolling XGBoost forecast."""
+    train = series.iloc[:-test_size]
+    test = series.iloc[-test_size:]
+    history = train.copy()
+    preds: List[float] = []
+    for t, val in enumerate(test):
+        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        model = XGBRegressor(
+            objective="reg:squarederror",
+            n_estimators=100,
+            max_depth=3,
+            learning_rate=0.1,
+            random_state=42,
+        )
+        model.fit(X_train, y_train)
+        next_index = test.index[t]
+        extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
+        extended = extended.asfreq(series.index.freq)
+        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
+        X_pred = X_full.iloc[-1:]
+        pred = float(model.predict(X_pred)[0])
+        preds.append(pred)
+        history.loc[next_index] = val
+    return pd.Series(preds, index=test.index), test
+
+
+def _rolling_preds_lstm(series: pd.Series, test_size: int, *, window: int, epochs: int = 50) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values of a rolling LSTM forecast."""
+    train = series.iloc[:-test_size]
+    test = series.iloc[-test_size:]
+    X, y = create_lstm_sequences(train, window)
+    X_scaled, y_scaled, scaler = scale_lstm_data(X, y)
+    model = build_lstm_model(window)
+    model.fit(
+        X_scaled,
+        y_scaled,
+        epochs=epochs,
+        batch_size=16,
+        validation_split=0.1,
+        verbose=0,
+    )
+    history = train.copy()
+    preds: List[float] = []
+    for t, val in enumerate(test):
+        seq = history.values[-window:].reshape(1, window, 1)
+        seq_scaled = scaler.transform(seq.reshape(-1, 1)).reshape(1, window, 1)
+        pred_scaled = model.predict(seq_scaled, verbose=0)[0, 0]
+        pred = scaler.inverse_transform([[pred_scaled]])[0, 0]
+        preds.append(float(pred))
+        history.loc[test.index[t]] = val
+    return pd.Series(preds, index=test.index), test
+
+
+def _rolling_preds_catboost(series: pd.Series, freq: str) -> Tuple[pd.Series, pd.Series]:
+    """Return predicted and true values for CatBoost rolling forecast."""
+    df_sup = prepare_supervised(series, freq)
+    preds, actuals = rolling_forecast_catboost(df_sup, freq)
+    n = len(preds)
+    test_index = df_sup.index[-n:]
+    return pd.Series(preds, index=test_index), pd.Series(actuals, index=test_index)
+
+
+def evaluate_and_predict_all_models(
+    monthly: pd.Series,
+    quarterly: pd.Series,
+    yearly: pd.Series,
+) -> Tuple[Dict[str, Dict[str, Dict[str, float]]], Dict[str, Dict[str, pd.Series]]]:
+    """Return metrics and rolling predictions for all models."""
+    metrics: Dict[str, Dict[str, Dict[str, float]]] = {
+        "ARIMA": {"monthly": {}, "quarterly": {}, "yearly": {}},
+        "Prophet": {"monthly": {}, "quarterly": {}, "yearly": {}},
+        "XGBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
+        "LSTM": {"monthly": {}, "quarterly": {}, "yearly": {}},
+        "CatBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
+    }
+    preds: Dict[str, Dict[str, pd.Series]] = {
+        "ARIMA": {},
+        "Prophet": {},
+        "XGBoost": {},
+        "LSTM": {},
+        "CatBoost": {},
+    }
+
+    p, t = _rolling_preds_arima(monthly, 12, seasonal=True, m=12)
+    metrics["ARIMA"]["monthly"] = _compute_metrics(t.values, list(p))
+    preds["ARIMA"]["monthly"] = p
+
+    p, t = _rolling_preds_prophet(monthly, 12, yearly_seasonality=True)
+    metrics["Prophet"]["monthly"] = _compute_metrics(t.values, list(p))
+    preds["Prophet"]["monthly"] = p
+
+    p, t = _rolling_preds_xgb(monthly, 12, n_lags=12, add_time_features=True)
+    metrics["XGBoost"]["monthly"] = _compute_metrics(t.values, list(p))
+    preds["XGBoost"]["monthly"] = p
+
+    p, t = _rolling_preds_lstm(monthly, 12, window=12)
+    metrics["LSTM"]["monthly"] = _compute_metrics(t.values, list(p))
+    preds["LSTM"]["monthly"] = p
+
+    p, t = _rolling_preds_catboost(monthly, "M")
+    metrics["CatBoost"]["monthly"] = _compute_metrics(t.values, list(p))
+    preds["CatBoost"]["monthly"] = p
+
+    p, t = _rolling_preds_arima(quarterly, 4, seasonal=True, m=4)
+    metrics["ARIMA"]["quarterly"] = _compute_metrics(t.values, list(p))
+    preds["ARIMA"]["quarterly"] = p
+
+    p, t = _rolling_preds_prophet(quarterly, 4, yearly_seasonality=True)
+    metrics["Prophet"]["quarterly"] = _compute_metrics(t.values, list(p))
+    preds["Prophet"]["quarterly"] = p
+
+    p, t = _rolling_preds_xgb(quarterly, 4, n_lags=4, add_time_features=True)
+    metrics["XGBoost"]["quarterly"] = _compute_metrics(t.values, list(p))
+    preds["XGBoost"]["quarterly"] = p
+
+    p, t = _rolling_preds_lstm(quarterly, 4, window=4)
+    metrics["LSTM"]["quarterly"] = _compute_metrics(t.values, list(p))
+    preds["LSTM"]["quarterly"] = p
+
+    p, t = _rolling_preds_catboost(quarterly, "Q")
+    metrics["CatBoost"]["quarterly"] = _compute_metrics(t.values, list(p))
+    preds["CatBoost"]["quarterly"] = p
+
+    p, t = _rolling_preds_arima(yearly, 3, seasonal=False, m=1)
+    metrics["ARIMA"]["yearly"] = _compute_metrics(t.values, list(p))
+    preds["ARIMA"]["yearly"] = p
+
+    p, t = _rolling_preds_prophet(yearly, 3, yearly_seasonality=False)
+    metrics["Prophet"]["yearly"] = _compute_metrics(t.values, list(p))
+    preds["Prophet"]["yearly"] = p
+
+    p, t = _rolling_preds_xgb(yearly, 3, n_lags=3, add_time_features=False)
+    metrics["XGBoost"]["yearly"] = _compute_metrics(t.values, list(p))
+    preds["XGBoost"]["yearly"] = p
+
+    p, t = _rolling_preds_lstm(yearly, 3, window=3)
+    metrics["LSTM"]["yearly"] = _compute_metrics(t.values, list(p))
+    preds["LSTM"]["yearly"] = p
+
+    p, t = _rolling_preds_catboost(yearly, "A")
+    metrics["CatBoost"]["yearly"] = _compute_metrics(t.values, list(p))
+    preds["CatBoost"]["yearly"] = p
+
+    return metrics, preds
+
+
+__all__ = [
+    "evaluate_all_models",
+    "evaluate_and_predict_all_models",
+]
 
