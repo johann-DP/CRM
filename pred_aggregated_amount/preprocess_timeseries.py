@@ -9,33 +9,6 @@ import numpy as np
 import pandas as pd
 
 
-def load_and_aggregate(cfg: Dict[str, str]) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """Return aggregated revenue series filtered on won opportunities."""
-
-    csv_path = Path(cfg["csv_path"])
-    if not csv_path.is_file():
-        raise FileNotFoundError(f"{csv_path} does not exist")
-
-    df = pd.read_csv(
-        csv_path,
-        parse_dates=[cfg["date_col"]],
-        dayfirst=True,
-        dtype={cfg["amount_col"]: float},
-    )
-
-    df = df[df[cfg["status_col"]] == cfg["won_value"]].copy()
-    df[cfg["date_col"]] = pd.to_datetime(
-        df[cfg["date_col"]], dayfirst=True, errors="coerce"
-    )
-    df = df.dropna(subset=[cfg["date_col"]])
-    df = df.set_index(cfg["date_col"])
-
-    ts_monthly = df[cfg["amount_col"]].resample("M").sum().fillna(0)
-    ts_quarterly = df[cfg["amount_col"]].resample("Q").sum().fillna(0)
-    ts_yearly = df[cfg["amount_col"]].resample("A").sum().fillna(0)
-
-    return ts_monthly, ts_quarterly, ts_yearly
-
 
 # ---------------------------------------------------------------------------
 # Core functionality
@@ -134,7 +107,25 @@ def main() -> None:  # pragma: no cover - CLI helper
         "won_value": args.won_value,
         "amount_col": args.amount_col,
     }
-    monthly, quarterly, yearly = load_and_aggregate(cfg)
+
+    csv_path = cfg["csv_path"]
+    df = pd.read_csv(
+        csv_path,
+        parse_dates=[cfg["date_col"]],
+        dayfirst=True,
+        dtype={cfg["amount_col"]: float},
+    )
+    df = df[df[cfg["status_col"]] == cfg["won_value"]].copy()
+    df[cfg["date_col"]] = pd.to_datetime(
+        df[cfg["date_col"]], dayfirst=True, errors="coerce"
+    )
+    df = df.dropna(subset=[cfg["date_col"]])
+    df = df.set_index(cfg["date_col"])
+
+    monthly = df[cfg["amount_col"]].resample("M").sum().fillna(0)
+    quarterly = df[cfg["amount_col"]].resample("Q").sum().fillna(0)
+    yearly = df[cfg["amount_col"]].resample("A").sum().fillna(0)
+
     m_c, q_c, y_c = preprocess_all(monthly, quarterly, yearly)
 
     _summarize(monthly, m_c, "monthly")
@@ -142,7 +133,7 @@ def main() -> None:  # pragma: no cover - CLI helper
     _summarize(yearly, y_c, "yearly")
 
 
-__all__ = ["load_and_aggregate", "preprocess_series", "preprocess_all"]
+__all__ = ["preprocess_series", "preprocess_all"]
 
 
 if __name__ == "__main__":

@@ -86,14 +86,3 @@ def train_lstm_model(
     )
     return model, scaler, history
 
-
-# ---------------------------------------------------------------------------
-# Quick verification helper
-# ---------------------------------------------------------------------------
-
-def quick_predict_check(model, scaler: MinMaxScaler, X: np.ndarray, y: np.ndarray) -> pd.DataFrame:
-    """Return DataFrame comparing predictions to true values on scaled data."""
-    preds = model.predict(X, verbose=0)
-    true_vals = scaler.inverse_transform(y.reshape(-1, 1)).reshape(-1)
-    pred_vals = scaler.inverse_transform(preds).reshape(-1)
-    return pd.DataFrame({"true": true_vals, "pred": pred_vals})
