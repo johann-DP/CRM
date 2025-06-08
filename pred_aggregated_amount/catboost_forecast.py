@@ -103,22 +103,27 @@ def rolling_forecast_catboost(
         for col in cat_feat:
             X_train[col] = X_train[col].astype(str)
 
-        model = CatBoostRegressor(
-            iterations=500,
-            learning_rate=0.1,
-            depth=6,
-            random_seed=42,
-            logging_level="Silent",
-            thread_count=os.cpu_count() or 1,
-        )
-        model.fit(X_train, y_train, cat_features=cat_feat)
+        if y_train.nunique() == 1:
+            # CatBoost cannot train on constant targets. Simply reuse
+            # the last observed value as the prediction.
+            y_pred = float(y_train.iloc[-1])
+        else:
+            model = CatBoostRegressor(
+                iterations=500,
+                learning_rate=0.1,
+                depth=6,
+                random_seed=42,
+                logging_level="Silent",
+                thread_count=os.cpu_count() or 1,
+            )
+            model.fit(X_train, y_train, cat_features=cat_feat)
 
-        row_test = df_test.iloc[i]
-        X_next = row_test.drop(labels=["y"]).to_frame().T
-        for col in cat_feat:
-            X_next[col] = X_next[col].astype(str)
-        y_pred = float(model.predict(X_next)[0])
-        y_true = float(row_test["y"])
+            row_test = df_test.iloc[i]
+            X_next = row_test.drop(labels=["y"]).to_frame().T
+            for col in cat_feat:
+                X_next[col] = X_next[col].astype(str)
+            y_pred = float(model.predict(X_next)[0])
+        y_true = float(df_test.iloc[i]["y"])
 
         preds.append(y_pred)
         actuals.append(y_true)
@@ -166,15 +171,19 @@ def forecast_future_catboost(
         cat_feat = ["year"]
         k = 3
 
-    model_full = CatBoostRegressor(
-        iterations=500,
-        learning_rate=0.1,
-        depth=6,
-        random_seed=42,
-        logging_level="Silent",
-        thread_count=os.cpu_count() or 1,
-    )
-    model_full.fit(X_full, y_full, cat_features=cat_feat)
+    if y_full.nunique() == 1:
+        model_full = None
+        const_pred = float(y_full.iloc[0])
+    else:
+        model_full = CatBoostRegressor(
+            iterations=500,
+            learning_rate=0.1,
+            depth=6,
+            random_seed=42,
+            logging_level="Silent",
+            thread_count=os.cpu_count() or 1,
+        )
+        model_full.fit(X_full, y_full, cat_features=cat_feat)
 
     # Preserve the training column order so prediction data is consistent
     feature_order = list(X_full.columns)
@@ -213,7 +222,10 @@ def forecast_future_catboost(
         # Ensure categorical columns are strings as required by CatBoost
         for col in cat_feat:
             X_future[col] = X_future[col].astype(str)
-        yhat = float(model_full.predict(X_future)[0])
+        if model_full is None:
+            yhat = const_pred
+        else:
+            yhat = float(model_full.predict(X_future)[0])
         forecasts.append((dt, yhat))
         history.loc[dt] = yhat
 
