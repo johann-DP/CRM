@@ -7,15 +7,13 @@ import os
 
 import numpy as np
 import pandas as pd
-try:  # pragma: no cover - optional dependency
-    from catboost import CatBoostRegressor
-except Exception:  # pragma: no cover - handle missing lib
-    CatBoostRegressor = None
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
     mean_absolute_percentage_error,
 )
+
+CatBoostRegressor = None
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +103,10 @@ def rolling_forecast_catboost(
     preds: List[float] = []
     actuals: List[float] = []
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     for i in range(n_test):
         X_train = df_train.drop(columns=["y"]).copy()
@@ -161,8 +161,10 @@ def forecast_future_catboost(
 ) -> pd.DataFrame:
     """Iteratively forecast ``horizon`` future periods with CatBoost."""
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     if series_clean.nunique() == 1:
         # CatBoost cannot train on a constant series. Simply repeat the last
