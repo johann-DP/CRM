@@ -14,7 +14,7 @@ Training and evaluation of each model run in parallel when several
 
 Usage::
 
-    python -m pred.run_all --config config.yaml [--jobs N]
+    python -m pred_aggregated_amount.run_all [--jobs N]
 """
 from __future__ import annotations
 
@@ -30,9 +30,10 @@ warnings.filterwarnings(
 )
 
 import argparse
-from pathlib import Path
+import concurrent.futures
+from typing import Dict
 
-import yaml
+from .config import INPUT_CSV, OUTPUT_DIR
 
 from .preprocess_timeseries import preprocess_all
 from .preprocess_dates import preprocess_dates
@@ -208,9 +209,6 @@ def evaluate_all(
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Run forecasting pipeline")
     p.add_argument(
-        "--config", default="config.yaml", help="Fichier de configuration YAML"
-    )
-    p.add_argument(
         "--jobs",
         type=int,
         default=os.cpu_count(),
@@ -230,11 +228,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
 
-    with open(args.config, "r", encoding="utf-8") as fh:
-        cfg = yaml.safe_load(fh)
-
-    csv_path = Path(cfg.get("input_file_cleaned_3_all", "phase3_cleaned_all.csv"))
-    output_dir = Path(cfg.get("output_dir", "."))
+    csv_path = INPUT_CSV
+    output_dir = OUTPUT_DIR
 
     # ------------------------------------------------------------------
     # Stage 1 - cleaning closing dates before any other transformation
