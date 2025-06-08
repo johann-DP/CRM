@@ -216,10 +216,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument(
         "--cross-val",
+        dest="cross_val",
         action="store_true",
-        default=True,
         help="Activer la validation croisee temporelle",
     )
+    p.add_argument(
+        "--no-cross-val",
+        dest="cross_val",
+        action="store_false",
+        help="Desactiver la validation croisee temporelle",
+    )
+    p.set_defaults(cross_val=False)
     p.add_argument(
         "--n-splits",
         type=int,
