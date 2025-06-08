@@ -23,9 +23,8 @@ def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
-from .catboost_forecast import prepare_supervised, rolling_forecast_catboost
-
-from .train_xgboost import _to_supervised
+from .catboost_forecast import rolling_forecast_catboost
+from .features_utils import make_lag_features
 from .lstm_forecast import create_lstm_sequences, scale_lstm_data, build_lstm_model
 
 
@@ -109,8 +108,18 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
     history = train.copy()
     preds: List[float] = []
 
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+
     for t, val in enumerate(test):
-        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        df_sup = make_lag_features(history, n_lags, freq, add_time_features)
+        X_train = df_sup.drop(columns=["y"])
+        y_train = df_sup["y"]
         model = XGBRegressor(
             objective="reg:squarederror",
             n_estimators=100,
@@ -123,8 +132,8 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
         next_index = test.index[t]
         extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
         extended = extended.asfreq(series.index.freq)
-        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
-        X_pred = X_full.iloc[-1:]
+        df_full = make_lag_features(extended, n_lags, freq, add_time_features)
+        X_pred = df_full.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         history.loc[next_index] = val
@@ -196,7 +205,17 @@ def _evaluate_catboost(
         actuals = [const_val] * n_test
         return _compute_metrics(actuals, preds)
 
-    df_sup = prepare_supervised(series, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series, n_lags, freq, True)
+    # Convert categorical column to string for CatBoost
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
     preds, actuals = rolling_forecast_catboost(df_sup, freq, test_size=test_size)
     return _compute_metrics(actuals, preds)
 
@@ -430,8 +449,18 @@ def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_ti
     test = series.iloc[-test_size:]
     history = train.copy()
     preds: List[float] = []
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+
     for t, val in enumerate(test):
-        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        df_sup = make_lag_features(history, n_lags, freq, add_time_features)
+        X_train = df_sup.drop(columns=["y"])
+        y_train = df_sup["y"]
         model = XGBRegressor(
             objective="reg:squarederror",
             n_estimators=100,
@@ -443,8 +472,8 @@ def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_ti
         next_index = test.index[t]
         extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
         extended = extended.asfreq(series.index.freq)
-        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
-        X_pred = X_full.iloc[-1:]
+        df_full = make_lag_features(extended, n_lags, freq, add_time_features)
+        X_pred = df_full.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         history.loc[next_index] = val
@@ -499,7 +528,16 @@ def _rolling_preds_lstm(
 
 def _rolling_preds_catboost(series: pd.Series, freq: str) -> Tuple[pd.Series, pd.Series]:
     """Return predicted and true values for CatBoost rolling forecast."""
-    df_sup = prepare_supervised(series, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
     preds, actuals = rolling_forecast_catboost(df_sup, freq)
     n = len(preds)
     test_index = df_sup.index[-n:]

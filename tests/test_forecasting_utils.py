@@ -6,6 +6,7 @@ import pytest
 from pred_aggregated_amount import evaluate_models as em
 from pred_aggregated_amount import future_forecast as ff
 from pred_aggregated_amount import catboost_forecast as cb
+import pred_aggregated_amount.features_utils as fu
 from pred_aggregated_amount import make_plots
 
 
@@ -78,12 +79,14 @@ def test_forecast_xgb_iterative(monkeypatch):
 
     call_lengths = []
 
-    def fake_to_supervised(series, n_lags, add_time_features=True, exog=None):
+    def fake_make_lag_features(series, n_lags, freq, add_time_cat=True):
         call_lengths.append(len(series))
         cols = {f"lag{i}": [0] for i in range(1, n_lags + 1)}
-        return pd.DataFrame(cols), pd.Series([0])
+        df = pd.DataFrame(cols)
+        df["y"] = [0]
+        return df
 
-    monkeypatch.setattr(ff, "_to_supervised", fake_to_supervised)
+    monkeypatch.setattr(ff, "make_lag_features", fake_make_lag_features)
 
     s = sample_series()
     res = ff.forecast_xgb(DummyXGB(), s, 3, n_lags=2, rmse=1.0)
@@ -168,7 +171,13 @@ def test_evaluate_catboost_constant():
 
 def test_rolling_forecast_catboost_constant(monkeypatch):
     monkeypatch.setattr(cb, "CatBoostRegressor", DummyCat, raising=False)
-    df = cb.prepare_supervised(pd.Series([5.0] * 18, index=pd.date_range("2020-01-31", periods=18, freq="M")), "M")
+    df = fu.make_lag_features(
+        pd.Series([5.0] * 18, index=pd.date_range("2020-01-31", periods=18, freq="M")),
+        12,
+        "M",
+        True,
+    )
+    df["month"] = df["month"].astype(str)
     preds, actuals = cb.rolling_forecast_catboost(df, "M", test_size=3)
     assert preds == [5.0, 5.0, 5.0]
     assert preds == actuals

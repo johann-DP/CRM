@@ -17,46 +17,7 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 
-
-# ---------------------------------------------------------------------------
-# Supervised dataset creation
-# ---------------------------------------------------------------------------
-
-def prepare_supervised(series: pd.Series, freq: str) -> pd.DataFrame:
-    """Return supervised dataframe with lags and time feature.
-
-    The function creates ``lag1`` .. ``lagK`` columns from ``series`` and adds a
-    categorical time variable (month, quarter or year) depending on ``freq``.
-    This feature is passed to CatBoost via ``cat_features`` so that the model
-    handles the seasonality without one-hot encoding.
-    """
-
-    df = series.to_frame(name="y")
-
-    if freq == "M":
-        k = 12
-        df["month"] = df.index.month
-    elif freq == "Q":
-        k = 4
-        df["quarter"] = df.index.quarter
-    elif freq == "A":
-        k = 3
-        df["year"] = df.index.year
-    else:  # pragma: no cover - invalid frequency
-        raise ValueError("freq must be 'M', 'Q' or 'A'")
-
-    for lag in range(1, k + 1):
-        df[f"lag{lag}"] = df["y"].shift(lag)
-
-    # Convert categorical columns to string before dropping NaNs
-    for col in ("month", "quarter", "year"):
-        if col in df.columns:
-            df[col] = df[col].astype(str)
-
-    # Drop initial rows with incomplete lag information
-    df = df.dropna().copy()
-
-    return df
+from .features_utils import make_lag_features
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +140,16 @@ def forecast_future_catboost(
             index=future_dates,
         )
 
-    df_sup = prepare_supervised(series_clean, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series_clean, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
 
     if horizon is None:
         horizon = 12 if freq == "M" else (4 if freq == "Q" else 2)
@@ -268,14 +238,14 @@ if __name__ == "__main__":  # pragma: no cover - example usage
     data_path = pathlib.Path("data.csv")  # replace with real path
     if data_path.exists():
         s = pd.read_csv(data_path, index_col=0, parse_dates=True).squeeze()
-        df_sup = prepare_supervised(s, "M")
+        df_sup = make_lag_features(s, 12, "M", True)
+        df_sup["month"] = df_sup["month"].astype(str)
         rolling_forecast_catboost(df_sup, "M")
         fut = forecast_future_catboost(s, "M", horizon=12)
         print(fut.head())
 
 
 __all__ = [
-    "prepare_supervised",
     "rolling_forecast_catboost",
     "forecast_future_catboost",
 ]

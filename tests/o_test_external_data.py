@@ -1,6 +1,6 @@
 import pandas as pd
 from pred_aggregated_amount.external_data import align_exogenous, merge_target_exog
-from pred_aggregated_amount.train_xgboost import _to_supervised
+from pred_aggregated_amount.features_utils import make_lag_features
 
 
 def test_align_exogenous_basic():
@@ -23,6 +23,8 @@ def test_merge_target_exog_and_supervised():
         [0, 1, 0, 1, 0], index=pd.date_range("2020-01-01", periods=5, freq="M")
     )
     df = merge_target_exog(target, {"flag": ex})
-    X, y = _to_supervised(df["y"], 2, add_time_features=False, exog=df[["flag"]])
+    df_sup = make_lag_features(df["y"], 2, "M", False).join(df[["flag"]])
+    X = df_sup.drop(columns=["y"])
+    y = df_sup["y"]
     assert "flag" in X.columns
     assert len(X) == len(y)
