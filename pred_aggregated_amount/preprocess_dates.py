@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Tuple, Dict
 import logging
 
+from .config import INPUT_CSV, OUTPUT_DIR
+
 from .aggregate_revenue import aggregate_revenue
 
 import pandas as pd
@@ -189,7 +191,9 @@ def save_summary(info: Dict[str, int], out_dir: Path) -> None:
 # Main orchestration
 # ---------------------------------------------------------------------------
 
-def preprocess_dates(csv_path: str | Path, output_dir: str | Path = "output_dir") -> Tuple[pd.Series, pd.Series, pd.Series]:
+def preprocess_dates(
+    csv_path: str | Path = INPUT_CSV, output_dir: str | Path = OUTPUT_DIR
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """Full pipeline returning aggregated revenue series."""
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -250,8 +254,16 @@ if __name__ == "__main__":  # pragma: no cover - simple CLI
     import argparse
 
     parser = argparse.ArgumentParser(description="Preprocess closing dates")
-    parser.add_argument("csv", help="Path to phase3_cleaned_multivariate.csv")
-    parser.add_argument("--output-dir", default="output_dir", help="Destination for figures and summary")
+    parser.add_argument(
+        "--csv",
+        default=str(INPUT_CSV),
+        help="Path to phase3_cleaned_multivariate.csv",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(OUTPUT_DIR),
+        help="Destination for figures and summary",
+    )
     args = parser.parse_args()
 
     preprocess_dates(args.csv, args.output_dir)
