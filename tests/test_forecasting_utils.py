@@ -153,6 +153,13 @@ def test_forecast_future_catboost(monkeypatch):
     assert len(res) == 2
 
 
+def test_forecast_future_catboost_constant(monkeypatch):
+    monkeypatch.setattr(cb, "CatBoostRegressor", DummyCat, raising=False)
+    series = pd.Series([5.0] * 12, index=pd.date_range("2020-01-31", periods=12, freq="M"))
+    res = cb.forecast_future_catboost(series, "M", horizon=3)
+    assert (res["yhat_catboost"] == 5.0).all()
+
+
 # ---------------------------------------------------------------------------
 # Plotting and pipeline
 # ---------------------------------------------------------------------------
