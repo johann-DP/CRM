@@ -143,6 +143,45 @@ def filter_won(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def filter_with_flags(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, int]]:
+    """Return DataFrame without rows flagged as anomalies.
+
+    The function removes rows where ``flag_date_anomalie`` is ``True``, any
+    ``flag_univ_*`` column is ``True`` or ``flag_multivariate`` is ``True``.
+
+    Parameters
+    ----------
+    df:
+        Raw dataframe loaded from :data:`phase3_cleaned_all.csv`.
+
+    Returns
+    -------
+    tuple
+        ``(clean_df, counts)`` where ``counts`` stores the number of rows
+        dropped for each category of flag.
+    """
+
+    counts: Dict[str, int] = {}
+
+    if "flag_date_anomalie" in df.columns:
+        mask = df["flag_date_anomalie"].astype(bool)
+        counts["flag_date_anomalie"] = int(mask.sum())
+        df = df[~mask].copy()
+
+    univ_cols = [c for c in df.columns if c.startswith("flag_univ_")]
+    if univ_cols:
+        mask = df[univ_cols].astype(bool).any(axis=1)
+        counts["flag_univ"] = int(mask.sum())
+        df = df[~mask].copy()
+
+    if "flag_multivariate" in df.columns:
+        mask = df["flag_multivariate"].astype(bool)
+        counts["flag_multivariate"] = int(mask.sum())
+        df = df[~mask].copy()
+
+    return df, counts
+
+
 # ---------------------------------------------------------------------------
 # Visualisation helpers
 # ---------------------------------------------------------------------------
@@ -200,10 +239,7 @@ def preprocess_dates(
     df = load_csv(csv_path)
     df_before = df.copy()
 
-    replaced_future = replace_future_dates(df)
-    replaced_old = remove_old_dates(df)
-    logging.info("Dates > 2025-03-01 remplacées: %s", replaced_future)
-    logging.info("Dates < 1995-01-01 supprimées: %s", replaced_old)
+    df, counts = filter_with_flags(df)
     copied = copy_real_end_dates(df)
     hist, median = build_history(df)
     imputed_median = impute_with_median(df, median)
@@ -221,8 +257,9 @@ def preprocess_dates(
     plot_before_after(ts_before, monthly, out_dir)
 
     info = {
-        "replaced_future": replaced_future,
-        "replaced_old": replaced_old,
+        "dropped_date_anomalie": counts.get("flag_date_anomalie", 0),
+        "dropped_univ": counts.get("flag_univ", 0),
+        "dropped_multivariate": counts.get("flag_multivariate", 0),
         "copied_real_end": copied,
         "imputed_median": imputed_median,
         "imputed_model": imputed_model,
@@ -242,6 +279,7 @@ __all__ = [
     "impute_with_median",
     "train_duration_model",
     "impute_with_model",
+    "filter_with_flags",
     "filter_won",
     "plot_histograms",
     "plot_before_after",
