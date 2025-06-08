@@ -7,15 +7,13 @@ import os
 
 import numpy as np
 import pandas as pd
-try:  # pragma: no cover - optional dependency
-    from catboost import CatBoostRegressor
-except Exception:  # pragma: no cover - handle missing lib
-    CatBoostRegressor = None
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
     mean_absolute_percentage_error,
 )
+
+CatBoostRegressor = None
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +103,10 @@ def rolling_forecast_catboost(
     preds: List[float] = []
     actuals: List[float] = []
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     for i in range(n_test):
         X_train = df_train.drop(columns=["y"]).copy()
@@ -161,8 +161,10 @@ def forecast_future_catboost(
 ) -> pd.DataFrame:
     """Iteratively forecast ``horizon`` future periods with CatBoost."""
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     if series_clean.nunique() == 1:
         # CatBoost cannot train on a constant series. Simply repeat the last
@@ -179,7 +181,16 @@ def forecast_future_catboost(
             index=future_dates,
         )
 
-    df_sup = prepare_supervised(series_clean, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series_clean, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
 
     if horizon is None:
         horizon = 12 if freq == "M" else (4 if freq == "Q" else 2)
@@ -268,14 +279,14 @@ if __name__ == "__main__":  # pragma: no cover - example usage
     data_path = pathlib.Path("data.csv")  # replace with real path
     if data_path.exists():
         s = pd.read_csv(data_path, index_col=0, parse_dates=True).squeeze()
-        df_sup = prepare_supervised(s, "M")
+        df_sup = make_lag_features(s, 12, "M", True)
+        df_sup["month"] = df_sup["month"].astype(str)
         rolling_forecast_catboost(df_sup, "M")
         fut = forecast_future_catboost(s, "M", horizon=12)
         print(fut.head())
 
 
 __all__ = [
-    "prepare_supervised",
     "rolling_forecast_catboost",
     "forecast_future_catboost",
 ]

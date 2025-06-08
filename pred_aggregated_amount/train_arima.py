@@ -6,13 +6,10 @@ from typing import Tuple
 
 import pandas as pd
 
-# ``AutoARIMA`` performs a grid-search over different (p, d, q) orders and
-# optionally seasonal orders to minimise the AIC.  It returns an already fitted
-# model.
-try:  # Optional dependency
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - type hints
     from statsforecast.models import AutoARIMA
-except Exception as _exc_arima:  # pragma: no cover - optional
-    AutoARIMA = None
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +17,7 @@ except Exception as _exc_arima:  # pragma: no cover - optional
 # ---------------------------------------------------------------------------
 
 
-def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> AutoARIMA:
+def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> "AutoARIMA":
     """Return the best ARIMA/SARIMA model for ``series``.
 
     Parameters
@@ -34,8 +31,7 @@ def _fit_series(series: pd.Series, *, seasonal: bool, m: int) -> AutoARIMA:
     m : int
         Number of observations per cycle for the seasonal component.
     """
-    if AutoARIMA is None:
-        raise ImportError("statsforecast is required for ARIMA models") from _exc_arima
+    from statsforecast.models import AutoARIMA
 
     season_length = m if seasonal else 1
     model = AutoARIMA(season_length=season_length)
@@ -47,7 +43,7 @@ def fit_all_arima(
     monthly: pd.Series,
     quarterly: pd.Series,
     yearly: pd.Series,
-) -> Tuple[AutoARIMA, AutoARIMA, AutoARIMA]:
+) -> Tuple["AutoARIMA", "AutoARIMA", "AutoARIMA"]:
     """Fit ARIMA/SARIMA models for monthly, quarterly and yearly series."""
     # Monthly data has an obvious yearly cycle -> SARIMA with m=12
     model_monthly = _fit_series(monthly, seasonal=True, m=12)

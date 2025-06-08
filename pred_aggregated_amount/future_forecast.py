@@ -3,22 +3,19 @@
 from __future__ import annotations
 
 import pandas as pd
-
-try:  # Optional dependency
-    from statsforecast.models import AutoARIMA
-except Exception as _exc_arima:  # pragma: no cover - optional
-    AutoARIMA = None
-try:  # Optional dependency
-    from prophet import Prophet
-except Exception as _exc_prophet:  # pragma: no cover - optional
-    Prophet = None
-try:  # Optional dependency
-    from xgboost import XGBRegressor
-except Exception as _exc_xgb:  # pragma: no cover - optional
-    XGBRegressor = None
 from sklearn.preprocessing import MinMaxScaler
+from typing import TYPE_CHECKING
 
-from .train_xgboost import _to_supervised
+from .features_utils import make_lag_features
+
+if TYPE_CHECKING:  # pragma: no cover - optional type hints
+    from prophet import Prophet
+    from statsforecast.models import AutoARIMA
+    from xgboost import XGBRegressor
+
+AutoARIMA = None
+Prophet = None
+XGBRegressor = None
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +23,8 @@ from .train_xgboost import _to_supervised
 # ---------------------------------------------------------------------------
 
 
-def forecast_arima(model: AutoARIMA, series: pd.Series, periods: int) -> pd.DataFrame:
+def forecast_arima(model: "AutoARIMA", series: pd.Series, periods: int) -> pd.DataFrame:
     """Return ARIMA predictions with confidence intervals."""
-    if AutoARIMA is None:
-        raise ImportError("statsforecast is required for forecast_arima") from _exc_arima
     freq = series.index.freq or pd.infer_freq(series.index)
     if freq is None:
         raise ValueError("Series index must have a frequency")
@@ -55,10 +50,8 @@ def forecast_arima(model: AutoARIMA, series: pd.Series, periods: int) -> pd.Data
 # ---------------------------------------------------------------------------
 
 
-def forecast_prophet(model: Prophet, series: pd.Series, periods: int) -> pd.DataFrame:
+def forecast_prophet(model: "Prophet", series: pd.Series, periods: int) -> pd.DataFrame:
     """Return Prophet predictions with confidence intervals."""
-    if Prophet is None:
-        raise ImportError("prophet is required for forecast_prophet") from _exc_prophet
     freq = series.index.freq or pd.infer_freq(series.index) or "M"
     future = model.make_future_dataframe(periods=periods, freq=freq)
     forecast = model.predict(future)
@@ -74,7 +67,7 @@ def forecast_prophet(model: Prophet, series: pd.Series, periods: int) -> pd.Data
 
 
 def forecast_xgb(
-    model: XGBRegressor,
+    model: "XGBRegressor",
     series: pd.Series,
     periods: int,
     *,
@@ -83,8 +76,6 @@ def forecast_xgb(
     add_time_features: bool = True,
 ) -> pd.DataFrame:
     """Iteratively forecast with XGBoost and approximate confidence bounds."""
-    if XGBRegressor is None:
-        raise ImportError("xgboost is required for forecast_xgb") from _exc_xgb
     freq = series.index.freq or pd.infer_freq(series.index)
     if freq is None:
         raise ValueError("Series index must have a frequency")
@@ -92,10 +83,18 @@ def forecast_xgb(
     idx = pd.date_range(start=start, periods=periods, freq=freq)
 
     history = series.copy()
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq_base = "Q"
+    elif freq_str.startswith("A"):
+        freq_base = "A"
+    else:
+        freq_base = "M"
+
     preds, lower, upper = [], [], []
     for i in range(periods):
-        X_hist, _ = _to_supervised(history, n_lags, add_time_features=add_time_features)
-        X_pred = X_hist.iloc[-1:]
+        df_sup = make_lag_features(history, n_lags, freq_base, add_time_features)
+        X_pred = df_sup.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         lower.append(pred - 1.96 * rmse)

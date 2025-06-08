@@ -46,10 +46,8 @@ from .evaluate_models import (
     _compute_metrics,
     _ts_cross_val,
 )
-from .catboost_forecast import (
-    prepare_supervised,
-    rolling_forecast_catboost,
-)
+from .catboost_forecast import rolling_forecast_catboost
+from .features_utils import make_lag_features
 from .compare_granularities import build_performance_table
 from .make_plots import main as make_plots_main
 
@@ -136,9 +134,12 @@ def _eval_catboost(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict
         zero = {"MAE": 0.0, "RMSE": 0.0, "MAPE": 0.0}
         return {"monthly": zero, "quarterly": zero, "yearly": zero}
 
-    dfm = prepare_supervised(m, freq="M")
-    dfq = prepare_supervised(q, freq="Q")
-    dfy = prepare_supervised(y, freq="A")
+    dfm = make_lag_features(m, 12, "M", True)
+    dfm["month"] = dfm["month"].astype(str)
+    dfq = make_lag_features(q, 4, "Q", True)
+    dfq["quarter"] = dfq["quarter"].astype(str)
+    dfy = make_lag_features(y, 3, "A", True)
+    dfy["year"] = dfy["year"].astype(str)
 
     preds_m, actuals_m = rolling_forecast_catboost(dfm, freq="M")
     preds_q, actuals_q = rolling_forecast_catboost(dfq, freq="Q")
@@ -248,7 +249,7 @@ def main(argv: list[str] | None = None) -> None:
 
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
-    results = evaluate_all(
+    results = evaluate_all_models(
         monthly,
         quarterly,
         yearly,
