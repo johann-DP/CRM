@@ -10,8 +10,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from pred_aggregated_amount import preprocess_dates, preprocess_all
-from pred_aggregated_amount.evaluate_models import evaluate_and_predict_all_models
-from pred_aggregated_amount.compare_granularities import build_performance_table
+
+
 
 
 def plot_forecast(actual: pd.Series, predicted: pd.Series, model: str, title: str, out: Path) -> None:
@@ -77,9 +77,9 @@ def main(argv: list[str] | None = None) -> None:
     monthly, quarterly, yearly = preprocess_dates(csv_path, out_dir / "preprocess")
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
-    metrics, preds = evaluate_and_predict_all_models(monthly, quarterly, yearly)
-    table = build_performance_table(metrics)
-    table.to_csv(out_dir / "model_performance.csv")
+    raise NotImplementedError(
+        "evaluate_and_predict_all_models has been removed from the package"
+    )
 
     report = build_text_report(metrics)
     with open(out_dir / "rapport_performance.txt", "w", encoding="utf-8") as fh:

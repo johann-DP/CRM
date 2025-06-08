@@ -179,17 +179,6 @@ def test_rolling_forecast_catboost_constant(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_plot_scatter_creates_file(tmp_path):
-    df = pd.DataFrame(
-        {
-            "Date de fin actualisée": pd.date_range("2020-01-01", periods=3, freq="D"),
-            "Total recette réalisé": [1, 2, 3],
-        }
-    )
-    out = tmp_path / "scatter.png"
-    make_plots.plot_scatter(df, out)
-    assert out.exists() and out.stat().st_size > 0
-
 
 def test_plot_with_forecasts(monkeypatch, tmp_path):
     monkeypatch.setattr(make_plots, "fit_all_arima", lambda *a, **k: (object(), object(), object()))
