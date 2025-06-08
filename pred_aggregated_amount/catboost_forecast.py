@@ -7,6 +7,8 @@ import os
 
 import numpy as np
 import pandas as pd
+
+from .features_utils import make_lag_features
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,

@@ -16,8 +16,8 @@ from .lstm_forecast import (
     build_lstm_model,
     train_lstm_model,
 )
-from .train_xgboost import train_xgb_model, train_all_granularities
-from .compare_granularities import build_performance_table, plot_metric_comparison
+from .train_xgboost import train_xgb_model
+from .compare_granularities import build_performance_table
 from .future_forecast import (
     forecast_arima,
     forecast_xgb,
