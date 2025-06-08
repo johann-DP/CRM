@@ -16,35 +16,8 @@ from .lstm_forecast import (
     build_lstm_model,
     train_lstm_model,
 )
-
-try:  # Optional dependency
-    from .prophet_models import fit_prophet_models  # type: ignore
-except Exception as _exc_prophet:  # pragma: no cover - optional
-
-    def fit_prophet_models(*_a, **_k):
-        raise ImportError(
-            "prophet is required for fit_prophet_models"  # noqa: B904
-        ) from _exc_prophet
-
-
-try:  # Optional dependency
-    from .train_arima import fit_all_arima  # type: ignore
-except Exception as _exc_arima:  # pragma: no cover - optional
-
-    def fit_all_arima(*_a, **_k):
-        raise ImportError("statsforecast is required for fit_all_arima") from _exc_arima
-
-
-from .train_xgboost import train_xgb_model
-from .compare_granularities import build_performance_table
-
-# Prophet-related helpers are optional to avoid hard dependency during tests
-try:  # pragma: no cover - import may fail when Prophet is missing
-    from .prophet_models import fit_prophet_models
-    from .future_forecast import forecast_prophet
-except Exception:  # pragma: no cover - keep usable without Prophet
-    fit_prophet_models = None
-    forecast_prophet = None
+from .train_xgboost import train_xgb_model, train_all_granularities
+from .compare_granularities import build_performance_table, plot_metric_comparison
 from .future_forecast import (
     forecast_arima,
     forecast_xgb,
@@ -55,6 +28,24 @@ from .catboost_forecast import (
     forecast_future_catboost,
 )
 from .features_utils import make_lag_features
+
+
+def fit_prophet_models(*args, **kwargs):
+    from .prophet_models import fit_prophet_models as _fit
+
+    return _fit(*args, **kwargs)
+
+
+def fit_all_arima(*args, **kwargs):
+    from .train_arima import fit_all_arima as _fit
+
+    return _fit(*args, **kwargs)
+
+
+def forecast_prophet(*args, **kwargs):
+    from .future_forecast import forecast_prophet as _forecast
+
+    return _forecast(*args, **kwargs)
 
 __all__ = [
     "load_won_opportunities",
@@ -76,10 +67,6 @@ __all__ = [
     "make_lag_features",
     "rolling_forecast_catboost",
     "forecast_future_catboost",
+    "fit_prophet_models",
+    "forecast_prophet",
 ]
-
-if fit_prophet_models is not None:
-    __all__.insert(6, "fit_prophet_models")
-
-if forecast_prophet is not None:
-    __all__.insert(-3, "forecast_prophet")

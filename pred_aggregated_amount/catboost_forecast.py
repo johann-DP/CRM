@@ -7,17 +7,54 @@ import os
 
 import numpy as np
 import pandas as pd
-try:  # pragma: no cover - optional dependency
-    from catboost import CatBoostRegressor
-except Exception:  # pragma: no cover - handle missing lib
-    CatBoostRegressor = None
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
     mean_absolute_percentage_error,
 )
 
-from .features_utils import make_lag_features
+CatBoostRegressor = None
+
+
+# ---------------------------------------------------------------------------
+# Supervised dataset creation
+# ---------------------------------------------------------------------------
+
+def prepare_supervised(series: pd.Series, freq: str) -> pd.DataFrame:
+    """Return supervised dataframe with lags and time feature.
+
+    The function creates ``lag1`` .. ``lagK`` columns from ``series`` and adds a
+    categorical time variable (month, quarter or year) depending on ``freq``.
+    This feature is passed to CatBoost via ``cat_features`` so that the model
+    handles the seasonality without one-hot encoding.
+    """
+
+    df = series.to_frame(name="y")
+
+    if freq == "M":
+        k = 12
+        df["month"] = df.index.month
+    elif freq == "Q":
+        k = 4
+        df["quarter"] = df.index.quarter
+    elif freq == "A":
+        k = 3
+        df["year"] = df.index.year
+    else:  # pragma: no cover - invalid frequency
+        raise ValueError("freq must be 'M', 'Q' or 'A'")
+
+    for lag in range(1, k + 1):
+        df[f"lag{lag}"] = df["y"].shift(lag)
+
+    # Convert categorical columns to string before dropping NaNs
+    for col in ("month", "quarter", "year"):
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+
+    # Drop initial rows with incomplete lag information
+    df = df.dropna().copy()
+
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +103,10 @@ def rolling_forecast_catboost(
     preds: List[float] = []
     actuals: List[float] = []
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     for i in range(n_test):
         X_train = df_train.drop(columns=["y"]).copy()
@@ -122,8 +161,10 @@ def forecast_future_catboost(
 ) -> pd.DataFrame:
     """Iteratively forecast ``horizon`` future periods with CatBoost."""
 
+    global CatBoostRegressor
     if CatBoostRegressor is None:
-        raise ImportError("catboost is required for CatBoost forecasting")
+        from catboost import CatBoostRegressor as _Cat
+        CatBoostRegressor = _Cat
 
     if series_clean.nunique() == 1:
         # CatBoost cannot train on a constant series. Simply repeat the last
