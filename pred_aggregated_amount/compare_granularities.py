@@ -39,17 +39,4 @@ def build_performance_table(results: ModelResults) -> pd.DataFrame:
     table = pd.concat(frames, axis=1)
     return table
 
-
-def plot_metric_comparison(table: pd.DataFrame, metric: str) -> None:
-    """Display bar chart of ``metric`` for each model and frequency."""
-    cols = [f"{metric}_monthly", f"{metric}_quarterly", f"{metric}_yearly"]
-    subset = table[cols]
-    subset.plot(kind="bar")
-    plt.ylabel(metric)
-    plt.title(f"Comparison of {metric} across granularities")
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    plt.show()
-
-
-__all__ = ["build_performance_table", "plot_metric_comparison"]
+__all__ = ["build_performance_table"]

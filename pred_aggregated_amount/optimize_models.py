@@ -12,7 +12,7 @@ from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
 
-from .train_xgboost import _to_supervised
+from .features_utils import make_lag_features
 from .lstm_forecast import (
     create_lstm_sequences,
     scale_lstm_data,
@@ -131,7 +131,16 @@ def grid_search_xgb(
     n_splits: int = 3,
 ) -> Tuple[Dict[str, float], float]:
     """Grid search for :class:`XGBRegressor` using ``TimeSeriesSplit``."""
-    X, y = _to_supervised(series, n_lags, add_time_features=add_time_features)
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+    df_sup = make_lag_features(series, n_lags, freq, add_time_features)
+    X = df_sup.drop(columns=["y"])
+    y = df_sup["y"]
     tscv = TimeSeriesSplit(n_splits=n_splits)
     model = XGBRegressor(objective="reg:squarederror", random_state=42)
     grid = GridSearchCV(

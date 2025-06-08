@@ -6,7 +6,6 @@ from .aggregate_revenue import (
     build_timeseries,
 )
 from .preprocess_timeseries import (
-    load_and_aggregate,
     preprocess_series,
     preprocess_all,
 )
@@ -16,7 +15,6 @@ from .lstm_forecast import (
     scale_lstm_data,
     build_lstm_model,
     train_lstm_model,
-    quick_predict_check,
 )
 from .train_xgboost import train_xgb_model, train_all_granularities
 from .compare_granularities import build_performance_table, plot_metric_comparison
@@ -26,10 +24,10 @@ from .future_forecast import (
     forecast_lstm,
 )
 from .catboost_forecast import (
-    prepare_supervised,
     rolling_forecast_catboost,
     forecast_future_catboost,
 )
+from .features_utils import make_lag_features
 
 
 def fit_prophet_models(*args, **kwargs):
@@ -53,24 +51,20 @@ __all__ = [
     "load_won_opportunities",
     "aggregate_revenue",
     "build_timeseries",
-    "load_and_aggregate",
     "preprocess_series",
     "preprocess_all",
     "preprocess_dates",
     "fit_all_arima",
     "train_xgb_model",
-    "train_all_granularities",
     "create_lstm_sequences",
     "scale_lstm_data",
     "build_lstm_model",
     "train_lstm_model",
-    "quick_predict_check",
     "build_performance_table",
-    "plot_metric_comparison",
     "forecast_arima",
     "forecast_xgb",
     "forecast_lstm",
-    "prepare_supervised",
+    "make_lag_features",
     "rolling_forecast_catboost",
     "forecast_future_catboost",
     "fit_prophet_models",

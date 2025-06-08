@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Tuple
+import concurrent.futures
 
 import numpy as np
 import pandas as pd
@@ -22,9 +23,8 @@ def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 from statsforecast.models import AutoARIMA
 from prophet import Prophet
 from xgboost import XGBRegressor
-from .catboost_forecast import prepare_supervised, rolling_forecast_catboost
-
-from .train_xgboost import _to_supervised
+from .catboost_forecast import rolling_forecast_catboost
+from .features_utils import make_lag_features
 from .lstm_forecast import create_lstm_sequences, scale_lstm_data, build_lstm_model
 
 
@@ -108,8 +108,18 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
     history = train.copy()
     preds: List[float] = []
 
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+
     for t, val in enumerate(test):
-        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        df_sup = make_lag_features(history, n_lags, freq, add_time_features)
+        X_train = df_sup.drop(columns=["y"])
+        y_train = df_sup["y"]
         model = XGBRegressor(
             objective="reg:squarederror",
             n_estimators=100,
@@ -122,8 +132,8 @@ def _evaluate_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_time_fe
         next_index = test.index[t]
         extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
         extended = extended.asfreq(series.index.freq)
-        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
-        X_pred = X_full.iloc[-1:]
+        df_full = make_lag_features(extended, n_lags, freq, add_time_features)
+        X_pred = df_full.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         history.loc[next_index] = val
@@ -195,7 +205,17 @@ def _evaluate_catboost(
         actuals = [const_val] * n_test
         return _compute_metrics(actuals, preds)
 
-    df_sup = prepare_supervised(series, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series, n_lags, freq, True)
+    # Convert categorical column to string for CatBoost
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
     preds, actuals = rolling_forecast_catboost(df_sup, freq, test_size=test_size)
     return _compute_metrics(actuals, preds)
 
@@ -232,64 +252,144 @@ def _ts_cross_val(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _eval_arima(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_arima, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, seasonal=True, m=12),
+            "quarterly": cv(q, seasonal=True, m=4),
+            "yearly": cv(y, seasonal=False, m=1),
+        }
+    return {
+        "monthly": _evaluate_arima(m, 12, seasonal=True, m=12),
+        "quarterly": _evaluate_arima(q, 4, seasonal=True, m=4),
+        "yearly": _evaluate_arima(y, 3, seasonal=False, m=1),
+    }
+
+
+def _eval_prophet(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_prophet, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, yearly_seasonality=True),
+            "quarterly": cv(q, yearly_seasonality=True),
+            "yearly": cv(y, yearly_seasonality=False),
+        }
+    return {
+        "monthly": _evaluate_prophet(m, 12, yearly_seasonality=True),
+        "quarterly": _evaluate_prophet(q, 4, yearly_seasonality=True),
+        "yearly": _evaluate_prophet(y, 3, yearly_seasonality=False),
+    }
+
+
+def _eval_xgb(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_xgb, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, n_lags=12, add_time_features=True),
+            "quarterly": cv(q, n_lags=4, add_time_features=True),
+            "yearly": cv(y, n_lags=3, add_time_features=False),
+        }
+    return {
+        "monthly": _evaluate_xgb(m, 12, n_lags=12, add_time_features=True),
+        "quarterly": _evaluate_xgb(q, 4, n_lags=4, add_time_features=True),
+        "yearly": _evaluate_xgb(y, 3, n_lags=3, add_time_features=False),
+    }
+
+
+def _eval_lstm(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_lstm, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, window=12),
+            "quarterly": cv(q, window=4),
+            "yearly": cv(y, window=3),
+        }
+    return {
+        "monthly": _evaluate_lstm(m, 12, window=12),
+        "quarterly": _evaluate_lstm(q, 4, window=4),
+        "yearly": _evaluate_lstm(y, 3, window=3),
+    }
+
+
+def _eval_catboost(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, f: _ts_cross_val(
+            s,
+            lambda ser, ts, *, freq=f: _evaluate_catboost(ser, freq, test_size=ts),
+            n_splits=n_splits,
+        )
+        return {
+            "monthly": cv(m, "M"),
+            "quarterly": cv(q, "Q"),
+            "yearly": cv(y, "A"),
+        }
+
+    if m.nunique() == 1 and q.nunique() == 1 and y.nunique() == 1:
+        zero = {"MAE": 0.0, "RMSE": 0.0, "MAPE": 0.0}
+        return {"monthly": zero, "quarterly": zero, "yearly": zero}
+
+    dfm = prepare_supervised(m, freq="M")
+    dfq = prepare_supervised(q, freq="Q")
+    dfy = prepare_supervised(y, freq="A")
+
+    preds_m, actuals_m = rolling_forecast_catboost(dfm, freq="M")
+    preds_q, actuals_q = rolling_forecast_catboost(dfq, freq="Q")
+    preds_y, actuals_y = rolling_forecast_catboost(dfy, freq="A")
+
+    return {
+        "monthly": _compute_metrics(actuals_m, preds_m),
+        "quarterly": _compute_metrics(actuals_q, preds_q),
+        "yearly": _compute_metrics(actuals_y, preds_y),
+    }
+
+
+EVAL_FUNCS = {
+    "ARIMA": _eval_arima,
+    "Prophet": _eval_prophet,
+    "XGBoost": _eval_xgb,
+    "LSTM": _eval_lstm,
+    "CatBoost": _eval_catboost,
+}
+
+
 def evaluate_all_models(
     monthly: pd.Series,
     quarterly: pd.Series,
     yearly: pd.Series,
     *,
+    jobs: int = 1,
     cross_val: bool = True,
     n_splits: int = 5,
 ) -> Dict[str, Dict[str, Dict[str, float]]]:
     """Return MAE, RMSE and MAPE for all models and granularities."""
-    results: Dict[str, Dict[str, Dict[str, float]]] = {
-        "ARIMA": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "Prophet": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "XGBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "LSTM": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "CatBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
-    }
-
-    if cross_val:
-        cv = lambda s, fn, **kw: _ts_cross_val(s, fn, n_splits=n_splits, **kw)
-        results["ARIMA"]["monthly"] = cv(monthly, _evaluate_arima, seasonal=True, m=12)
-        results["Prophet"]["monthly"] = cv(monthly, _evaluate_prophet, yearly_seasonality=True)
-        results["XGBoost"]["monthly"] = cv(monthly, _evaluate_xgb, n_lags=12, add_time_features=True)
-        results["LSTM"]["monthly"] = cv(monthly, _evaluate_lstm, window=12)
-        results["CatBoost"]["monthly"] = cv(monthly, _evaluate_catboost, freq="M")
-
-        results["ARIMA"]["quarterly"] = cv(quarterly, _evaluate_arima, seasonal=True, m=4)
-        results["Prophet"]["quarterly"] = cv(quarterly, _evaluate_prophet, yearly_seasonality=True)
-        results["XGBoost"]["quarterly"] = cv(quarterly, _evaluate_xgb, n_lags=4, add_time_features=True)
-        results["LSTM"]["quarterly"] = cv(quarterly, _evaluate_lstm, window=4)
-        results["CatBoost"]["quarterly"] = cv(quarterly, _evaluate_catboost, freq="Q")
-
-        results["ARIMA"]["yearly"] = cv(yearly, _evaluate_arima, seasonal=False, m=1)
-        results["Prophet"]["yearly"] = cv(yearly, _evaluate_prophet, yearly_seasonality=False)
-        results["XGBoost"]["yearly"] = cv(yearly, _evaluate_xgb, n_lags=3, add_time_features=False)
-        results["LSTM"]["yearly"] = cv(yearly, _evaluate_lstm, window=3)
-        results["CatBoost"]["yearly"] = cv(yearly, _evaluate_catboost, freq="A")
+    results: Dict[str, Dict[str, Dict[str, float]]] = {}
+    if jobs > 1:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as ex:
+            futs = {
+                ex.submit(func, monthly, quarterly, yearly, cross_val=cross_val, n_splits=n_splits): name
+                for name, func in EVAL_FUNCS.items()
+            }
+            for fut in concurrent.futures.as_completed(futs):
+                name = futs[fut]
+                try:
+                    results[name] = fut.result()
+                except Exception as exc:  # pragma: no cover - passthrough
+                    print(f"{name} failed: {exc}")
+                    results[name] = {}
     else:
-        # Monthly: last 12 months for testing
-        results["ARIMA"]["monthly"] = _evaluate_arima(monthly, 12, seasonal=True, m=12)
-        results["Prophet"]["monthly"] = _evaluate_prophet(monthly, 12, yearly_seasonality=True)
-        results["XGBoost"]["monthly"] = _evaluate_xgb(monthly, 12, n_lags=12, add_time_features=True)
-        results["LSTM"]["monthly"] = _evaluate_lstm(monthly, 12, window=12)
-        results["CatBoost"]["monthly"] = _evaluate_catboost(monthly, "M")
-
-        # Quarterly: last 4 quarters for testing
-        results["ARIMA"]["quarterly"] = _evaluate_arima(quarterly, 4, seasonal=True, m=4)
-        results["Prophet"]["quarterly"] = _evaluate_prophet(quarterly, 4, yearly_seasonality=True)
-        results["XGBoost"]["quarterly"] = _evaluate_xgb(quarterly, 4, n_lags=4, add_time_features=True)
-        results["LSTM"]["quarterly"] = _evaluate_lstm(quarterly, 4, window=4)
-        results["CatBoost"]["quarterly"] = _evaluate_catboost(quarterly, "Q")
-
-        # Yearly: last 3 years for testing
-        results["ARIMA"]["yearly"] = _evaluate_arima(yearly, 3, seasonal=False, m=1)
-        results["Prophet"]["yearly"] = _evaluate_prophet(yearly, 3, yearly_seasonality=False)
-        results["XGBoost"]["yearly"] = _evaluate_xgb(yearly, 3, n_lags=3, add_time_features=False)
-        results["LSTM"]["yearly"] = _evaluate_lstm(yearly, 3, window=3)
-        results["CatBoost"]["yearly"] = _evaluate_catboost(yearly, "A")
-
+        for name, func in EVAL_FUNCS.items():
+            try:
+                results[name] = func(
+                    monthly,
+                    quarterly,
+                    yearly,
+                    cross_val=cross_val,
+                    n_splits=n_splits,
+                )
+            except Exception as exc:  # pragma: no cover - passthrough
+                print(f"{name} failed: {exc}")
+                results[name] = {}
     return results
 
 
@@ -349,8 +449,18 @@ def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_ti
     test = series.iloc[-test_size:]
     history = train.copy()
     preds: List[float] = []
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+
     for t, val in enumerate(test):
-        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        df_sup = make_lag_features(history, n_lags, freq, add_time_features)
+        X_train = df_sup.drop(columns=["y"])
+        y_train = df_sup["y"]
         model = XGBRegressor(
             objective="reg:squarederror",
             n_estimators=100,
@@ -362,8 +472,8 @@ def _rolling_preds_xgb(series: pd.Series, test_size: int, *, n_lags: int, add_ti
         next_index = test.index[t]
         extended = pd.concat([history, pd.Series([np.nan], index=[next_index])])
         extended = extended.asfreq(series.index.freq)
-        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
-        X_pred = X_full.iloc[-1:]
+        df_full = make_lag_features(extended, n_lags, freq, add_time_features)
+        X_pred = df_full.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         history.loc[next_index] = val
@@ -418,99 +528,21 @@ def _rolling_preds_lstm(
 
 def _rolling_preds_catboost(series: pd.Series, freq: str) -> Tuple[pd.Series, pd.Series]:
     """Return predicted and true values for CatBoost rolling forecast."""
-    df_sup = prepare_supervised(series, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
     preds, actuals = rolling_forecast_catboost(df_sup, freq)
     n = len(preds)
     test_index = df_sup.index[-n:]
     return pd.Series(preds, index=test_index), pd.Series(actuals, index=test_index)
 
 
-def evaluate_and_predict_all_models(
-    monthly: pd.Series,
-    quarterly: pd.Series,
-    yearly: pd.Series,
-) -> Tuple[Dict[str, Dict[str, Dict[str, float]]], Dict[str, Dict[str, pd.Series]]]:
-    """Return metrics and rolling predictions for all models."""
-    metrics: Dict[str, Dict[str, Dict[str, float]]] = {
-        "ARIMA": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "Prophet": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "XGBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "LSTM": {"monthly": {}, "quarterly": {}, "yearly": {}},
-        "CatBoost": {"monthly": {}, "quarterly": {}, "yearly": {}},
-    }
-    preds: Dict[str, Dict[str, pd.Series]] = {
-        "ARIMA": {},
-        "Prophet": {},
-        "XGBoost": {},
-        "LSTM": {},
-        "CatBoost": {},
-    }
 
-    p, t = _rolling_preds_arima(monthly, 12, seasonal=True, m=12)
-    metrics["ARIMA"]["monthly"] = _compute_metrics(t.values, list(p))
-    preds["ARIMA"]["monthly"] = p
-
-    p, t = _rolling_preds_prophet(monthly, 12, yearly_seasonality=True)
-    metrics["Prophet"]["monthly"] = _compute_metrics(t.values, list(p))
-    preds["Prophet"]["monthly"] = p
-
-    p, t = _rolling_preds_xgb(monthly, 12, n_lags=12, add_time_features=True)
-    metrics["XGBoost"]["monthly"] = _compute_metrics(t.values, list(p))
-    preds["XGBoost"]["monthly"] = p
-
-    p, t = _rolling_preds_lstm(monthly, 12, window=12)
-    metrics["LSTM"]["monthly"] = _compute_metrics(t.values, list(p))
-    preds["LSTM"]["monthly"] = p
-
-    p, t = _rolling_preds_catboost(monthly, "M")
-    metrics["CatBoost"]["monthly"] = _compute_metrics(t.values, list(p))
-    preds["CatBoost"]["monthly"] = p
-
-    p, t = _rolling_preds_arima(quarterly, 4, seasonal=True, m=4)
-    metrics["ARIMA"]["quarterly"] = _compute_metrics(t.values, list(p))
-    preds["ARIMA"]["quarterly"] = p
-
-    p, t = _rolling_preds_prophet(quarterly, 4, yearly_seasonality=True)
-    metrics["Prophet"]["quarterly"] = _compute_metrics(t.values, list(p))
-    preds["Prophet"]["quarterly"] = p
-
-    p, t = _rolling_preds_xgb(quarterly, 4, n_lags=4, add_time_features=True)
-    metrics["XGBoost"]["quarterly"] = _compute_metrics(t.values, list(p))
-    preds["XGBoost"]["quarterly"] = p
-
-    p, t = _rolling_preds_lstm(quarterly, 4, window=4)
-    metrics["LSTM"]["quarterly"] = _compute_metrics(t.values, list(p))
-    preds["LSTM"]["quarterly"] = p
-
-    p, t = _rolling_preds_catboost(quarterly, "Q")
-    metrics["CatBoost"]["quarterly"] = _compute_metrics(t.values, list(p))
-    preds["CatBoost"]["quarterly"] = p
-
-    p, t = _rolling_preds_arima(yearly, 3, seasonal=False, m=1)
-    metrics["ARIMA"]["yearly"] = _compute_metrics(t.values, list(p))
-    preds["ARIMA"]["yearly"] = p
-
-    p, t = _rolling_preds_prophet(yearly, 3, yearly_seasonality=False)
-    metrics["Prophet"]["yearly"] = _compute_metrics(t.values, list(p))
-    preds["Prophet"]["yearly"] = p
-
-    p, t = _rolling_preds_xgb(yearly, 3, n_lags=3, add_time_features=False)
-    metrics["XGBoost"]["yearly"] = _compute_metrics(t.values, list(p))
-    preds["XGBoost"]["yearly"] = p
-
-    p, t = _rolling_preds_lstm(yearly, 3, window=3)
-    metrics["LSTM"]["yearly"] = _compute_metrics(t.values, list(p))
-    preds["LSTM"]["yearly"] = p
-
-    p, t = _rolling_preds_catboost(yearly, "A")
-    metrics["CatBoost"]["yearly"] = _compute_metrics(t.values, list(p))
-    preds["CatBoost"]["yearly"] = p
-
-    return metrics, preds
-
-
-__all__ = [
-    "evaluate_all_models",
-    "evaluate_and_predict_all_models",
-]
 

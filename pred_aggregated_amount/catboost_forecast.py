@@ -181,7 +181,16 @@ def forecast_future_catboost(
             index=future_dates,
         )
 
-    df_sup = prepare_supervised(series_clean, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series_clean, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
 
     if horizon is None:
         horizon = 12 if freq == "M" else (4 if freq == "Q" else 2)
@@ -270,14 +279,14 @@ if __name__ == "__main__":  # pragma: no cover - example usage
     data_path = pathlib.Path("data.csv")  # replace with real path
     if data_path.exists():
         s = pd.read_csv(data_path, index_col=0, parse_dates=True).squeeze()
-        df_sup = prepare_supervised(s, "M")
+        df_sup = make_lag_features(s, 12, "M", True)
+        df_sup["month"] = df_sup["month"].astype(str)
         rolling_forecast_catboost(df_sup, "M")
         fut = forecast_future_catboost(s, "M", horizon=12)
         print(fut.head())
 
 
 __all__ = [
-    "prepare_supervised",
     "rolling_forecast_catboost",
     "forecast_future_catboost",
 ]
