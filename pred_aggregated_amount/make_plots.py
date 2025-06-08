@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from .preprocess_timeseries import load_and_aggregate, preprocess_all
+from .preprocess_timeseries import preprocess_all
 from .catboost_forecast import forecast_future_catboost
 from .train_xgboost import train_xgb_model
 from .train_arima import fit_all_arima
@@ -30,23 +30,6 @@ def load_original(csv_path: Path) -> pd.DataFrame:
     df = df.dropna(subset=["Date de fin actualisée"])
     return df
 
-
-def plot_scatter(df: pd.DataFrame, out: Path, sort_dates: bool = False) -> None:
-    """Plot revenue against closing date."""
-    if sort_dates:
-        df = df.sort_values("Date de fin actualisée")
-    plt.figure(figsize=(12, 6))
-    plt.plot(
-        df["Date de fin actualisée"],
-        df["Total recette réalisé"],
-        marker=".",
-        linestyle="none",
-    )
-    plt.xlabel("Date de fin actualisée")
-    plt.ylabel("Total recette réalisé")
-    plt.tight_layout()
-    plt.savefig(out, dpi=150)
-    plt.close()
 
 
 def plot_with_forecasts(ts: pd.Series, freq: str, output: Path) -> None:
@@ -142,8 +125,6 @@ def main(
         if csv_path is None:
             raise ValueError("csv_path is required when time series are not provided")
         df = load_original(Path(csv_path))
-        plot_scatter(df, out_path / "recette_vs_date.png", sort_dates=False)
-        plot_scatter(df, out_path / "recette_vs_date_sorted.png", sort_dates=True)
 
         ts = df.set_index("Date de fin actualisée")["Total recette réalisé"]
         monthly = ts.resample("M").sum()

@@ -6,7 +6,6 @@ from .aggregate_revenue import (
     build_timeseries,
 )
 from .preprocess_timeseries import (
-    load_and_aggregate,
     preprocess_series,
     preprocess_all,
 )
@@ -16,7 +15,6 @@ from .lstm_forecast import (
     scale_lstm_data,
     build_lstm_model,
     train_lstm_model,
-    quick_predict_check,
 )
 
 try:  # Optional dependency
@@ -37,8 +35,8 @@ except Exception as _exc_arima:  # pragma: no cover - optional
         raise ImportError("statsforecast is required for fit_all_arima") from _exc_arima
 
 
-from .train_xgboost import train_xgb_model, train_all_granularities
-from .compare_granularities import build_performance_table, plot_metric_comparison
+from .train_xgboost import train_xgb_model
+from .compare_granularities import build_performance_table
 
 # Prophet-related helpers are optional to avoid hard dependency during tests
 try:  # pragma: no cover - import may fail when Prophet is missing
@@ -62,20 +60,16 @@ __all__ = [
     "load_won_opportunities",
     "aggregate_revenue",
     "build_timeseries",
-    "load_and_aggregate",
     "preprocess_series",
     "preprocess_all",
     "preprocess_dates",
     "fit_all_arima",
     "train_xgb_model",
-    "train_all_granularities",
     "create_lstm_sequences",
     "scale_lstm_data",
     "build_lstm_model",
     "train_lstm_model",
-    "quick_predict_check",
     "build_performance_table",
-    "plot_metric_comparison",
     "forecast_arima",
     "forecast_xgb",
     "forecast_lstm",

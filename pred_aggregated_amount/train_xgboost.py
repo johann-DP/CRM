@@ -45,19 +45,4 @@ def train_xgb_model(series: pd.Series, n_lags: int, *, add_time_features: bool =
     return model, model.score(X, y)
 
 
-def train_all_granularities(
-    monthly: pd.Series,
-    quarterly: pd.Series,
-    yearly: pd.Series,
-) -> Tuple[Tuple[XGBRegressor, float], Tuple[XGBRegressor, float], Tuple[XGBRegressor, float]]:
-    """Return XGBoost models fitted on monthly, quarterly and yearly series."""
-    m_model, m_score = train_xgb_model(monthly, 12, add_time_features=True)
-    q_model, q_score = train_xgb_model(quarterly, 4, add_time_features=True)
-    y_model, y_score = train_xgb_model(yearly, 3)
-    return (m_model, m_score), (q_model, q_score), (y_model, y_score)
-
-
-__all__ = [
-    "train_xgb_model",
-    "train_all_granularities",
-]
+__all__ = ["train_xgb_model"]

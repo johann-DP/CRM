@@ -30,9 +30,7 @@ warnings.filterwarnings(
 )
 
 import argparse
-import concurrent.futures
 from pathlib import Path
-from typing import Dict
 
 import yaml
 
@@ -256,7 +254,7 @@ def main(argv: list[str] | None = None) -> None:
 
     monthly, quarterly, yearly = preprocess_all(monthly, quarterly, yearly)
 
-    results = evaluate_all(
+    results = evaluate_all_models(
         monthly,
         quarterly,
         yearly,
