@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Tuple
+import concurrent.futures
 
 import numpy as np
 import pandas as pd
@@ -232,6 +233,145 @@ def _ts_cross_val(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _eval_arima(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_arima, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, seasonal=True, m=12),
+            "quarterly": cv(q, seasonal=True, m=4),
+            "yearly": cv(y, seasonal=False, m=1),
+        }
+    return {
+        "monthly": _evaluate_arima(m, 12, seasonal=True, m=12),
+        "quarterly": _evaluate_arima(q, 4, seasonal=True, m=4),
+        "yearly": _evaluate_arima(y, 3, seasonal=False, m=1),
+    }
+
+
+def _eval_prophet(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_prophet, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, yearly_seasonality=True),
+            "quarterly": cv(q, yearly_seasonality=True),
+            "yearly": cv(y, yearly_seasonality=False),
+        }
+    return {
+        "monthly": _evaluate_prophet(m, 12, yearly_seasonality=True),
+        "quarterly": _evaluate_prophet(q, 4, yearly_seasonality=True),
+        "yearly": _evaluate_prophet(y, 3, yearly_seasonality=False),
+    }
+
+
+def _eval_xgb(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_xgb, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, n_lags=12, add_time_features=True),
+            "quarterly": cv(q, n_lags=4, add_time_features=True),
+            "yearly": cv(y, n_lags=3, add_time_features=False),
+        }
+    return {
+        "monthly": _evaluate_xgb(m, 12, n_lags=12, add_time_features=True),
+        "quarterly": _evaluate_xgb(q, 4, n_lags=4, add_time_features=True),
+        "yearly": _evaluate_xgb(y, 3, n_lags=3, add_time_features=False),
+    }
+
+
+def _eval_lstm(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, **kw: _ts_cross_val(s, _evaluate_lstm, n_splits=n_splits, **kw)
+        return {
+            "monthly": cv(m, window=12),
+            "quarterly": cv(q, window=4),
+            "yearly": cv(y, window=3),
+        }
+    return {
+        "monthly": _evaluate_lstm(m, 12, window=12),
+        "quarterly": _evaluate_lstm(q, 4, window=4),
+        "yearly": _evaluate_lstm(y, 3, window=3),
+    }
+
+
+def _eval_catboost(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict[str, float]]:
+    if cross_val:
+        cv = lambda s, f: _ts_cross_val(
+            s,
+            lambda ser, ts, *, freq=f: _evaluate_catboost(ser, freq, test_size=ts),
+            n_splits=n_splits,
+        )
+        return {
+            "monthly": cv(m, "M"),
+            "quarterly": cv(q, "Q"),
+            "yearly": cv(y, "A"),
+        }
+
+    if m.nunique() == 1 and q.nunique() == 1 and y.nunique() == 1:
+        zero = {"MAE": 0.0, "RMSE": 0.0, "MAPE": 0.0}
+        return {"monthly": zero, "quarterly": zero, "yearly": zero}
+
+    dfm = prepare_supervised(m, freq="M")
+    dfq = prepare_supervised(q, freq="Q")
+    dfy = prepare_supervised(y, freq="A")
+
+    preds_m, actuals_m = rolling_forecast_catboost(dfm, freq="M")
+    preds_q, actuals_q = rolling_forecast_catboost(dfq, freq="Q")
+    preds_y, actuals_y = rolling_forecast_catboost(dfy, freq="A")
+
+    return {
+        "monthly": _compute_metrics(actuals_m, preds_m),
+        "quarterly": _compute_metrics(actuals_q, preds_q),
+        "yearly": _compute_metrics(actuals_y, preds_y),
+    }
+
+
+EVAL_FUNCS = {
+    "ARIMA": _eval_arima,
+    "Prophet": _eval_prophet,
+    "XGBoost": _eval_xgb,
+    "LSTM": _eval_lstm,
+    "CatBoost": _eval_catboost,
+}
+
+
+def evaluate_all_models(
+    monthly: pd.Series,
+    quarterly: pd.Series,
+    yearly: pd.Series,
+    *,
+    jobs: int = 1,
+    cross_val: bool = True,
+    n_splits: int = 5,
+) -> Dict[str, Dict[str, Dict[str, float]]]:
+    """Return MAE, RMSE and MAPE for all models and granularities."""
+    results: Dict[str, Dict[str, Dict[str, float]]] = {}
+    if jobs > 1:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=jobs) as ex:
+            futs = {
+                ex.submit(func, monthly, quarterly, yearly, cross_val=cross_val, n_splits=n_splits): name
+                for name, func in EVAL_FUNCS.items()
+            }
+            for fut in concurrent.futures.as_completed(futs):
+                name = futs[fut]
+                try:
+                    results[name] = fut.result()
+                except Exception as exc:  # pragma: no cover - passthrough
+                    print(f"{name} failed: {exc}")
+                    results[name] = {}
+    else:
+        for name, func in EVAL_FUNCS.items():
+            try:
+                results[name] = func(
+                    monthly,
+                    quarterly,
+                    yearly,
+                    cross_val=cross_val,
+                    n_splits=n_splits,
+                )
+            except Exception as exc:  # pragma: no cover - passthrough
+                print(f"{name} failed: {exc}")
+                results[name] = {}
+    return results
 
 
 
