@@ -18,7 +18,7 @@ except Exception as _exc_xgb:  # pragma: no cover - optional
     XGBRegressor = None
 from sklearn.preprocessing import MinMaxScaler
 
-from .train_xgboost import _to_supervised
+from .features_utils import make_lag_features
 
 
 # ---------------------------------------------------------------------------
@@ -92,10 +92,18 @@ def forecast_xgb(
     idx = pd.date_range(start=start, periods=periods, freq=freq)
 
     history = series.copy()
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq_base = "Q"
+    elif freq_str.startswith("A"):
+        freq_base = "A"
+    else:
+        freq_base = "M"
+
     preds, lower, upper = [], [], []
     for i in range(periods):
-        X_hist, _ = _to_supervised(history, n_lags, add_time_features=add_time_features)
-        X_pred = X_hist.iloc[-1:]
+        df_sup = make_lag_features(history, n_lags, freq_base, add_time_features)
+        X_pred = df_sup.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         lower.append(pred - 1.96 * rmse)

@@ -21,10 +21,9 @@ from keras.layers import LSTM, Dense
 from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
-from pred_aggregated_amount.train_xgboost import _to_supervised
+from pred_aggregated_amount.features_utils import make_lag_features
 from pred_aggregated_amount.lstm_forecast import create_lstm_sequences
 from pred_aggregated_amount.catboost_forecast import (
-    prepare_supervised,
     rolling_forecast_catboost,
 )
 
@@ -162,9 +161,17 @@ def _rolling_xgb(series: pd.Series, horizon: int, *, n_lags: int, add_time_featu
     history = series.iloc[:-horizon].copy()
     test = series.iloc[-horizon:]
     preds = []
-    freq = series.index.freqstr or pd.infer_freq(series.index)
+    freq_str = series.index.freqstr or pd.infer_freq(series.index)
+    if freq_str and freq_str.startswith("Q"):
+        freq_base = "Q"
+    elif freq_str and freq_str.startswith("A"):
+        freq_base = "A"
+    else:
+        freq_base = "M"
     for t, val in enumerate(test):
-        X_train, y_train = _to_supervised(history, n_lags, add_time_features=add_time_features)
+        df_sup = make_lag_features(history, n_lags, freq_base, add_time_features)
+        X_train = df_sup.drop(columns=["y"])
+        y_train = df_sup["y"]
         model = XGBRegressor(
             objective="reg:squarederror",
             n_estimators=100,
@@ -177,8 +184,8 @@ def _rolling_xgb(series: pd.Series, horizon: int, *, n_lags: int, add_time_featu
         next_idx = test.index[t]
         extended = pd.concat([history, pd.Series([pd.NA], index=[next_idx])])
         extended = extended.asfreq(freq)
-        X_full, _ = _to_supervised(extended, n_lags, add_time_features=add_time_features)
-        X_pred = X_full.iloc[-1:]
+        df_full = make_lag_features(extended, n_lags, freq_base, add_time_features)
+        X_pred = df_full.drop(columns=["y"]).iloc[-1:]
         pred = float(model.predict(X_pred)[0])
         preds.append(pred)
         history.loc[next_idx] = val
@@ -213,7 +220,16 @@ def _rolling_lstm(series: pd.Series, horizon: int, *, window: int, epochs: int =
 
 def _rolling_catboost(series: pd.Series, freq: str, horizon: int) -> pd.Series:
     """Return CatBoost one-step predictions for ``horizon`` periods."""
-    df_sup = prepare_supervised(series, freq)
+    if freq == "M":
+        n_lags = 12
+    elif freq == "Q":
+        n_lags = 4
+    else:
+        n_lags = 3
+    df_sup = make_lag_features(series, n_lags, freq, True)
+    for col in ("month", "quarter", "year"):
+        if col in df_sup.columns:
+            df_sup[col] = df_sup[col].astype(str)
     preds, _ = rolling_forecast_catboost(df_sup, freq, test_size=horizon)
     return pd.Series(preds, index=series.index[-horizon:])
 

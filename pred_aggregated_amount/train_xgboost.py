@@ -8,57 +8,9 @@ import os
 import pandas as pd
 from xgboost import XGBRegressor
 
+from .features_utils import make_lag_features
 
-# ---------------------------------------------------------------------------
-# Supervised transformation
-# ---------------------------------------------------------------------------
 
-def _to_supervised(
-    series: pd.Series,
-    n_lags: int,
-    *,
-    add_time_features: bool = False,
-    exog: pd.DataFrame | None = None,
-) -> Tuple[pd.DataFrame, pd.Series]:
-    """Convert ``series`` to a supervised learning dataset.
-
-    Parameters
-    ----------
-    series:
-        Time series indexed by ``DatetimeIndex``.
-    n_lags:
-        Number of past observations to use as predictors.
-    add_time_features:
-        If ``True`` add the month/quarter as an additional feature to help
-        capture seasonality.
-    """
-    df = pd.DataFrame({"y": series})
-    for i in range(1, n_lags + 1):
-        df[f"lag{i}"] = series.shift(i)
-
-    if exog is not None:
-        df = df.join(exog)
-
-    if add_time_features:
-        # Add month or quarter depending on the frequency
-        if series.index.freqstr and series.index.freqstr.startswith("M"):
-            df["month"] = series.index.month
-            time_cols = ["month"]
-        elif series.index.freqstr and series.index.freqstr.startswith("Q"):
-            df["quarter"] = series.index.quarter
-            time_cols = ["quarter"]
-        else:  # yearly or unknown frequency
-            df["year"] = series.index.year
-            time_cols = ["year"]
-    else:
-        time_cols = []
-
-    df = df.dropna()
-    exog_cols = list(exog.columns) if exog is not None else []
-    feature_cols = [f"lag{i}" for i in range(1, n_lags + 1)] + time_cols + exog_cols
-    X = df[feature_cols]
-    y = df["y"]
-    return X, y
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +22,16 @@ def train_xgb_model(series: pd.Series, n_lags: int, *, add_time_features: bool =
 
     Returns the fitted model and the training score (R^2).
     """
-    X, y = _to_supervised(series, n_lags, add_time_features=add_time_features)
+    freq_str = series.index.freqstr or pd.infer_freq(series.index) or "M"
+    if freq_str.startswith("Q"):
+        freq = "Q"
+    elif freq_str.startswith("A"):
+        freq = "A"
+    else:
+        freq = "M"
+    df_sup = make_lag_features(series, n_lags, freq, add_time_features)
+    X = df_sup.drop(columns=["y"])
+    y = df_sup["y"]
     model = XGBRegressor(
         objective="reg:squarederror",
         n_estimators=100,
