@@ -153,6 +153,21 @@ def forecast_future_catboost(
     if CatBoostRegressor is None:
         raise ImportError("catboost is required for CatBoost forecasting")
 
+    if series_clean.nunique() == 1:
+        # CatBoost cannot train on a constant series. Simply repeat the last
+        # value for the requested horizon.
+        last_date = series_clean.index[-1]
+        future_dates = pd.date_range(
+            start=last_date + pd.tseries.frequencies.to_offset(freq),
+            periods=horizon or 1,
+            freq=freq,
+        )
+        const_val = float(series_clean.iloc[-1])
+        return pd.DataFrame(
+            {"yhat_catboost": [const_val] * len(future_dates)},
+            index=future_dates,
+        )
+
     df_sup = prepare_supervised(series_clean, freq)
 
     if horizon is None:
