@@ -88,6 +88,17 @@ def rolling_forecast_catboost(
 
     n_test = test_size or default_test
 
+    if df_sup["y"].nunique() == 1:
+        # CatBoost cannot train on a constant series. Simply repeat the last
+        # value for the test horizon.
+        const_val = float(df_sup["y"].iloc[-1])
+        preds = [const_val] * n_test
+        actuals = [const_val] * n_test
+        print(
+            f"CatBoost {freq} - MAE: 0.00, RMSE: 0.00, MAPE: 0.00%"
+        )
+        return preds, actuals
+
     df_train = df_sup.iloc[:-n_test].copy()
     df_test = df_sup.iloc[-n_test:].copy()
 

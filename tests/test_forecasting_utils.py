@@ -160,6 +160,20 @@ def test_forecast_future_catboost_constant(monkeypatch):
     assert (res["yhat_catboost"] == 5.0).all()
 
 
+def test_evaluate_catboost_constant():
+    series = pd.Series([5.0] * 24, index=pd.date_range("2020-01-31", periods=24, freq="M"))
+    metrics = em._evaluate_catboost(series, "M", test_size=6)
+    assert metrics == {"MAE": 0.0, "RMSE": 0.0, "MAPE": 0.0}
+
+
+def test_rolling_forecast_catboost_constant(monkeypatch):
+    monkeypatch.setattr(cb, "CatBoostRegressor", DummyCat, raising=False)
+    df = cb.prepare_supervised(pd.Series([5.0] * 18, index=pd.date_range("2020-01-31", periods=18, freq="M")), "M")
+    preds, actuals = cb.rolling_forecast_catboost(df, "M", test_size=3)
+    assert preds == [5.0, 5.0, 5.0]
+    assert preds == actuals
+
+
 # ---------------------------------------------------------------------------
 # Plotting and pipeline
 # ---------------------------------------------------------------------------
