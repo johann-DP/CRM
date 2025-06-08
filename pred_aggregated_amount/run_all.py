@@ -133,6 +133,10 @@ def _eval_catboost(m, q, y, *, cross_val: bool, n_splits: int) -> Dict[str, Dict
             "yearly": cv(y, "A"),
         }
 
+    if m.nunique() == 1 and q.nunique() == 1 and y.nunique() == 1:
+        zero = {"MAE": 0.0, "RMSE": 0.0, "MAPE": 0.0}
+        return {"monthly": zero, "quarterly": zero, "yearly": zero}
+
     dfm = prepare_supervised(m, freq="M")
     dfq = prepare_supervised(q, freq="Q")
     dfy = prepare_supervised(y, freq="A")

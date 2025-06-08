@@ -88,6 +88,17 @@ def rolling_forecast_catboost(
 
     n_test = test_size or default_test
 
+    if df_sup["y"].nunique() == 1:
+        # CatBoost cannot train on a constant series. Simply repeat the last
+        # value for the test horizon.
+        const_val = float(df_sup["y"].iloc[-1])
+        preds = [const_val] * n_test
+        actuals = [const_val] * n_test
+        print(
+            f"CatBoost {freq} - MAE: 0.00, RMSE: 0.00, MAPE: 0.00%"
+        )
+        return preds, actuals
+
     df_train = df_sup.iloc[:-n_test].copy()
     df_test = df_sup.iloc[-n_test:].copy()
 
@@ -147,6 +158,21 @@ def forecast_future_catboost(
 
     if CatBoostRegressor is None:
         raise ImportError("catboost is required for CatBoost forecasting")
+
+    if series_clean.nunique() == 1:
+        # CatBoost cannot train on a constant series. Simply repeat the last
+        # value for the requested horizon.
+        last_date = series_clean.index[-1]
+        future_dates = pd.date_range(
+            start=last_date + pd.tseries.frequencies.to_offset(freq),
+            periods=horizon or 1,
+            freq=freq,
+        )
+        const_val = float(series_clean.iloc[-1])
+        return pd.DataFrame(
+            {"yhat_catboost": [const_val] * len(future_dates)},
+            index=future_dates,
+        )
 
     df_sup = prepare_supervised(series_clean, freq)
 

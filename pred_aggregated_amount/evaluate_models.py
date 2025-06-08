@@ -188,6 +188,13 @@ def _evaluate_catboost(
     series: pd.Series, freq: str, *, test_size: int | None = None
 ) -> Dict[str, float]:
     """Evaluate CatBoost model with rolling forecast."""
+    if series.nunique() == 1:
+        n_test = test_size or (12 if freq == "M" else (4 if freq == "Q" else 2))
+        const_val = float(series.iloc[-1])
+        preds = [const_val] * n_test
+        actuals = [const_val] * n_test
+        return _compute_metrics(actuals, preds)
+
     df_sup = prepare_supervised(series, freq)
     preds, actuals = rolling_forecast_catboost(df_sup, freq, test_size=test_size)
     return _compute_metrics(actuals, preds)
